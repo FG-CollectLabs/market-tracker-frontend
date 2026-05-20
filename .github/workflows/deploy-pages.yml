@@ -28,6 +28,9 @@ jobs:
         env:
           VITE_API_URL: https://market.futuregadgetlabs.com
           VITE_GH_PAGES: "1"
+          # Baked into the public JS bundle. Single-admin tool — fine because
+          # this site/repo is private to the owner.
+          VITE_ADMIN_API_KEY: ${{ secrets.MT_ADMIN_API_KEY }}
       - uses: actions/upload-pages-artifact@v3
         with:
           path: dist

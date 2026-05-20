@@ -372,22 +372,24 @@ function WatchToggle({ displayKey, watched, onChange }: {
   onChange: (next: boolean) => void;
 }) {
   const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
   const next = !watched;
   return (
     <button
-      title={watched ? "Stop watching (won't scrape graded prices)" : "Watch (scrapes graded prices when you run console-prices)"}
+      title={err ?? (watched ? "Stop watching" : "Watch (scrapes graded prices when you run console-prices)")}
       disabled={busy}
       onClick={(e) => {
         e.stopPropagation();
         setBusy(true);
+        setErr(null);
         toggleGradedWatch(displayKey, next)
           .then(() => onChange(next))
-          .catch(() => {/* ignore — auth likely not set */})
+          .catch((e) => setErr(String(e)))
           .finally(() => setBusy(false));
       }}
       className={`text-base leading-none transition-opacity ${busy ? "opacity-40" : "opacity-80 hover:opacity-100"}`}
     >
-      {watched ? "👁" : "○"}
+      {err ? <span className="text-red-400 text-xs">!</span> : watched ? "👁" : "○"}
     </button>
   );
 }
