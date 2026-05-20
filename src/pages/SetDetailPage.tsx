@@ -4,11 +4,14 @@ import {
   fetchMarket,
   fetchCards,
   fetchSealed,
+  fetchSet,
   fetchSetGraded,
+  toggleGradedWatch,
   type CardMarketRow,
   type SealedMarketRow,
   type CardRow,
   type SealedRow,
+  type SetRow,
   type ROICard,
 } from "../lib/api";
 import { Spinner, ErrorMsg } from "../components/Spinner";
@@ -361,6 +364,100 @@ function SealedTab({ game, code }: { game: string; code: string }) {
   );
 }
 
+// ---- Watch toggle ----------------------------------------------------------
+
+function WatchToggle({ displayKey, watched, onChange }: {
+  displayKey: string;
+  watched: boolean;
+  onChange: (next: boolean) => void;
+}) {
+  const [busy, setBusy] = useState(false);
+  const next = !watched;
+  return (
+    <button
+      title={watched ? "Stop watching (won't scrape graded prices)" : "Watch (scrapes graded prices when you run console-prices)"}
+      disabled={busy}
+      onClick={(e) => {
+        e.stopPropagation();
+        setBusy(true);
+        toggleGradedWatch(displayKey, next)
+          .then(() => onChange(next))
+          .catch(() => {/* ignore — auth likely not set */})
+          .finally(() => setBusy(false));
+      }}
+      className={`text-base leading-none transition-opacity ${busy ? "opacity-40" : "opacity-80 hover:opacity-100"}`}
+    >
+      {watched ? "👁" : "○"}
+    </button>
+  );
+}
+
+// ---- Fetch prices panel ----------------------------------------------------
+
+const ADMIN_API_KEY = import.meta.env.VITE_ADMIN_API_KEY ?? "<your-admin-api-key>";
+
+function FetchPricesPanel({ game, code, set }: { game: string; code: string; set: SetRow | null }) {
+  const [open, setOpen] = useState(false);
+  const [consoleUrl, setConsoleUrl] = useState(
+    () => (set?.external_ids?.pricecharting_console_url as string | undefined) ?? ""
+  );
+
+  const cmd = consoleUrl
+    ? [
+        "sellthrough graded console-prices",
+        `"${consoleUrl}"`,
+        `--game ${game}`,
+        `--set-code ${code}`,
+        "--output api",
+        "--api-url https://market.futuregadgetlabs.com",
+        `--api-key ${ADMIN_API_KEY}`,
+      ].join(" \\\n  ")
+    : "";
+
+  return (
+    <div className="relative">
+      <button
+        onClick={() => setOpen((v) => !v)}
+        className="text-xs px-2 py-1 rounded border border-gray-700 text-gray-300 hover:border-indigo-500 hover:text-indigo-300 transition-colors"
+      >
+        Fetch prices
+      </button>
+      {open && (
+        <div className="absolute left-0 top-8 z-20 w-[540px] bg-gray-900 border border-gray-700 rounded-lg shadow-xl p-4 space-y-3">
+          <div className="flex items-center justify-between">
+            <p className="text-xs text-gray-400 font-medium">
+              Scrapes raw prices for all cards + graded prices for watched cards (👁)
+            </p>
+            <button onClick={() => setOpen(false)} className="text-gray-600 hover:text-gray-300 text-lg leading-none ml-2">×</button>
+          </div>
+          <div>
+            <label className="text-xs text-gray-500 block mb-1">PriceCharting console URL</label>
+            <input
+              type="url"
+              value={consoleUrl}
+              onChange={(e) => setConsoleUrl(e.target.value)}
+              placeholder="https://www.pricecharting.com/console/pokemon-journey-together"
+              className="w-full bg-gray-950 border border-gray-700 rounded px-2 py-1.5 text-xs text-white placeholder-gray-600 focus:outline-none focus:border-indigo-500"
+            />
+          </div>
+          {cmd ? (
+            <>
+              <pre className="text-xs bg-gray-950 rounded p-3 overflow-x-auto text-green-400 select-all whitespace-pre-wrap">
+                {cmd}
+              </pre>
+              <p className="text-xs text-gray-500">
+                Watch cards with 👁 to include their graded prices. Raw prices upload for all cards automatically.
+              </p>
+            </>
+          ) : (
+            <p className="text-xs text-gray-600 italic">Enter the PriceCharting URL above to generate the command.</p>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ---- Graded ROI tab --------------------------------------------------------
 
 type SortKey = "number" | "psa_gem" | "cgc_gem" | "psa_regrade_ev" | "cgc_auction_ev" | "cgc_takehome_ev" | "psa_10_uplift" | "psa_9_uplift";
@@ -570,16 +667,24 @@ function GemSensitivityChart({ card, marketGemRate }: { card: ROICard; marketGem
 
 function GradedTab({ game, code }: { game: string; code: string }) {
   const [cards, setCards] = useState<ROICard[]>([]);
+  const [set, setSet] = useState<SetRow | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [sortKey, setSortKey] = useState<SortKey>("psa_regrade_ev");
   const [sortDir, setSortDir] = useState<SortDir>("desc");
   const [filterPositive, setFilterPositive] = useState(false);
   const [selectedKey, setSelectedKey] = useState<string | null>(null);
+  const [watchOverrides, setWatchOverrides] = useState<Record<string, boolean>>({});
 
   useEffect(() => {
-    fetchSetGraded(game, code)
-      .then((r) => setCards(r.cards))
+    Promise.all([
+      fetchSetGraded(game, code),
+      fetchSet(game, code).catch(() => null),
+    ])
+      .then(([graded, setRow]) => {
+        setCards(graded.cards);
+        setSet(setRow);
+      })
       .catch((e: unknown) => setError(String(e)))
       .finally(() => setLoading(false));
   }, [game, code]);
@@ -656,11 +761,13 @@ function GradedTab({ game, code }: { game: string; code: string }) {
           />
           Positive EV only
         </label>
+        <FetchPricesPanel game={game} code={code} set={set} />
       </div>
       <div className="rounded-lg border border-gray-800 overflow-x-auto">
-        <table className="w-full text-xs min-w-[1140px]">
+        <table className="w-full text-xs min-w-[1200px]">
           <thead className="bg-gray-900 text-gray-400">
             <tr>
+              <th className="px-2 py-2.5 w-6" title="Watch — include in graded price scrape">👁</th>
               <SortTh label="#" col="number" />
               <th className="text-left px-3 py-2.5 font-medium">Card</th>
               <th className="text-right px-3 py-2.5 font-medium">Raw</th>
@@ -679,6 +786,7 @@ function GradedTab({ game, code }: { game: string; code: string }) {
           <tbody className="divide-y divide-gray-800/60">
             {sorted.map(({ card, roi }) => {
               const isExpanded = selectedKey === card.card_id;
+              const isWatched = watchOverrides[card.display_key] ?? card.graded_watch;
               const psa10Uplift = card.psa_10_cents != null && card.raw_price_cents != null
                 ? card.psa_10_cents - card.raw_price_cents : null;
               const psa9Uplift = card.psa_9_cents != null && card.raw_price_cents != null
@@ -689,6 +797,13 @@ function GradedTab({ game, code }: { game: string; code: string }) {
                     className={`transition-colors cursor-pointer select-none ${isExpanded ? "bg-gray-900/70" : "hover:bg-gray-900/40"}`}
                     onClick={() => setSelectedKey(isExpanded ? null : card.card_id)}
                   >
+                    <td className="px-2 py-2.5 text-center">
+                      <WatchToggle
+                        displayKey={card.display_key}
+                        watched={isWatched}
+                        onChange={(next) => setWatchOverrides((prev) => ({ ...prev, [card.display_key]: next }))}
+                      />
+                    </td>
                     <td className="px-3 py-2.5 text-gray-500 tabular-nums">{card.number}</td>
                     <td className="px-3 py-2.5">
                       <Link
@@ -722,7 +837,7 @@ function GradedTab({ game, code }: { game: string; code: string }) {
                   </tr>
                   {isExpanded && (
                     <tr>
-                      <td colSpan={13} className="px-6 py-5 bg-gray-950 border-b border-gray-800">
+                      <td colSpan={14} className="px-6 py-5 bg-gray-950 border-b border-gray-800">
                         <GemSensitivityChart card={card} marketGemRate={roi.psaGemRate} />
                       </td>
                     </tr>
@@ -732,7 +847,7 @@ function GradedTab({ game, code }: { game: string; code: string }) {
             })}
             {sorted.length === 0 && (
               <tr>
-                <td colSpan={13} className="px-3 py-8 text-center text-gray-500">
+                <td colSpan={14} className="px-3 py-8 text-center text-gray-500">
                   No graded data. Run the graded scraper to populate.
                 </td>
               </tr>

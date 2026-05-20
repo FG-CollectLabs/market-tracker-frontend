@@ -183,6 +183,7 @@ export interface ROICard {
   finish: string | null;
   image_url: string | null;
   price_week: string | null;
+  graded_watch: boolean;
   raw_price_cents: number | null;
   psa_9_cents: number | null;
   psa_10_cents: number | null;
@@ -195,6 +196,21 @@ export interface ROICard {
 
 export function fetchSetGraded(game: string, setCode: string): Promise<{ game: string; set_code: string; cards: ROICard[] }> {
   return get(`/v1/sets/${game}/${setCode}/graded`);
+}
+
+export function toggleGradedWatch(displayKey: string, watch: boolean): Promise<{ watch: boolean }> {
+  const BASE = import.meta.env.VITE_API_URL ?? "";
+  return fetch(`${BASE}/v1/admin/cards/${encodeURIComponent(displayKey)}/graded-watch`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${import.meta.env.VITE_ADMIN_API_KEY ?? ""}`,
+    },
+    body: JSON.stringify({ watch }),
+  }).then((r) => {
+    if (!r.ok) throw new Error(`${r.status} toggle-watch`);
+    return r.json() as Promise<{ watch: boolean }>;
+  });
 }
 
 export interface GradedSnapshot {
