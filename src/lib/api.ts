@@ -167,10 +167,12 @@ export interface CoverageSet {
   cards_with_prices: number;
   cards_with_gem_rates: number;
   last_updated: string | null;
+  psa_pop_url: string | null;
 }
 
-export function fetchGradedCoverage(): Promise<{ sets: CoverageSet[] }> {
-  return get("/v1/graded/coverage");
+export function fetchGradedCoverage(game = "pokemon"): Promise<{ sets: CoverageSet[] }> {
+  const q = game ? `?game=${encodeURIComponent(game)}` : "";
+  return get(`/v1/graded/coverage${q}`);
 }
 
 export interface ROICard {
