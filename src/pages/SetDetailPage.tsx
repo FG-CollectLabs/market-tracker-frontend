@@ -403,16 +403,31 @@ function FetchPricesPanel({ game, code, set }: { game: string; code: string; set
   const [consoleUrl, setConsoleUrl] = useState(
     () => (set?.external_ids?.pricecharting_console_url as string | undefined) ?? ""
   );
+  const [cgcPopUrl, setCgcPopUrl] = useState("");
 
-  const cmd = consoleUrl
+  const apiArgs = [
+    "--output api",
+    "--api-url https://market.futuregadgetlabs.com",
+    `--api-key ${ADMIN_API_KEY}`,
+  ].join(" \\\n  ");
+
+  const consoleCmd = consoleUrl
     ? [
         "sellthrough graded console-prices",
         `"${consoleUrl}"`,
         `--game ${game}`,
         `--set-code ${code}`,
-        "--output api",
-        "--api-url https://market.futuregadgetlabs.com",
-        `--api-key ${ADMIN_API_KEY}`,
+        apiArgs,
+      ].join(" \\\n  ")
+    : "";
+
+  const cgcPopCmd = cgcPopUrl
+    ? [
+        "sellthrough graded cgc-pop",
+        `"${cgcPopUrl}"`,
+        `--game ${game}`,
+        `--set-code ${code}`,
+        apiArgs,
       ].join(" \\\n  ")
     : "";
 
@@ -425,15 +440,15 @@ function FetchPricesPanel({ game, code, set }: { game: string; code: string; set
         Fetch prices
       </button>
       {open && (
-        <div className="absolute left-0 top-8 z-20 w-[540px] bg-gray-900 border border-gray-700 rounded-lg shadow-xl p-4 space-y-3">
+        <div className="absolute left-0 top-8 z-20 w-[560px] bg-gray-900 border border-gray-700 rounded-lg shadow-xl p-4 space-y-4">
           <div className="flex items-center justify-between">
-            <p className="text-xs text-gray-400 font-medium">
-              Scrapes raw prices for all cards + graded prices for watched cards (👁)
-            </p>
+            <p className="text-xs text-gray-400 font-medium">CLI commands to fetch price data</p>
             <button onClick={() => setOpen(false)} className="text-gray-600 hover:text-gray-300 text-lg leading-none ml-2">×</button>
           </div>
-          <div>
-            <label className="text-xs text-gray-500 block mb-1">PriceCharting console URL</label>
+
+          {/* console-prices */}
+          <div className="space-y-2">
+            <p className="text-xs text-indigo-400 font-medium">Raw + PSA prices (all cards) · CGC 10 (watched 👁)</p>
             <input
               type="url"
               value={consoleUrl}
@@ -441,19 +456,35 @@ function FetchPricesPanel({ game, code, set }: { game: string; code: string; set
               placeholder="https://www.pricecharting.com/console/pokemon-journey-together"
               className="w-full bg-gray-950 border border-gray-700 rounded px-2 py-1.5 text-xs text-white placeholder-gray-600 focus:outline-none focus:border-indigo-500"
             />
-          </div>
-          {cmd ? (
-            <>
+            {consoleCmd ? (
               <pre className="text-xs bg-gray-950 rounded p-3 overflow-x-auto text-green-400 select-all whitespace-pre-wrap">
-                {cmd}
+                {consoleCmd}
               </pre>
-              <p className="text-xs text-gray-500">
-                Watch cards with 👁 to include their graded prices. Raw prices upload for all cards automatically.
-              </p>
-            </>
-          ) : (
-            <p className="text-xs text-gray-600 italic">Enter the PriceCharting URL above to generate the command.</p>
-          )}
+            ) : (
+              <p className="text-xs text-gray-600 italic">Enter the PriceCharting console URL above.</p>
+            )}
+          </div>
+
+          <div className="border-t border-gray-800" />
+
+          {/* cgc-pop */}
+          <div className="space-y-2">
+            <p className="text-xs text-purple-400 font-medium">CGC gem rates (on-demand)</p>
+            <input
+              type="url"
+              value={cgcPopUrl}
+              onChange={(e) => setCgcPopUrl(e.target.value)}
+              placeholder="https://www.cgccards.com/population-report/tcg/pok%C3%A9mon/2/..."
+              className="w-full bg-gray-950 border border-gray-700 rounded px-2 py-1.5 text-xs text-white placeholder-gray-600 focus:outline-none focus:border-indigo-500"
+            />
+            {cgcPopCmd ? (
+              <pre className="text-xs bg-gray-950 rounded p-3 overflow-x-auto text-purple-300 select-all whitespace-pre-wrap">
+                {cgcPopCmd}
+              </pre>
+            ) : (
+              <p className="text-xs text-gray-600 italic">Enter the CGC population report URL above.</p>
+            )}
+          </div>
         </div>
       )}
     </div>
@@ -808,14 +839,28 @@ function GradedTab({ game, code }: { game: string; code: string }) {
                     </td>
                     <td className="px-3 py-2.5 text-gray-500 tabular-nums">{card.number}</td>
                     <td className="px-3 py-2.5">
-                      <Link
-                        to={`/cards/${encodeURIComponent(card.display_key)}`}
-                        className="font-medium text-white hover:text-indigo-300"
-                        onClick={e => e.stopPropagation()}
-                      >
-                        {card.name}
-                        {card.finish && <span className="ml-1 text-gray-500">{card.finish}</span>}
-                      </Link>
+                      <div className="flex items-center gap-1.5">
+                        <Link
+                          to={`/cards/${encodeURIComponent(card.display_key)}`}
+                          className="font-medium text-white hover:text-indigo-300"
+                          onClick={e => e.stopPropagation()}
+                        >
+                          {card.name}
+                          {card.finish && <span className="ml-1 text-gray-500">{card.finish}</span>}
+                        </Link>
+                        {card.pc_url && (
+                          <a
+                            href={card.pc_url}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            title="View on PriceCharting"
+                            onClick={e => e.stopPropagation()}
+                            className="text-gray-600 hover:text-indigo-400 transition-colors shrink-0"
+                          >
+                            ↗
+                          </a>
+                        )}
+                      </div>
                     </td>
                     <td className="px-3 py-2.5 text-right text-gray-400 tabular-nums font-mono">{formatCents(card.raw_price_cents)}</td>
                     <td className="px-3 py-2.5 text-right text-gray-300 tabular-nums font-mono">{formatCents(card.psa_9_cents)}</td>

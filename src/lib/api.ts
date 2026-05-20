@@ -184,6 +184,7 @@ export interface ROICard {
   image_url: string | null;
   price_week: string | null;
   graded_watch: boolean;
+  pc_url: string | null;
   raw_price_cents: number | null;
   psa_9_cents: number | null;
   psa_10_cents: number | null;
