@@ -1,4 +1,4 @@
-import { BrowserRouter, NavLink, Routes, Route } from "react-router-dom";
+import { HashRouter, NavLink, Routes, Route } from "react-router-dom";
 import SetsPage from "./pages/SetsPage";
 import SetDetailPage from "./pages/SetDetailPage";
 import CardDetailPage from "./pages/CardDetailPage";
@@ -27,7 +27,7 @@ function Nav() {
 
 export default function App() {
   return (
-    <BrowserRouter>
+    <HashRouter>
       <div className="min-h-screen flex flex-col bg-gray-950">
         <Nav />
         <main className="flex-1 p-6 max-w-7xl mx-auto w-full">
@@ -39,6 +39,6 @@ export default function App() {
           </Routes>
         </main>
       </div>
-    </BrowserRouter>
+    </HashRouter>
   );
 }
