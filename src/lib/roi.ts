@@ -6,9 +6,19 @@ export const GRADING_FEES = {
   cgc_takehome: 10_00,
 } as const;
 
+export interface ROIOptions {
+  /** Multiplies population gem rate: 1.5 = "I gem 50% better than average". Capped at 0.95. */
+  gemRateMultiplier?: number;
+  /** Override PSA 9 market price as cost basis for regrade strategies. */
+  psa9CostOverrideCents?: number;
+}
+
 export interface ROIResult {
   psaGemRate: number | null;
   cgcGemRate: number | null;
+  /** Effective gem rate after multiplier (same as psaGemRate when multiplier = 1). */
+  personalPsaGemRate: number | null;
+  personalCgcGemRate: number | null;
   psaRegradePsa9Ev: number | null;
   cgcRegradePsa9AuctionEv: number | null;
   cgcRegradePsa9TakehomeEv: number | null;
@@ -24,28 +34,39 @@ function gemRate(pop: number | null, total: number | null): number | null {
   return pop / total;
 }
 
-export function computeROI(card: ROICard): ROIResult {
-  const psa9 = card.psa_9_cents;
+function applyMultiplier(rate: number | null, multiplier: number): number | null {
+  if (rate == null) return null;
+  return Math.min(rate * multiplier, 0.95);
+}
+
+export function computeROI(card: ROICard, options?: ROIOptions): ROIResult {
+  const psa9Market = card.psa_9_cents;
   const psa10 = card.psa_10_cents;
   const cgc10 = card.cgc_10_cents;
   const raw = card.raw_price_cents;
 
+  const multiplier = options?.gemRateMultiplier ?? 1;
+  const psa9Cost = options?.psa9CostOverrideCents ?? psa9Market;
+
   const psaGem = gemRate(card.psa_gem_pop, card.psa_total_pop);
   const cgcGem = gemRate(card.cgc_gem_pop, card.cgc_total_pop);
 
+  const effectivePsaGem = multiplier !== 1 ? applyMultiplier(psaGem, multiplier) : psaGem;
+  const effectiveCgcGem = multiplier !== 1 ? applyMultiplier(cgcGem, multiplier) : cgcGem;
+
   let psaRegradePsa9Ev: number | null = null;
-  if (psaGem != null && psa9 != null && psa10 != null) {
-    psaRegradePsa9Ev = psaGem * (psa10 - psa9) - GRADING_FEES.psa;
+  if (effectivePsaGem != null && psa9Cost != null && psa10 != null) {
+    psaRegradePsa9Ev = effectivePsaGem * (psa10 - psa9Cost) - GRADING_FEES.psa;
   }
 
   let cgcRegradePsa9AuctionEv: number | null = null;
   let cgcRegradePsa9TakehomeEv: number | null = null;
-  if (cgcGem != null && psa9 != null && cgc10 != null) {
-    const failValue = psa9 * 0.8;
+  if (effectiveCgcGem != null && psa9Cost != null && cgc10 != null) {
+    const failValue = psa9Cost * 0.8;
     cgcRegradePsa9AuctionEv =
-      cgcGem * cgc10 + (1 - cgcGem) * failValue - psa9 - GRADING_FEES.cgc_auction;
+      effectiveCgcGem * cgc10 + (1 - effectiveCgcGem) * failValue - psa9Cost - GRADING_FEES.cgc_auction;
     cgcRegradePsa9TakehomeEv =
-      cgcGem * cgc10 + (1 - cgcGem) * failValue - psa9 - GRADING_FEES.cgc_takehome;
+      effectiveCgcGem * cgc10 + (1 - effectiveCgcGem) * failValue - psa9Cost - GRADING_FEES.cgc_takehome;
   }
 
   let psaGradeRawEv: number | null = null;
@@ -53,15 +74,15 @@ export function computeROI(card: ROICard): ROIResult {
   let cgcGradeRawTakehomeEv: number | null = null;
 
   if (raw != null) {
-    if (psaGem != null && psa10 != null && psa9 != null) {
-      psaGradeRawEv = psaGem * psa10 + (1 - psaGem) * psa9 - raw - GRADING_FEES.psa;
+    if (effectivePsaGem != null && psa10 != null && psa9Market != null) {
+      psaGradeRawEv = effectivePsaGem * psa10 + (1 - effectivePsaGem) * psa9Market - raw - GRADING_FEES.psa;
     }
-    if (cgcGem != null && cgc10 != null && psa9 != null) {
-      const failVal = psa9 * 0.9;
+    if (effectiveCgcGem != null && cgc10 != null && psa9Market != null) {
+      const failVal = psa9Market * 0.9;
       cgcGradeRawAuctionEv =
-        cgcGem * cgc10 + (1 - cgcGem) * failVal - raw - GRADING_FEES.cgc_auction;
+        effectiveCgcGem * cgc10 + (1 - effectiveCgcGem) * failVal - raw - GRADING_FEES.cgc_auction;
       cgcGradeRawTakehomeEv =
-        cgcGem * cgc10 + (1 - cgcGem) * failVal - raw - GRADING_FEES.cgc_takehome;
+        effectiveCgcGem * cgc10 + (1 - effectiveCgcGem) * failVal - raw - GRADING_FEES.cgc_takehome;
     }
   }
 
@@ -86,6 +107,8 @@ export function computeROI(card: ROICard): ROIResult {
   return {
     psaGemRate: psaGem,
     cgcGemRate: cgcGem,
+    personalPsaGemRate: effectivePsaGem,
+    personalCgcGemRate: effectiveCgcGem,
     psaRegradePsa9Ev,
     cgcRegradePsa9AuctionEv,
     cgcRegradePsa9TakehomeEv,

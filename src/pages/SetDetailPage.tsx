@@ -16,7 +16,7 @@ import {
 } from "../lib/api";
 import { Spinner, ErrorMsg } from "../components/Spinner";
 import { PriceCell, SourceBadge } from "../components/PriceCell";
-import { formatCents, formatPct, computeROI, evColor, GRADING_FEES, type ROIResult } from "../lib/roi";
+import { formatCents, formatPct, computeROI, evColor, GRADING_FEES, type ROIResult, type ROIOptions } from "../lib/roi";
 
 // ---- shared ----------------------------------------------------------------
 
@@ -708,6 +708,10 @@ function GradedTab({ game, code }: { game: string; code: string }) {
   const [filterPositive, setFilterPositive] = useState(false);
   const [selectedKey, setSelectedKey] = useState<string | null>(null);
   const [watchOverrides, setWatchOverrides] = useState<Record<string, boolean>>({});
+  const [gemMultiplier, setGemMultiplier] = useState(1);
+  const [customMultiplierInput, setCustomMultiplierInput] = useState("1");
+  const [usePsa9Override, setUsePsa9Override] = useState(false);
+  const [psa9OverrideInput, setPsa9OverrideInput] = useState("");
 
   useEffect(() => {
     Promise.all([
@@ -722,8 +726,18 @@ function GradedTab({ game, code }: { game: string; code: string }) {
       .finally(() => setLoading(false));
   }, [game, code]);
 
+  const roiOpts = useMemo<ROIOptions>(() => {
+    const opts: ROIOptions = {};
+    if (gemMultiplier !== 1) opts.gemRateMultiplier = gemMultiplier;
+    if (usePsa9Override && psa9OverrideInput) {
+      const val = parseFloat(psa9OverrideInput);
+      if (!isNaN(val) && val > 0) opts.psa9CostOverrideCents = Math.round(val * 100);
+    }
+    return opts;
+  }, [gemMultiplier, usePsa9Override, psa9OverrideInput]);
+
   const rows = useMemo<CardWithROI[]>(() => {
-    const enriched = cards.map((c) => ({ card: c, roi: computeROI(c) }));
+    const enriched = cards.map((c) => ({ card: c, roi: computeROI(c, roiOpts) }));
     if (filterPositive) {
       return enriched.filter(
         ({ roi }) =>
@@ -732,7 +746,7 @@ function GradedTab({ game, code }: { game: string; code: string }) {
       );
     }
     return enriched;
-  }, [cards, filterPositive]);
+  }, [cards, filterPositive, roiOpts]);
 
   const sorted = useMemo(() => {
     return [...rows].sort((a, b) => {
@@ -779,12 +793,17 @@ function GradedTab({ game, code }: { game: string; code: string }) {
   if (loading) return <Spinner />;
   if (error) return <ErrorMsg msg={error} />;
 
+  const isAdjusted = gemMultiplier !== 1 || (usePsa9Override && !!psa9OverrideInput && !isNaN(parseFloat(psa9OverrideInput)));
+
   return (
     <div className="space-y-4">
       <div className="flex items-center gap-4 flex-wrap">
         <p className="text-xs text-gray-400">
           Fees: PSA $25 · CGC $8.50 (auction) / $10 (takehome)
         </p>
+        {isAdjusted && (
+          <span className="px-1.5 py-0.5 rounded text-xs font-medium bg-amber-900/60 text-amber-300">adjusted</span>
+        )}
         <label className="flex items-center gap-2 text-sm text-gray-300 cursor-pointer ml-auto">
           <input
             type="checkbox"
@@ -795,6 +814,63 @@ function GradedTab({ game, code }: { game: string; code: string }) {
           Positive EV only
         </label>
         <FetchPricesPanel game={game} code={code} set={set} />
+      </div>
+      {/* Personal assumptions controls */}
+      <div className="rounded border border-gray-800 bg-gray-900/50 px-4 py-3 flex flex-wrap gap-x-8 gap-y-3 text-xs text-gray-300">
+        <div className="flex items-center gap-2">
+          <span className="text-gray-500">Gem rate:</span>
+          {[1, 1.5, 2].map((p) => (
+            <button
+              key={p}
+              onClick={() => { setGemMultiplier(p); setCustomMultiplierInput(String(p)); }}
+              className={`px-2 py-0.5 rounded text-xs font-mono transition-colors ${gemMultiplier === p ? "bg-indigo-700 text-white" : "bg-gray-800 text-gray-400 hover:bg-gray-700"}`}
+            >
+              {p === 1 ? "1× market" : `${p}×`}
+            </button>
+          ))}
+          <span className="text-gray-500">Custom:</span>
+          <input
+            type="number"
+            min="0.1"
+            max="10"
+            step="0.1"
+            value={customMultiplierInput}
+            onChange={(e) => setCustomMultiplierInput(e.target.value)}
+            onBlur={() => {
+              const v = parseFloat(customMultiplierInput);
+              if (!isNaN(v) && v > 0) setGemMultiplier(v);
+              else setCustomMultiplierInput(String(gemMultiplier));
+            }}
+            className="w-14 bg-gray-800 border border-gray-700 rounded px-1.5 py-0.5 font-mono text-center text-xs text-white"
+          />
+          <span className="text-gray-500">×</span>
+        </div>
+        <div className="flex items-center gap-2">
+          <label className="flex items-center gap-1.5 cursor-pointer text-gray-400">
+            <input
+              type="checkbox"
+              className="accent-indigo-500"
+              checked={usePsa9Override}
+              onChange={(e) => setUsePsa9Override(e.target.checked)}
+            />
+            PSA 9 cost
+          </label>
+          {usePsa9Override && (
+            <>
+              <span className="text-gray-600">$</span>
+              <input
+                type="number"
+                min="0"
+                step="0.01"
+                placeholder="my cost"
+                value={psa9OverrideInput}
+                onChange={(e) => setPsa9OverrideInput(e.target.value)}
+                className="w-20 bg-gray-800 border border-gray-700 rounded px-1.5 py-0.5 font-mono text-xs text-white"
+              />
+              <span className="text-gray-500">per card</span>
+            </>
+          )}
+        </div>
       </div>
       <div className="rounded-lg border border-gray-800 overflow-x-auto">
         <table className="w-full text-xs min-w-[1200px]">
@@ -866,8 +942,22 @@ function GradedTab({ game, code }: { game: string; code: string }) {
                     <td className="px-3 py-2.5 text-right text-gray-300 tabular-nums font-mono">{formatCents(card.psa_9_cents)}</td>
                     <td className="px-3 py-2.5 text-right text-gray-300 tabular-nums font-mono">{formatCents(card.psa_10_cents)}</td>
                     <td className="px-3 py-2.5 text-right text-gray-300 tabular-nums font-mono">{formatCents(card.cgc_10_cents)}</td>
-                    <td className="px-3 py-2.5 text-right"><GemBadge rate={roi.psaGemRate} /></td>
-                    <td className="px-3 py-2.5 text-right"><GemBadge rate={roi.cgcGemRate} /></td>
+                    <td className="px-3 py-2.5 text-right">
+                      {gemMultiplier !== 1 && roi.personalPsaGemRate !== roi.psaGemRate ? (
+                        <div className="flex flex-col items-end gap-0.5">
+                          <span className="text-gray-600 text-[10px] font-mono">pop <GemBadge rate={roi.psaGemRate} /></span>
+                          <span className="text-[10px] text-gray-500">me <GemBadge rate={roi.personalPsaGemRate} /></span>
+                        </div>
+                      ) : <GemBadge rate={roi.psaGemRate} />}
+                    </td>
+                    <td className="px-3 py-2.5 text-right">
+                      {gemMultiplier !== 1 && roi.personalCgcGemRate !== roi.cgcGemRate ? (
+                        <div className="flex flex-col items-end gap-0.5">
+                          <span className="text-gray-600 text-[10px] font-mono">pop <GemBadge rate={roi.cgcGemRate} /></span>
+                          <span className="text-[10px] text-gray-500">me <GemBadge rate={roi.personalCgcGemRate} /></span>
+                        </div>
+                      ) : <GemBadge rate={roi.cgcGemRate} />}
+                    </td>
                     <td className="px-3 py-2.5 text-right tabular-nums font-mono">
                       {psa10Uplift != null
                         ? <span className={psa10Uplift > 0 ? "text-green-400" : "text-gray-500"}>{formatCents(psa10Uplift)}</span>
