@@ -493,7 +493,7 @@ function FetchPricesPanel({ game, code, set }: { game: string; code: string; set
 
 // ---- Graded ROI tab --------------------------------------------------------
 
-type SortKey = "number" | "psa_gem" | "cgc_gem" | "psa_regrade_ev" | "cgc_auction_ev" | "cgc_takehome_ev" | "psa_10_uplift" | "psa_9_uplift";
+type SortKey = "number" | "psa_gem" | "cgc_gem" | "psa_regrade_ev" | "psa_grade_raw_ev" | "cgc_auction_ev" | "cgc_takehome_ev" | "psa_10_uplift" | "psa_9_uplift";
 type SortDir = "asc" | "desc";
 
 interface CardWithROI {
@@ -540,24 +540,39 @@ function StrategyBadge({ strategy }: { strategy: ROIResult["bestStrategy"] }) {
 
 // ---- Gem-rate sensitivity chart --------------------------------------------
 
-function GemSensitivityChart({ card, marketGemRate }: { card: ROICard; marketGemRate: number | null }) {
+function GemSensitivityChart({ card, marketGemRate, psa9CostOverrideCents }: {
+  card: ROICard;
+  marketGemRate: number | null;
+  psa9CostOverrideCents?: number;
+}) {
   const psa10 = card.psa_10_cents;
   const psa9 = card.psa_9_cents;
   const raw = card.raw_price_cents;
   const [yourGr, setYourGr] = useState(() => Math.min(marketGemRate ?? 0.15, 0.8));
+  const [mode, setMode] = useState<"raw" | "psa9">(psa9CostOverrideCents != null ? "psa9" : "raw");
 
-  if (psa10 == null || psa9 == null || raw == null) {
+  if (psa10 == null || psa9 == null) {
     return <p className="text-xs text-gray-500 py-3">Insufficient price data to chart ROI curve.</p>;
+  }
+  if (mode === "raw" && raw == null) {
+    return <p className="text-xs text-gray-500 py-3">No raw price — switch to "Regrade from PSA 9" mode.</p>;
   }
 
   const fee = GRADING_FEES.psa;
-  const ev = (gr: number) => gr * psa10 + (1 - gr) * psa9 - raw - fee;
+  const psa9Cost = psa9CostOverrideCents ?? psa9;
+  const ev = (gr: number) =>
+    mode === "raw"
+      ? gr * psa10 + (1 - gr) * psa9 - (raw as number) - fee
+      : gr * (psa10 - psa9Cost) - fee;
   const yourEv = ev(yourGr);
   const marketEv = marketGemRate != null ? ev(Math.min(marketGemRate, 0.8)) : null;
 
-  // Break-even: ev(gr) = 0 → gr = (raw + fee − psa9) / (psa10 − psa9)
-  const delta = psa10 - psa9;
-  const breakEvenGr = Math.abs(delta) < 1 ? null : (raw + fee - psa9) / delta;
+  // Break-even: ev(gr) = 0
+  //   raw mode:  gr = (raw + fee − psa9) / (psa10 − psa9)
+  //   psa9 mode: gr = fee / (psa10 − psa9Cost)
+  const breakEvenGr = mode === "raw"
+    ? (Math.abs(psa10 - psa9) < 1 ? null : ((raw as number) + fee - psa9) / (psa10 - psa9))
+    : (Math.abs(psa10 - psa9Cost) < 1 ? null : fee / (psa10 - psa9Cost));
   const showBreakEven = breakEvenGr != null && breakEvenGr >= 0 && breakEvenGr <= 0.8;
 
   // Curve: 0% → 80% in 161 steps
@@ -588,15 +603,44 @@ function GemSensitivityChart({ card, marketGemRate }: { card: ROICard; marketGem
   return (
     <div className="space-y-2">
       <div className="flex items-center gap-3 flex-wrap text-xs text-gray-400">
-        <span className="font-medium text-white text-sm">
+        <span className="font-medium text-white text-sm flex items-center gap-1.5">
           {card.name}{card.finish ? ` · ${card.finish}` : ""}
+          {card.pc_url && (
+            <a
+              href={card.pc_url}
+              target="_blank"
+              rel="noopener noreferrer"
+              title="View on PriceCharting"
+              className="text-gray-500 hover:text-indigo-400 transition-colors"
+            >
+              ↗
+            </a>
+          )}
         </span>
         <span>PSA 10 <span className="text-gray-200">{formatCents(psa10)}</span></span>
         <span>PSA 9 <span className="text-gray-200">{formatCents(psa9)}</span></span>
         <span>Raw <span className="text-gray-200">{formatCents(raw)}</span></span>
+        {psa9CostOverrideCents != null && (
+          <span>My PSA 9 cost <span className="text-amber-300">{formatCents(psa9CostOverrideCents)}</span></span>
+        )}
         {marketGemRate != null && (
           <span>Market gem <span className="text-green-400">{formatPct(marketGemRate)}</span></span>
         )}
+        <div className="ml-auto flex items-center gap-1 rounded border border-gray-700 overflow-hidden">
+          <button
+            onClick={() => setMode("raw")}
+            disabled={raw == null}
+            className={`px-2 py-0.5 text-xs transition-colors ${mode === "raw" ? "bg-indigo-700 text-white" : "bg-gray-800 text-gray-400 hover:bg-gray-700 disabled:opacity-40"}`}
+          >
+            Grade from raw
+          </button>
+          <button
+            onClick={() => setMode("psa9")}
+            className={`px-2 py-0.5 text-xs transition-colors ${mode === "psa9" ? "bg-indigo-700 text-white" : "bg-gray-800 text-gray-400 hover:bg-gray-700"}`}
+          >
+            Regrade from PSA 9
+          </button>
+        </div>
       </div>
 
       <svg viewBox={`0 0 ${W} ${H}`} className="w-full">
@@ -669,7 +713,9 @@ function GemSensitivityChart({ card, marketGemRate }: { card: ROICard; marketGem
       <div className="flex flex-wrap gap-4 text-xs text-gray-500">
         <span className="flex items-center gap-1.5">
           <svg width="16" height="8"><line x1="0" y1="4" x2="16" y2="4" stroke="#6366f1" strokeWidth="2" /></svg>
-          EV curve (PSA, grade from raw · $25 fee)
+          {mode === "raw"
+            ? "EV curve (PSA, grade from raw · $25 fee)"
+            : `EV curve (PSA, regrade from PSA 9 @ ${formatCents(psa9Cost)} · $25 fee)`}
         </span>
         {marketGemRate != null && marketEv != null && (
           <span className="flex items-center gap-1.5">
@@ -755,6 +801,7 @@ function GradedTab({ game, code }: { game: string; code: string }) {
         if (sortKey === "psa_gem") return roi.psaGemRate ?? -Infinity;
         if (sortKey === "cgc_gem") return roi.cgcGemRate ?? -Infinity;
         if (sortKey === "psa_regrade_ev") return roi.psaRegradePsa9Ev ?? -Infinity;
+        if (sortKey === "psa_grade_raw_ev") return roi.psaGradeRawEv ?? -Infinity;
         if (sortKey === "cgc_auction_ev") return roi.cgcRegradePsa9AuctionEv ?? -Infinity;
         if (sortKey === "cgc_takehome_ev") return roi.cgcRegradePsa9TakehomeEv ?? -Infinity;
         if (sortKey === "psa_10_uplift") {
@@ -873,7 +920,7 @@ function GradedTab({ game, code }: { game: string; code: string }) {
         </div>
       </div>
       <div className="rounded-lg border border-gray-800 overflow-x-auto">
-        <table className="w-full text-xs min-w-[1200px]">
+        <table className="w-full text-xs min-w-[1280px]">
           <thead className="bg-gray-900 text-gray-400">
             <tr>
               <th className="px-2 py-2.5 w-6" title="Watch — include in graded price scrape">👁</th>
@@ -887,7 +934,8 @@ function GradedTab({ game, code }: { game: string; code: string }) {
               <SortTh label="CGC gem%" col="cgc_gem" right />
               <SortTh label="10↑raw" col="psa_10_uplift" right />
               <SortTh label="9↑raw" col="psa_9_uplift" right />
-              <SortTh label="PSA EV" col="psa_regrade_ev" right />
+              <SortTh label="PSA→raw" col="psa_grade_raw_ev" right />
+              <SortTh label="PSA→9" col="psa_regrade_ev" right />
               <SortTh label="CGC EV" col="cgc_auction_ev" right />
               <th className="text-left px-3 py-2.5 font-medium">Best</th>
             </tr>
@@ -968,14 +1016,19 @@ function GradedTab({ game, code }: { game: string; code: string }) {
                         ? <span className="text-gray-400">{formatCents(psa9Uplift)}</span>
                         : <span className="text-gray-600">—</span>}
                     </td>
+                    <td className="px-3 py-2.5 text-right"><EvCell ev={roi.psaGradeRawEv} /></td>
                     <td className="px-3 py-2.5 text-right"><EvCell ev={roi.psaRegradePsa9Ev} /></td>
                     <td className="px-3 py-2.5 text-right"><EvCell ev={roi.cgcRegradePsa9AuctionEv} /></td>
                     <td className="px-3 py-2.5"><StrategyBadge strategy={roi.bestStrategy} /></td>
                   </tr>
                   {isExpanded && (
                     <tr>
-                      <td colSpan={14} className="px-6 py-5 bg-gray-950 border-b border-gray-800">
-                        <GemSensitivityChart card={card} marketGemRate={roi.psaGemRate} />
+                      <td colSpan={15} className="px-6 py-5 bg-gray-950 border-b border-gray-800">
+                        <GemSensitivityChart
+                          card={card}
+                          marketGemRate={roi.psaGemRate}
+                          psa9CostOverrideCents={roiOpts.psa9CostOverrideCents}
+                        />
                       </td>
                     </tr>
                   )}
@@ -984,7 +1037,7 @@ function GradedTab({ game, code }: { game: string; code: string }) {
             })}
             {sorted.length === 0 && (
               <tr>
-                <td colSpan={14} className="px-3 py-8 text-center text-gray-500">
+                <td colSpan={15} className="px-3 py-8 text-center text-gray-500">
                   No graded data. Run the graded scraper to populate.
                 </td>
               </tr>
