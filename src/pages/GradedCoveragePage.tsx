@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
-import { fetchGradedCoverage, type CoverageSet } from "../lib/api";
+import { fetchGradedCoverage, updateSetPsaPopUrl, type CoverageSet } from "../lib/api";
 import { Spinner, ErrorMsg } from "../components/Spinner";
 
 function CoverageBar({ value, total }: { value: number; total: number }) {
@@ -76,6 +76,75 @@ function PsaPopButton({ s, apiKey }: { s: CoverageSet; apiKey: string }) {
 const ADMIN_API_KEY =
   import.meta.env.VITE_ADMIN_API_KEY ?? "<your-admin-api-key>";
 
+function EditPopUrl({ s, onSaved }: { s: CoverageSet; onSaved: (url: string | null) => void }) {
+  const [open, setOpen] = useState(false);
+  const [val, setVal] = useState(s.psa_pop_url ?? "");
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+
+  const save = async () => {
+    setBusy(true);
+    setErr(null);
+    try {
+      const next = val.trim() || null;
+      await updateSetPsaPopUrl(s.game, s.set_code, s.set_name, next);
+      onSaved(next);
+      setOpen(false);
+    } catch (e) {
+      setErr((e as Error).message);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  if (!open) {
+    return (
+      <button
+        onClick={() => { setVal(s.psa_pop_url ?? ""); setErr(null); setOpen(true); }}
+        title={s.psa_pop_url ?? "Set PSA pop report URL"}
+        className="text-xs px-2 py-1 rounded border border-gray-700 text-gray-400 hover:border-indigo-500 hover:text-indigo-300 transition-colors whitespace-nowrap"
+      >
+        {s.psa_pop_url ? "Edit URL" : "+ PSA URL"}
+      </button>
+    );
+  }
+
+  return (
+    <div className="absolute right-0 top-8 z-30 w-[460px] bg-gray-900 border border-gray-700 rounded-lg shadow-xl p-3 space-y-2">
+      <div className="flex items-center justify-between">
+        <p className="text-xs text-gray-400 font-medium">PSA pop report URL for {s.set_name}</p>
+        <button onClick={() => setOpen(false)} className="text-gray-600 hover:text-gray-300 text-lg leading-none">×</button>
+      </div>
+      <input
+        type="url"
+        value={val}
+        onChange={(e) => setVal(e.target.value)}
+        placeholder="https://www.psacard.com/pop/tcg-cards/..."
+        className="w-full bg-gray-950 border border-gray-700 rounded px-2 py-1.5 text-xs text-white placeholder-gray-600 focus:outline-none focus:border-indigo-500"
+      />
+      {err && <p className="text-xs text-red-400">{err}</p>}
+      <div className="flex items-center gap-2 justify-end">
+        {s.psa_pop_url && (
+          <button
+            onClick={() => { setVal(""); }}
+            className="text-xs px-2 py-1 rounded text-gray-500 hover:text-red-400 transition-colors"
+            disabled={busy}
+          >
+            Clear
+          </button>
+        )}
+        <button
+          onClick={save}
+          disabled={busy}
+          className="text-xs px-3 py-1 rounded bg-indigo-700 text-white hover:bg-indigo-600 disabled:opacity-50 transition-colors"
+        >
+          {busy ? "Saving…" : "Save"}
+        </button>
+      </div>
+    </div>
+  );
+}
+
 export default function GradedCoveragePage() {
   const [sets, setSets] = useState<CoverageSet[]>([]);
   const [error, setError] = useState<string | null>(null);
@@ -142,7 +211,13 @@ export default function GradedCoveragePage() {
                   {s.last_updated ?? "—"}
                 </td>
                 <td className="px-4 py-3">
-                  <div className="flex items-center justify-end gap-3">
+                  <div className="flex items-center justify-end gap-3 relative">
+                    <EditPopUrl
+                      s={s}
+                      onSaved={(url) => setSets((prev) =>
+                        prev.map((x) => (x.set_code === s.set_code && x.game === s.game ? { ...x, psa_pop_url: url } : x))
+                      )}
+                    />
                     <PsaPopButton s={s} apiKey={ADMIN_API_KEY} />
                     <Link
                       to={`/sets/${s.game}/${s.set_code}?tab=graded`}
