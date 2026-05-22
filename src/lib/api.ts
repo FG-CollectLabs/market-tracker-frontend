@@ -162,11 +162,24 @@ export interface CoverageSet {
   game: string;
   set_code: string;
   set_name: string;
-  release_date: string | null;
+  total_cards: number;
   cards_with_graded_data: number;
-  cards_with_prices: number;
-  cards_with_gem_rates: number;
-  last_updated: string | null;
+
+  cards_with_raw_prices: number;
+  raw_prices_updated: string | null;
+
+  cards_with_psa_prices: number;
+  psa_prices_updated: string | null;
+
+  cards_with_cgc_prices: number;
+  cgc_prices_updated: string | null;
+
+  cards_with_psa_gem_rate: number;
+  psa_gem_rate_updated: string | null;
+
+  cards_with_cgc_gem_rate: number;
+  cgc_gem_rate_updated: string | null;
+
   psa_pop_url: string | null;
   cgc_pop_url: string | null;
   pricecharting_console_url: string | null;
@@ -217,6 +230,54 @@ export function updateSetExternalIds(
     body: JSON.stringify({ game, code, name, external_ids: patch }),
   }).then((r) => {
     if (!r.ok) throw new Error(`${r.status} updateSetExternalIds`);
+    return r.json();
+  });
+}
+
+// ---- Graded refresh (proxied to Python worker) -----------------------------
+
+export type RefreshSource = "psa-pop" | "cgc-pop" | "console-prices";
+
+export interface RefreshJob {
+  id: string;
+  game: string;
+  set_code: string;
+  source: RefreshSource;
+  url: string;
+  status: "pending" | "running" | "succeeded" | "failed";
+  created_at: string;
+  started_at: string | null;
+  finished_at: string | null;
+  error: string | null;
+  log_tail: string;
+}
+
+export function triggerGradedRefresh(
+  game: string,
+  setCode: string,
+  source: RefreshSource,
+  url: string,
+): Promise<{ job_id: string; status: string }> {
+  const BASE = import.meta.env.VITE_API_URL ?? "";
+  return fetch(`${BASE}/v1/admin/graded/refresh`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${import.meta.env.VITE_ADMIN_API_KEY ?? ""}`,
+    },
+    body: JSON.stringify({ game, set_code: setCode, source, url }),
+  }).then((r) => {
+    if (!r.ok) throw new Error(`${r.status} triggerGradedRefresh`);
+    return r.json();
+  });
+}
+
+export function fetchGradedJob(jobId: string): Promise<RefreshJob> {
+  const BASE = import.meta.env.VITE_API_URL ?? "";
+  return fetch(`${BASE}/v1/admin/graded/jobs/${encodeURIComponent(jobId)}`, {
+    headers: { Authorization: `Bearer ${import.meta.env.VITE_ADMIN_API_KEY ?? ""}` },
+  }).then((r) => {
+    if (!r.ok) throw new Error(`${r.status} fetchGradedJob`);
     return r.json();
   });
 }

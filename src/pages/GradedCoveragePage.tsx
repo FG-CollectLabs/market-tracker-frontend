@@ -1,6 +1,13 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Link } from "react-router-dom";
-import { fetchGradedCoverage, updateSetExternalIds, type CoverageSet } from "../lib/api";
+import {
+  fetchGradedCoverage,
+  fetchGradedJob,
+  triggerGradedRefresh,
+  updateSetExternalIds,
+  type CoverageSet,
+  type RefreshSource,
+} from "../lib/api";
 import { Spinner, ErrorMsg } from "../components/Spinner";
 
 const ADMIN_API_KEY = import.meta.env.VITE_ADMIN_API_KEY ?? "<your-admin-api-key>";
@@ -22,19 +29,62 @@ function buildCmd(subcommand: string, url: string, game: string, code: string): 
   ].join(" \\\n  ");
 }
 
-function CoverageBar({ value, total }: { value: number; total: number }) {
+function CoverageBar({
+  label,
+  value,
+  total,
+  updated,
+  color = "bg-indigo-500",
+  labelColor = "text-gray-500",
+  refreshState,
+  onRefresh,
+}: {
+  label: string;
+  value: number;
+  total: number;
+  updated: string | null;
+  color?: string;
+  labelColor?: string;
+  // null = no refresh hook (URL not configured); otherwise current state.
+  refreshState?: { status: "idle" | "running" | "failed"; error: string | null } | null;
+  onRefresh?: () => void;
+}) {
   const pct = total === 0 ? 0 : Math.round((value / total) * 100);
+  const tooltip = updated
+    ? `${label}: ${value}/${total} (${pct}%) · updated ${updated}`
+    : `${label}: ${value}/${total} (${pct}%) · never updated`;
+  const running = refreshState?.status === "running";
   return (
-    <div className="flex items-center gap-2">
-      <div className="w-24 h-1.5 bg-gray-800 rounded-full overflow-hidden">
+    <div className="flex items-center gap-2" title={tooltip}>
+      <span className={`text-[10px] uppercase tracking-wide w-8 ${labelColor}`}>{label}</span>
+      <div className="w-20 h-1.5 bg-gray-800 rounded-full overflow-hidden">
         <div
-          className="h-full bg-indigo-500 rounded-full transition-all"
+          className={`h-full ${color} rounded-full transition-all`}
           style={{ width: `${pct}%` }}
         />
       </div>
-      <span className="text-xs text-gray-400 tabular-nums">
+      <span className="text-[11px] text-gray-400 tabular-nums">
         {value}/{total}
       </span>
+      {refreshState !== undefined && (
+        <button
+          type="button"
+          onClick={onRefresh}
+          disabled={!onRefresh || running}
+          className="text-[11px] text-gray-500 hover:text-indigo-300 disabled:opacity-30 disabled:hover:text-gray-500 transition-colors"
+          title={
+            !onRefresh
+              ? "Set a URL in the Configure panel to enable refresh"
+              : running
+                ? "Refresh in progress…"
+                : refreshState?.error
+                  ? `Last refresh failed: ${refreshState.error}`
+                  : "Re-scrape from source"
+          }
+        >
+          {running ? "⟳" : refreshState?.status === "failed" ? "⚠" : "↻"}
+        </button>
+      )}
     </div>
   );
 }
@@ -188,17 +238,86 @@ function ConfigureButton({ s, onSaved }: { s: CoverageSet; onSaved: (patch: Part
   );
 }
 
+type RefreshKey = string; // `${game}:${set_code}:${source}`
+type RefreshState = { status: "idle" | "running" | "failed"; error: string | null };
+
+function refreshKey(game: string, setCode: string, source: RefreshSource): RefreshKey {
+  return `${game}:${setCode}:${source}`;
+}
+
 export default function GradedCoveragePage() {
   const [sets, setSets] = useState<CoverageSet[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
+  const [refreshState, setRefreshState] = useState<Record<RefreshKey, RefreshState>>({});
+  const pollers = useRef<Record<string, number>>({});
+
+  const reloadCoverage = () => {
+    fetchGradedCoverage("pokemon")
+      .then((r) => setSets(r.sets))
+      .catch((e: unknown) => setError(String(e)));
+  };
 
   useEffect(() => {
     fetchGradedCoverage("pokemon")
       .then((r) => setSets(r.sets))
       .catch((e: unknown) => setError(String(e)))
       .finally(() => setLoading(false));
+    const refs = pollers.current;
+    return () => {
+      for (const id of Object.values(refs)) window.clearInterval(id);
+    };
   }, []);
+
+  const startRefresh = (set: CoverageSet, source: RefreshSource, url: string) => {
+    const key = refreshKey(set.game, set.set_code, source);
+    setRefreshState((prev) => ({ ...prev, [key]: { status: "running", error: null } }));
+    triggerGradedRefresh(set.game, set.set_code, source, url)
+      .then(({ job_id }) => {
+        const intervalId = window.setInterval(() => {
+          fetchGradedJob(job_id)
+            .then((job) => {
+              if (job.status === "succeeded") {
+                window.clearInterval(intervalId);
+                delete pollers.current[key];
+                setRefreshState((prev) => ({ ...prev, [key]: { status: "idle", error: null } }));
+                reloadCoverage();
+              } else if (job.status === "failed") {
+                window.clearInterval(intervalId);
+                delete pollers.current[key];
+                setRefreshState((prev) => ({
+                  ...prev,
+                  [key]: { status: "failed", error: job.error ?? "unknown error" },
+                }));
+              }
+            })
+            .catch((e: unknown) => {
+              window.clearInterval(intervalId);
+              delete pollers.current[key];
+              setRefreshState((prev) => ({
+                ...prev,
+                [key]: { status: "failed", error: String(e) },
+              }));
+            });
+        }, 2500);
+        pollers.current[key] = intervalId;
+      })
+      .catch((e: unknown) => {
+        setRefreshState((prev) => ({
+          ...prev,
+          [key]: { status: "failed", error: String(e) },
+        }));
+      });
+  };
+
+  const buildBarRefresh = (set: CoverageSet, source: RefreshSource, url: string | null) => {
+    if (!url) return { refreshState: null, onRefresh: undefined };
+    const key = refreshKey(set.game, set.set_code, source);
+    return {
+      refreshState: refreshState[key] ?? { status: "idle" as const, error: null },
+      onRefresh: () => startRefresh(set, source, url),
+    };
+  };
 
   if (loading) return <Spinner />;
   if (error) return <ErrorMsg msg={error} />;
@@ -217,64 +336,107 @@ export default function GradedCoveragePage() {
           <thead className="bg-gray-900 text-gray-400">
             <tr>
               <th className="text-left px-4 py-2.5 font-medium">Set</th>
-              <th className="text-left px-4 py-2.5 font-medium">Release</th>
               <th className="text-left px-4 py-2.5 font-medium">Prices</th>
               <th className="text-left px-4 py-2.5 font-medium">Gem rates</th>
-              <th className="text-left px-4 py-2.5 font-medium">Updated</th>
               <th className="px-4 py-2.5" />
             </tr>
           </thead>
           <tbody className="divide-y divide-gray-800/60">
-            {sets.map((s) => (
-              <tr key={`${s.game}:${s.set_code}`} className="hover:bg-gray-900/40 transition-colors">
-                <td className="px-4 py-3 font-medium text-white">
-                  {s.set_name}
-                  <span className="ml-2 text-xs text-gray-500 font-normal">
-                    {s.set_code.toUpperCase()}
-                  </span>
-                </td>
-                <td className="px-4 py-3 text-gray-400 tabular-nums text-xs">
-                  {s.release_date ?? "—"}
-                </td>
-                <td className="px-4 py-3">
-                  {s.cards_with_graded_data > 0 ? (
-                    <CoverageBar value={s.cards_with_prices} total={s.cards_with_graded_data} />
-                  ) : (
-                    <span className="text-gray-600 text-xs">no data</span>
-                  )}
-                </td>
-                <td className="px-4 py-3">
-                  {s.cards_with_graded_data > 0 ? (
-                    <CoverageBar value={s.cards_with_gem_rates} total={s.cards_with_graded_data} />
-                  ) : (
-                    <span className="text-gray-600 text-xs">no data</span>
-                  )}
-                </td>
-                <td className="px-4 py-3 text-gray-400 tabular-nums text-xs">
-                  {s.last_updated ?? "—"}
-                </td>
-                <td className="px-4 py-3">
-                  <div className="flex items-center justify-end gap-3">
-                    <ConfigureButton
-                      s={s}
-                      onSaved={(patch) =>
-                        setSets((prev) =>
-                          prev.map((x) =>
-                            x.set_code === s.set_code && x.game === s.game ? { ...x, ...patch } : x
+            {sets.map((s) => {
+              const priceTotal = s.total_cards;
+              const gemTotal = s.cards_with_graded_data;
+              return (
+                <tr key={`${s.game}:${s.set_code}`} className="hover:bg-gray-900/40 transition-colors">
+                  <td className="px-4 py-3 font-medium text-white align-top">
+                    {s.set_name}
+                    <span className="ml-2 text-xs text-gray-500 font-normal">
+                      {s.set_code.toUpperCase()}
+                    </span>
+                  </td>
+                  <td className="px-4 py-3 align-top">
+                    {priceTotal > 0 ? (
+                      <div className="space-y-1">
+                        <CoverageBar
+                          label="Raw"
+                          value={s.cards_with_raw_prices}
+                          total={priceTotal}
+                          updated={s.raw_prices_updated}
+                          color="bg-green-500"
+                          labelColor="text-green-500/70"
+                          {...buildBarRefresh(s, "console-prices", s.pricecharting_console_url)}
+                        />
+                        <CoverageBar
+                          label="PSA"
+                          value={s.cards_with_psa_prices}
+                          total={priceTotal}
+                          updated={s.psa_prices_updated}
+                          color="bg-yellow-400"
+                          labelColor="text-yellow-400/70"
+                          {...buildBarRefresh(s, "console-prices", s.pricecharting_console_url)}
+                        />
+                        <CoverageBar
+                          label="CGC"
+                          value={s.cards_with_cgc_prices}
+                          total={priceTotal}
+                          updated={s.cgc_prices_updated}
+                          color="bg-purple-400"
+                          labelColor="text-purple-400/70"
+                          {...buildBarRefresh(s, "console-prices", s.pricecharting_console_url)}
+                        />
+                      </div>
+                    ) : (
+                      <span className="text-gray-600 text-xs">no data</span>
+                    )}
+                  </td>
+                  <td className="px-4 py-3 align-top">
+                    {gemTotal > 0 ? (
+                      <div className="space-y-1">
+                        <CoverageBar
+                          label="PSA"
+                          value={s.cards_with_psa_gem_rate}
+                          total={gemTotal}
+                          updated={s.psa_gem_rate_updated}
+                          color="bg-yellow-400"
+                          labelColor="text-yellow-400/70"
+                          {...buildBarRefresh(s, "psa-pop", s.psa_pop_url)}
+                        />
+                        <CoverageBar
+                          label="CGC"
+                          value={s.cards_with_cgc_gem_rate}
+                          total={gemTotal}
+                          updated={s.cgc_gem_rate_updated}
+                          color="bg-purple-400"
+                          labelColor="text-purple-400/70"
+                          {...buildBarRefresh(s, "cgc-pop", s.cgc_pop_url)}
+                        />
+                      </div>
+                    ) : (
+                      <span className="text-gray-600 text-xs">no data</span>
+                    )}
+                  </td>
+                  <td className="px-4 py-3 align-top">
+                    <div className="flex items-center justify-end gap-3">
+                      <ConfigureButton
+                        s={s}
+                        onSaved={(patch) =>
+                          setSets((prev) =>
+                            prev.map((x) =>
+                              x.set_code === s.set_code && x.game === s.game ? { ...x, ...patch } : x
+                            )
                           )
-                        )
-                      }
-                    />
-                    <Link
-                      to={`/sets/${s.game}/${s.set_code}?tab=graded`}
-                      className="text-indigo-400 hover:text-indigo-300 text-xs font-medium whitespace-nowrap"
-                    >
-                      ROI &rarr;
-                    </Link>
-                  </div>
-                </td>
-              </tr>
-            ))}
+                        }
+                      />
+                      <Link
+                        to={`/sets/${s.game}/${s.set_code}?tab=graded`}
+                        className="text-indigo-400 hover:text-indigo-300 text-xs font-medium whitespace-nowrap"
+                      >
+                        ROI &rarr;
+                      </Link>
+                    </div>
+                  </td>
+                </tr>
+              );
+            })}
           </tbody>
         </table>
       </div>
