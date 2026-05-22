@@ -162,6 +162,7 @@ export interface CoverageSet {
   game: string;
   set_code: string;
   set_name: string;
+  release_date: string | null;
   total_cards: number;
   cards_with_graded_data: number;
 

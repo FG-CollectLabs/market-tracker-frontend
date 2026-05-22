@@ -336,13 +336,22 @@ export default function GradedCoveragePage() {
           <thead className="bg-gray-900 text-gray-400">
             <tr>
               <th className="text-left px-4 py-2.5 font-medium">Set</th>
+              <th className="text-left px-4 py-2.5 font-medium">Released</th>
               <th className="text-left px-4 py-2.5 font-medium">Prices</th>
               <th className="text-left px-4 py-2.5 font-medium">Gem rates</th>
               <th className="px-4 py-2.5" />
             </tr>
           </thead>
           <tbody className="divide-y divide-gray-800/60">
-            {sets.map((s) => {
+            {[...sets]
+              .sort((a, b) => {
+                // Newest first; sets with null release_date go to the bottom.
+                if (a.release_date && b.release_date) return b.release_date.localeCompare(a.release_date);
+                if (a.release_date) return -1;
+                if (b.release_date) return 1;
+                return a.set_name.localeCompare(b.set_name);
+              })
+              .map((s) => {
               const priceTotal = s.total_cards;
               const gemTotal = s.cards_with_graded_data;
               return (
@@ -352,6 +361,9 @@ export default function GradedCoveragePage() {
                     <span className="ml-2 text-xs text-gray-500 font-normal">
                       {s.set_code.toUpperCase()}
                     </span>
+                  </td>
+                  <td className="px-4 py-3 align-top text-gray-400 tabular-nums text-xs">
+                    {s.release_date ?? "—"}
                   </td>
                   <td className="px-4 py-3 align-top">
                     {priceTotal > 0 ? (
