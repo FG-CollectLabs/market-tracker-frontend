@@ -168,6 +168,8 @@ export interface CoverageSet {
   cards_with_gem_rates: number;
   last_updated: string | null;
   psa_pop_url: string | null;
+  cgc_pop_url: string | null;
+  pricecharting_console_url: string | null;
 }
 
 export function fetchGradedCoverage(game = "pokemon"): Promise<{ sets: CoverageSet[] }> {
@@ -199,11 +201,11 @@ export function fetchSetGraded(game: string, setCode: string): Promise<{ game: s
   return get(`/v1/sets/${game}/${setCode}/graded`);
 }
 
-export function updateSetPsaPopUrl(
+export function updateSetExternalIds(
   game: string,
   code: string,
   name: string,
-  psaPopUrl: string | null,
+  patch: Record<string, string | null>,
 ): Promise<unknown> {
   const BASE = import.meta.env.VITE_API_URL ?? "";
   return fetch(`${BASE}/v1/admin/sets`, {
@@ -212,14 +214,9 @@ export function updateSetPsaPopUrl(
       "Content-Type": "application/json",
       Authorization: `Bearer ${import.meta.env.VITE_ADMIN_API_KEY ?? ""}`,
     },
-    body: JSON.stringify({
-      game,
-      code,
-      name,
-      external_ids: { psa_pop_url: psaPopUrl },
-    }),
+    body: JSON.stringify({ game, code, name, external_ids: patch }),
   }).then((r) => {
-    if (!r.ok) throw new Error(`${r.status} updateSetPsaPopUrl`);
+    if (!r.ok) throw new Error(`${r.status} updateSetExternalIds`);
     return r.json();
   });
 }
