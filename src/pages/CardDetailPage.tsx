@@ -4,9 +4,11 @@ import {
   fetchCard,
   fetchCardSnapshots,
   fetchCardGraded,
+  fetchCardListings,
   type CardRow,
   type SnapshotRow,
   type GradedSnapshot,
+  type ListingRow,
 } from "../lib/api";
 import { Spinner, ErrorMsg } from "../components/Spinner";
 import { PriceCell, SourceBadge } from "../components/PriceCell";
@@ -62,6 +64,7 @@ function SnapshotsTab({ displayKey }: { displayKey: string }) {
               <th className="text-right px-3 py-2.5 font-medium">Listings</th>
               <th className="text-right px-3 py-2.5 font-medium">Sold/wk</th>
               <th className="text-right px-3 py-2.5 font-medium">Sellthrough</th>
+              <th className="text-right px-3 py-2.5 font-medium">Refill rate</th>
               <th className="text-right px-3 py-2.5 font-medium">Days supply</th>
               <th className="text-right px-3 py-2.5 font-medium">52w %ile</th>
             </tr>
@@ -102,6 +105,19 @@ function SnapshotsTab({ displayKey }: { displayKey: string }) {
                     <span className="text-gray-600">—</span>
                   )}
                 </td>
+                <td className="px-3 py-2.5 text-right tabular-nums">
+                  {s.refill_rate != null ? (
+                    <span className={
+                      s.refill_rate >= 1.0 ? "text-orange-400" :
+                      s.refill_rate >= 0.5 ? "text-yellow-400" :
+                      "text-gray-400"
+                    }>
+                      {s.refill_rate.toFixed(2)}x
+                    </span>
+                  ) : (
+                    <span className="text-gray-600">—</span>
+                  )}
+                </td>
                 <td className="px-3 py-2.5 text-right text-gray-400 tabular-nums">
                   {s.days_of_supply != null ? s.days_of_supply.toFixed(1) : "—"}
                 </td>
@@ -112,7 +128,7 @@ function SnapshotsTab({ displayKey }: { displayKey: string }) {
             ))}
             {snapshots.length === 0 && (
               <tr>
-                <td colSpan={11} className="px-3 py-8 text-center text-gray-500">
+                <td colSpan={12} className="px-3 py-8 text-center text-gray-500">
                   No snapshot data yet for this card.
                 </td>
               </tr>
@@ -235,9 +251,143 @@ function GradedTab({ displayKey }: { displayKey: string }) {
   );
 }
 
+// ---- Listings tab ----------------------------------------------------------
+
+const CONDITION_COLORS: Record<string, string> = {
+  NM: "text-green-400",
+  LP: "text-yellow-400",
+  MP: "text-orange-400",
+  HP: "text-red-400",
+  DMG: "text-red-600",
+};
+
+function fmt(cents: number) {
+  return `$${(cents / 100).toFixed(2)}`;
+}
+
+function ListingsTab({ displayKey }: { displayKey: string }) {
+  const [listings, setListings] = useState<ListingRow[]>([]);
+  const [capturedAt, setCapturedAt] = useState<string | null>(null);
+  const [source, setSource] = useState("tcgplayer");
+  const [error, setError] = useState<string | null>(null);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    setLoading(true);
+    setError(null);
+    fetchCardListings(displayKey, source ? { source } : undefined)
+      .then((r) => {
+        setListings(r.listings);
+        setCapturedAt(r.captured_at);
+      })
+      .catch((e: unknown) => setError(String(e)))
+      .finally(() => setLoading(false));
+  }, [displayKey, source]);
+
+  if (loading) return <Spinner />;
+  if (error) return <ErrorMsg msg={error} />;
+
+  return (
+    <div className="space-y-4">
+      <div className="flex gap-3 items-center">
+        <select
+          value={source}
+          onChange={(e) => setSource(e.target.value)}
+          className="bg-gray-900 border border-gray-700 rounded px-3 py-1.5 text-sm text-white focus:outline-none focus:border-indigo-500"
+        >
+          <option value="">All sources</option>
+          <option value="tcgplayer">TCGPlayer</option>
+          <option value="ebay">eBay</option>
+          <option value="manapool">Manapool</option>
+        </select>
+        <span className="text-xs text-gray-500">{listings.length} listings</span>
+        {capturedAt && (
+          <span className="text-xs text-gray-600">
+            captured {new Date(capturedAt).toLocaleString()}
+          </span>
+        )}
+      </div>
+
+      <div className="rounded-lg border border-gray-800 overflow-x-auto">
+        <table className="w-full text-xs min-w-[700px]">
+          <thead className="bg-gray-900 text-gray-400">
+            <tr>
+              <th className="text-right px-3 py-2.5 font-medium">Price</th>
+              <th className="text-right px-3 py-2.5 font-medium">Shipping</th>
+              <th className="text-right px-3 py-2.5 font-medium">Total</th>
+              <th className="text-left px-3 py-2.5 font-medium">Cond</th>
+              <th className="text-right px-3 py-2.5 font-medium">Qty</th>
+              <th className="text-left px-3 py-2.5 font-medium">Seller</th>
+              <th className="text-right px-3 py-2.5 font-medium">Feedback</th>
+              <th className="text-center px-3 py-2.5 font-medium">Direct</th>
+              <th className="text-right px-3 py-2.5 font-medium">Phantom</th>
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-gray-800/60">
+            {listings.map((l) => {
+              const total = l.price_cents + (l.shipping_cents ?? 0);
+              return (
+                <tr key={l.id} className="hover:bg-gray-900/30">
+                  <td className="px-3 py-2 text-right text-gray-200 tabular-nums font-mono">
+                    {fmt(l.price_cents)}
+                  </td>
+                  <td className="px-3 py-2 text-right text-gray-400 tabular-nums font-mono">
+                    {l.shipping_cents == null ? <span className="text-gray-600">—</span> : l.shipping_cents === 0 ? <span className="text-green-500">Free</span> : fmt(l.shipping_cents)}
+                  </td>
+                  <td className="px-3 py-2 text-right text-white tabular-nums font-mono font-medium">
+                    {fmt(total)}
+                  </td>
+                  <td className="px-3 py-2">
+                    <span className={CONDITION_COLORS[l.condition ?? ""] ?? "text-gray-400"}>
+                      {l.condition ?? "—"}
+                    </span>
+                  </td>
+                  <td className="px-3 py-2 text-right text-gray-400 tabular-nums">
+                    {l.quantity}
+                  </td>
+                  <td className="px-3 py-2 text-gray-300 max-w-[160px] truncate">
+                    {l.seller_name ?? <span className="text-gray-600">—</span>}
+                  </td>
+                  <td className="px-3 py-2 text-right tabular-nums">
+                    {l.seller_feedback_pct != null ? (
+                      <span className={l.seller_feedback_pct >= 99 ? "text-green-400" : l.seller_feedback_pct >= 95 ? "text-yellow-400" : "text-red-400"}>
+                        {l.seller_feedback_pct.toFixed(1)}%
+                      </span>
+                    ) : <span className="text-gray-600">—</span>}
+                    {l.seller_feedback_count != null && (
+                      <span className="text-gray-600 ml-1">({l.seller_feedback_count.toLocaleString()})</span>
+                    )}
+                  </td>
+                  <td className="px-3 py-2 text-center">
+                    {l.is_direct ? <span className="text-indigo-400">✓</span> : <span className="text-gray-700">—</span>}
+                  </td>
+                  <td className="px-3 py-2 text-right tabular-nums">
+                    {l.phantom_score != null ? (
+                      <span className={l.phantom_score >= 0.7 ? "text-red-400" : l.phantom_score >= 0.4 ? "text-yellow-400" : "text-gray-500"}>
+                        {(l.phantom_score * 100).toFixed(0)}%
+                      </span>
+                    ) : <span className="text-gray-700">—</span>}
+                  </td>
+                </tr>
+              );
+            })}
+            {listings.length === 0 && (
+              <tr>
+                <td colSpan={9} className="px-3 py-8 text-center text-gray-500">
+                  No listing data captured yet for this card.
+                </td>
+              </tr>
+            )}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+}
+
 // ---- Page ------------------------------------------------------------------
 
-type Tab = "snapshots" | "graded";
+type Tab = "snapshots" | "graded" | "listings";
 
 export default function CardDetailPage() {
   const { displayKey } = useParams<{ displayKey: string }>();
@@ -286,7 +436,7 @@ export default function CardDetailPage() {
 
       {/* Sub-tabs */}
       <div className="flex gap-1 border-b border-gray-800 mb-6">
-        {([["snapshots", "Price History"], ["graded", "Graded"]] as const).map(([id, label]) => (
+        {([["snapshots", "Price History"], ["listings", "Listings"], ["graded", "Graded"]] as const).map(([id, label]) => (
           <button
             key={id}
             onClick={() => setSearchParams({ tab: id }, { replace: true })}
@@ -302,6 +452,7 @@ export default function CardDetailPage() {
       </div>
 
       {tab === "snapshots" && <SnapshotsTab displayKey={displayKey} />}
+      {tab === "listings" && <ListingsTab displayKey={displayKey} />}
       {tab === "graded" && <GradedTab displayKey={displayKey} />}
     </div>
   );

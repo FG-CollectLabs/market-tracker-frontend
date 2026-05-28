@@ -156,6 +156,36 @@ export function fetchSealedSnapshots(
   return get(`/v1/sealed/${encodeURIComponent(displayKey)}/snapshots${q}`);
 }
 
+// ---- Listings --------------------------------------------------------------
+
+export interface ListingRow {
+  id: string;
+  source: string;
+  captured_at: string;
+  listing_id: string | null;
+  seller_id: string | null;
+  seller_name: string | null;
+  seller_feedback_count: number | null;
+  seller_feedback_pct: number | null;
+  price_cents: number;
+  shipping_cents: number | null;
+  quantity: number;
+  condition: string | null;
+  is_direct: boolean | null;
+  phantom_score: number | null;
+  fake_score: number | null;
+}
+
+export function fetchCardListings(
+  displayKey: string,
+  params?: { source?: string },
+): Promise<{ listings: ListingRow[]; captured_at: string | null }> {
+  const qs = new URLSearchParams();
+  if (params?.source) qs.set("source", params.source);
+  const q = qs.toString() ? `?${qs}` : "";
+  return get(`/v1/cards/${encodeURIComponent(displayKey)}/listings${q}`);
+}
+
 // ---- Graded ----------------------------------------------------------------
 
 export interface CoverageSet {
