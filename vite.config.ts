@@ -6,7 +6,7 @@ export default defineConfig(({ mode }) => {
   const apiTarget = env.VITE_API_URL ?? "http://localhost:8080";
   const isGhPages = env.VITE_GH_PAGES === "1";
   return {
-    base: isGhPages ? "/market-tracker-frontend/" : "/",
+    base: isGhPages ? "/" : "/",
     plugins: [react()],
     server: {
       port: 5175,
