@@ -3,6 +3,31 @@ import { Link } from "react-router-dom";
 import { fetchSets, type SetRow } from "../lib/api";
 import { GameBadge } from "../components/GameBadge";
 import { Spinner, ErrorMsg } from "../components/Spinner";
+import { getPokemonSetLogo } from "../lib/ptcgio";
+
+function SetLogo({ set }: { set: SetRow }) {
+  const [logoUrl, setLogoUrl] = useState<string | null>(set.image_url);
+
+  useEffect(() => {
+    if (set.image_url || set.game !== "pokemon") return;
+    getPokemonSetLogo(set.name).then((url) => {
+      if (url) setLogoUrl(url);
+    });
+  }, [set]);
+
+  if (!logoUrl) return null;
+  return (
+    <img
+      src={logoUrl}
+      alt={set.name}
+      className="h-6 object-contain opacity-80"
+      loading="lazy"
+      onError={(e) => {
+        (e.currentTarget as HTMLImageElement).style.display = "none";
+      }}
+    />
+  );
+}
 
 function groupByGame(sets: SetRow[]): Map<string, SetRow[]> {
   const map = new Map<string, SetRow[]>();
@@ -71,8 +96,9 @@ export default function SetsPage() {
                       <td className="px-4 py-3 font-medium text-white">
                         <Link
                           to={`/sets/${s.game}/${s.code}`}
-                          className="hover:text-indigo-300 transition-colors"
+                          className="flex items-center gap-2 hover:text-indigo-300 transition-colors"
                         >
+                          <SetLogo set={s} />
                           {s.name}
                         </Link>
                       </td>

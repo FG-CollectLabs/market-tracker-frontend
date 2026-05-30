@@ -56,14 +56,14 @@ function CoverageBar({
   const running = refreshState?.status === "running";
   return (
     <div className="flex items-center gap-2" title={tooltip}>
-      <span className={`text-[10px] uppercase tracking-wide w-8 ${labelColor}`}>{label}</span>
-      <div className="w-20 h-1.5 bg-gray-800 rounded-full overflow-hidden">
+      <span className={`text-xs uppercase tracking-wide w-9 ${labelColor}`}>{label}</span>
+      <div className="w-32 h-2.5 bg-gray-800 rounded-full overflow-hidden">
         <div
           className={`h-full ${color} rounded-full transition-all`}
           style={{ width: `${pct}%` }}
         />
       </div>
-      <span className="text-[11px] text-gray-400 tabular-nums">
+      <span className="text-xs text-gray-400 tabular-nums">
         {value}/{total}
       </span>
       {refreshState !== undefined && (

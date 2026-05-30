@@ -17,6 +17,8 @@ import {
 import { Spinner, ErrorMsg } from "../components/Spinner";
 import { PriceCell, SourceBadge } from "../components/PriceCell";
 import { formatCents, formatPct, computeROI, evColor, GRADING_FEES, type ROIResult, type ROIOptions } from "../lib/roi";
+import { useGamePrefs } from "../lib/prefs";
+import { getPokemonSetId, ptcgioCardUrl } from "../lib/ptcgio";
 
 // ---- shared ----------------------------------------------------------------
 
@@ -48,7 +50,80 @@ function TabBar({ active, onChange }: { active: Tab; onChange: (t: Tab) => void 
   );
 }
 
+// ---- Rarity filter chips ---------------------------------------------------
+
+function RarityChips({
+  rarities,
+  hidden,
+  onToggle,
+}: {
+  rarities: string[];
+  hidden: string[];
+  onToggle: (r: string) => void;
+}) {
+  if (rarities.length === 0) return null;
+  return (
+    <div className="flex flex-wrap gap-1.5 items-center">
+      <span className="text-xs text-gray-500 shrink-0">Rarities:</span>
+      {rarities.map((r) => {
+        const active = !hidden.includes(r);
+        return (
+          <button
+            key={r}
+            onClick={() => onToggle(r)}
+            className={`px-2 py-0.5 rounded text-xs font-medium border transition-colors ${
+              active
+                ? "border-indigo-600 bg-indigo-900/40 text-indigo-300"
+                : "border-gray-700 bg-gray-900 text-gray-600 line-through"
+            }`}
+          >
+            {r}
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
+// ---- Card thumbnail (Pokemon TCG IO, lazy) ---------------------------------
+
+function CardThumb({
+  card,
+  ptcgioSetId,
+}: {
+  card: CardRow;
+  ptcgioSetId: string | null;
+}) {
+  if (card.image_url) {
+    return (
+      <img
+        src={card.image_url}
+        alt={card.name}
+        className="w-8 h-11 object-cover rounded shadow-sm"
+        loading="lazy"
+      />
+    );
+  }
+  if (!ptcgioSetId) {
+    return <div className="w-8 h-11 rounded bg-gray-800" />;
+  }
+  const src = ptcgioCardUrl(ptcgioSetId, card.number);
+  return (
+    <img
+      src={src}
+      alt={card.name}
+      className="w-8 h-11 object-cover rounded shadow-sm"
+      loading="lazy"
+      onError={(e) => {
+        (e.currentTarget as HTMLImageElement).style.display = "none";
+      }}
+    />
+  );
+}
+
 // ---- Market tab ------------------------------------------------------------
+
+type MarketSortKey = "number" | "name" | "market_price" | "lowest_price";
 
 function MarketTab({ game, code }: { game: string; code: string }) {
   const [data, setData] = useState<{ cards: CardMarketRow[]; sealed: SealedMarketRow[] } | null>(null);
@@ -56,6 +131,9 @@ function MarketTab({ game, code }: { game: string; code: string }) {
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
+  const [ptcgioSetId, setPtcgioSetId] = useState<string | null>(null);
+
+  const [prefs, updatePrefs] = useGamePrefs(game);
 
   useEffect(() => {
     setLoading(true);
@@ -66,17 +144,92 @@ function MarketTab({ game, code }: { game: string; code: string }) {
       .finally(() => setLoading(false));
   }, [game, code, source]);
 
+  // Resolve Pokemon TCG IO set ID via set name
+  useEffect(() => {
+    if (game !== "pokemon") return;
+    fetchSet(game, code)
+      .then((s) => getPokemonSetId(s.name))
+      .then((id) => setPtcgioSetId(id))
+      .catch(() => {});
+  }, [game, code]);
+
+  const allRarities = useMemo(() => {
+    if (!data) return [];
+    const seen = new Set<string>();
+    for (const c of data.cards) {
+      if (c.rarity) seen.add(c.rarity);
+    }
+    return [...seen].sort();
+  }, [data]);
+
+  function toggleRarity(r: string) {
+    const next = prefs.hiddenRarities.includes(r)
+      ? prefs.hiddenRarities.filter((x) => x !== r)
+      : [...prefs.hiddenRarities, r];
+    updatePrefs({ hiddenRarities: next });
+  }
+
+  function toggleSort(key: MarketSortKey) {
+    if (prefs.marketSortKey === key) {
+      updatePrefs({ marketSortDir: prefs.marketSortDir === "desc" ? "asc" : "desc" });
+    } else {
+      updatePrefs({ marketSortKey: key, marketSortDir: key === "number" ? "asc" : "desc" });
+    }
+  }
+
   const filteredCards = useMemo(() => {
     if (!data) return [];
     const q = search.toLowerCase();
-    return data.cards.filter(
-      (c) => !q || c.name.toLowerCase().includes(q) || c.number.includes(q),
-    );
-  }, [data, search]);
+    return data.cards.filter((c) => {
+      if (prefs.hiddenRarities.length > 0 && c.rarity && prefs.hiddenRarities.includes(c.rarity)) return false;
+      if (q && !c.name.toLowerCase().includes(q) && !c.number.includes(q)) return false;
+      return true;
+    });
+  }, [data, search, prefs.hiddenRarities]);
+
+  const sortedCards = useMemo(() => {
+    const dir = prefs.marketSortDir === "desc" ? -1 : 1;
+    return [...filteredCards].sort((a, b) => {
+      const sk = prefs.marketSortKey as MarketSortKey;
+      if (sk === "number") {
+        const na = parseFloat(a.number) || 0;
+        const nb = parseFloat(b.number) || 0;
+        return dir * (na - nb);
+      }
+      if (sk === "name") return dir * a.name.localeCompare(b.name);
+      if (sk === "market_price") {
+        const pa = a.latest_price?.market_price_cents ?? -1;
+        const pb = b.latest_price?.market_price_cents ?? -1;
+        return dir * (pa - pb);
+      }
+      if (sk === "lowest_price") {
+        const pa = a.latest_price?.lowest_price_cents ?? -1;
+        const pb = b.latest_price?.lowest_price_cents ?? -1;
+        return dir * (pa - pb);
+      }
+      return 0;
+    });
+  }, [filteredCards, prefs.marketSortKey, prefs.marketSortDir]);
 
   if (loading) return <Spinner />;
   if (error) return <ErrorMsg msg={error} />;
   if (!data) return null;
+
+  function SortTh({ label, col, right }: { label: string; col: MarketSortKey; right?: boolean }) {
+    const active = prefs.marketSortKey === col;
+    return (
+      <th
+        className={`px-3 py-2.5 font-medium cursor-pointer select-none whitespace-nowrap
+          ${right ? "text-right" : "text-left"}
+          ${active ? "text-white" : "text-gray-400 hover:text-gray-200"}`}
+        onClick={() => toggleSort(col)}
+      >
+        {label} {active ? (prefs.marketSortDir === "desc" ? "↓" : "↑") : ""}
+      </th>
+    );
+  }
+
+  const showImages = game === "pokemon";
 
   return (
     <div className="space-y-6">
@@ -101,28 +254,35 @@ function MarketTab({ game, code }: { game: string; code: string }) {
           <option value="pricecharting">PriceCharting</option>
         </select>
       </div>
+      <RarityChips rarities={allRarities} hidden={prefs.hiddenRarities} onToggle={toggleRarity} />
 
       {/* Cards table */}
       <div>
         <h2 className="text-xs font-semibold uppercase tracking-widest text-gray-500 mb-2">
-          Cards ({filteredCards.length})
+          Cards ({sortedCards.length})
         </h2>
         <div className="rounded-lg border border-gray-800 overflow-x-auto">
           <table className="w-full text-sm min-w-[700px]">
             <thead className="bg-gray-900 text-gray-400 text-xs">
               <tr>
-                <th className="text-left px-3 py-2.5 font-medium">#</th>
-                <th className="text-left px-3 py-2.5 font-medium">Card</th>
+                {showImages && <th className="w-10 px-2 py-2.5" />}
+                <SortTh label="#" col="number" />
+                <SortTh label="Card" col="name" />
                 <th className="text-left px-3 py-2.5 font-medium">Rarity</th>
-                <th className="text-right px-3 py-2.5 font-medium">Market</th>
-                <th className="text-right px-3 py-2.5 font-medium">Lowest</th>
+                <SortTh label="Market" col="market_price" right />
+                <SortTh label="Lowest" col="lowest_price" right />
                 <th className="text-left px-3 py-2.5 font-medium">Source</th>
                 <th className="text-left px-3 py-2.5 font-medium">Week</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-800/60">
-              {filteredCards.map((c) => (
+              {sortedCards.map((c) => (
                 <tr key={c.id} className="hover:bg-gray-900/40 transition-colors">
+                  {showImages && (
+                    <td className="px-2 py-1.5">
+                      <CardThumb card={c} ptcgioSetId={ptcgioSetId} />
+                    </td>
+                  )}
                   <td className="px-3 py-2.5 text-gray-500 tabular-nums text-xs">{c.number}</td>
                   <td className="px-3 py-2.5">
                     <Link
@@ -150,9 +310,9 @@ function MarketTab({ game, code }: { game: string; code: string }) {
                   </td>
                 </tr>
               ))}
-              {filteredCards.length === 0 && (
+              {sortedCards.length === 0 && (
                 <tr>
-                  <td colSpan={7} className="px-3 py-8 text-center text-gray-500 text-sm">
+                  <td colSpan={showImages ? 8 : 7} className="px-3 py-8 text-center text-gray-500 text-sm">
                     {search ? "No cards match your search." : "No cards found for this set."}
                   </td>
                 </tr>
@@ -220,6 +380,9 @@ function CardsTab({ game, code }: { game: string; code: string }) {
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
+  const [ptcgioSetId, setPtcgioSetId] = useState<string | null>(null);
+
+  const [prefs, updatePrefs] = useGamePrefs(game);
 
   useEffect(() => {
     fetchCards(game, code)
@@ -228,19 +391,46 @@ function CardsTab({ game, code }: { game: string; code: string }) {
       .finally(() => setLoading(false));
   }, [game, code]);
 
+  useEffect(() => {
+    if (game !== "pokemon") return;
+    fetchSet(game, code)
+      .then((s) => getPokemonSetId(s.name))
+      .then((id) => setPtcgioSetId(id))
+      .catch(() => {});
+  }, [game, code]);
+
+  const allRarities = useMemo(() => {
+    const seen = new Set<string>();
+    for (const c of cards) {
+      if (c.rarity) seen.add(c.rarity);
+    }
+    return [...seen].sort();
+  }, [cards]);
+
+  function toggleRarity(r: string) {
+    const next = prefs.hiddenRarities.includes(r)
+      ? prefs.hiddenRarities.filter((x) => x !== r)
+      : [...prefs.hiddenRarities, r];
+    updatePrefs({ hiddenRarities: next });
+  }
+
   const filtered = useMemo(() => {
     const q = search.toLowerCase();
-    return cards.filter(
-      (c) => !q || c.name.toLowerCase().includes(q) || c.number.includes(q),
-    );
-  }, [cards, search]);
+    return cards.filter((c) => {
+      if (prefs.hiddenRarities.length > 0 && c.rarity && prefs.hiddenRarities.includes(c.rarity)) return false;
+      if (q && !c.name.toLowerCase().includes(q) && !c.number.includes(q)) return false;
+      return true;
+    });
+  }, [cards, search, prefs.hiddenRarities]);
 
   if (loading) return <Spinner />;
   if (error) return <ErrorMsg msg={error} />;
 
+  const showImages = game === "pokemon";
+
   return (
     <div className="space-y-4">
-      <div className="flex gap-3">
+      <div className="flex gap-3 flex-wrap">
         <input
           type="search"
           placeholder="Search by name or number…"
@@ -250,10 +440,12 @@ function CardsTab({ game, code }: { game: string; code: string }) {
         />
         <span className="text-xs text-gray-500 self-center">{filtered.length} cards</span>
       </div>
+      <RarityChips rarities={allRarities} hidden={prefs.hiddenRarities} onToggle={toggleRarity} />
       <div className="rounded-lg border border-gray-800 overflow-hidden">
         <table className="w-full text-sm">
           <thead className="bg-gray-900 text-gray-400 text-xs">
             <tr>
+              {showImages && <th className="w-10 px-2 py-2.5" />}
               <th className="text-left px-3 py-2.5 font-medium">#</th>
               <th className="text-left px-3 py-2.5 font-medium">Card</th>
               <th className="text-left px-3 py-2.5 font-medium">Rarity</th>
@@ -264,6 +456,11 @@ function CardsTab({ game, code }: { game: string; code: string }) {
           <tbody className="divide-y divide-gray-800/60">
             {filtered.map((c) => (
               <tr key={c.id} className="hover:bg-gray-900/40 transition-colors">
+                {showImages && (
+                  <td className="px-2 py-1.5">
+                    <CardThumb card={c} ptcgioSetId={ptcgioSetId} />
+                  </td>
+                )}
                 <td className="px-3 py-2.5 text-gray-500 tabular-nums text-xs">{c.number}</td>
                 <td className="px-3 py-2.5 font-medium text-white">
                   <Link
@@ -287,7 +484,7 @@ function CardsTab({ game, code }: { game: string; code: string }) {
             ))}
             {filtered.length === 0 && (
               <tr>
-                <td colSpan={5} className="px-3 py-8 text-center text-gray-500 text-sm">
+                <td colSpan={showImages ? 6 : 5} className="px-3 py-8 text-center text-gray-500 text-sm">
                   {search ? "No cards match." : "No cards in this set."}
                 </td>
               </tr>
