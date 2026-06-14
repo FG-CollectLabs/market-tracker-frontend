@@ -35,6 +35,9 @@ export interface ROIResult {
   psaGradeRawEv: number | null;
   cgcGradeRawAuctionEv: number | null;
   cgcGradeRawTakehomeEv: number | null;
+  /** EV as a fraction of cost basis (e.g. 0.40 = 40% ROI). */
+  psaRegradePsa9EvRoi: number | null;
+  psaGradeRawEvRoi: number | null;
   bestStrategy: "psa_regrade" | "cgc_auction" | "cgc_takehome" | "hold" | null;
   bestEv: number | null;
   /** Annualised return (XIRR) for each strategy. Null when price data is missing. */
@@ -174,6 +177,15 @@ export function computeROI(card: ROICard, options?: ROIOptions): ROIResult {
     if (x != null && (bestXirr == null || x > bestXirr)) bestXirr = x;
   }
 
+  const psaRegradePsa9EvRoi =
+    psaRegradePsa9Ev != null && psa9Cost != null && psa9Cost > 0
+      ? psaRegradePsa9Ev / psa9Cost
+      : null;
+  const psaGradeRawEvRoi =
+    psaGradeRawEv != null && raw != null && raw > 0
+      ? psaGradeRawEv / raw
+      : null;
+
   return {
     psaGemRate: psaGem,
     cgcGemRate: cgcGem,
@@ -185,6 +197,8 @@ export function computeROI(card: ROICard, options?: ROIOptions): ROIResult {
     psaGradeRawEv,
     cgcGradeRawAuctionEv,
     cgcGradeRawTakehomeEv,
+    psaRegradePsa9EvRoi,
+    psaGradeRawEvRoi,
     bestStrategy,
     bestEv,
     psaGradeRawXirr,

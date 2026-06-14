@@ -690,7 +690,7 @@ function FetchPricesPanel({ game, code, set }: { game: string; code: string; set
 
 // ---- Graded ROI tab --------------------------------------------------------
 
-type SortKey = "number" | "psa_gem" | "cgc_gem" | "psa_regrade_ev" | "psa_grade_raw_ev" | "cgc_auction_ev" | "cgc_takehome_ev" | "psa_10_uplift" | "psa_9_uplift" | "raw_price" | "psa_9_price" | "psa_10_price" | "xirr" | "psa_total_pop";
+type SortKey = "number" | "psa_gem" | "cgc_gem" | "psa_regrade_ev" | "psa_grade_raw_ev" | "cgc_auction_ev" | "cgc_takehome_ev" | "psa_regrade_roi" | "psa_grade_raw_roi" | "psa_10_uplift" | "psa_9_uplift" | "raw_price" | "psa_9_price" | "psa_10_price" | "xirr" | "psa_total_pop";
 type SortDir = "asc" | "desc";
 
 interface CardWithROI {
@@ -1024,6 +1024,8 @@ function GradedTab({ game, code }: { game: string; code: string }) {
         if (sortKey === "cgc_gem") return roi.cgcGemRate ?? -Infinity;
         if (sortKey === "psa_regrade_ev") return roi.psaRegradePsa9Ev ?? -Infinity;
         if (sortKey === "psa_grade_raw_ev") return roi.psaGradeRawEv ?? -Infinity;
+        if (sortKey === "psa_regrade_roi") return roi.psaRegradePsa9EvRoi ?? -Infinity;
+        if (sortKey === "psa_grade_raw_roi") return roi.psaGradeRawEvRoi ?? -Infinity;
         if (sortKey === "cgc_auction_ev") return roi.cgcRegradePsa9AuctionEv ?? -Infinity;
         if (sortKey === "cgc_takehome_ev") return roi.cgcRegradePsa9TakehomeEv ?? -Infinity;
         if (sortKey === "psa_10_uplift") {
@@ -1198,7 +1200,9 @@ function GradedTab({ game, code }: { game: string; code: string }) {
               <SortTh label="10↑raw" col="psa_10_uplift" right />
               <SortTh label="9↑raw" col="psa_9_uplift" right />
               <SortTh label="PSA→raw" col="psa_grade_raw_ev" right />
+              <SortTh label="→raw ROI%" col="psa_grade_raw_roi" right />
               <SortTh label="PSA→9" col="psa_regrade_ev" right />
+              <SortTh label="→9 ROI%" col="psa_regrade_roi" right />
               <SortTh label="CGC EV" col="cgc_auction_ev" right />
               <SortTh label="XIRR/yr" col="xirr" right />
               <th className="text-left px-3 py-2.5 font-medium">Best</th>
@@ -1284,14 +1288,24 @@ function GradedTab({ game, code }: { game: string; code: string }) {
                         : <span className="text-gray-600">—</span>}
                     </td>
                     <td className="px-3 py-2.5 text-right"><EvCell ev={roi.psaGradeRawEv} /></td>
+                    <td className="px-3 py-2.5 text-right tabular-nums font-mono text-[11px]">
+                      {roi.psaGradeRawEvRoi != null
+                        ? <span className={roi.psaGradeRawEvRoi > 0 ? "text-green-400" : "text-red-400"}>{(roi.psaGradeRawEvRoi * 100).toFixed(0)}%</span>
+                        : <span className="text-gray-600">—</span>}
+                    </td>
                     <td className="px-3 py-2.5 text-right"><EvCell ev={roi.psaRegradePsa9Ev} /></td>
+                    <td className="px-3 py-2.5 text-right tabular-nums font-mono text-[11px]">
+                      {roi.psaRegradePsa9EvRoi != null
+                        ? <span className={roi.psaRegradePsa9EvRoi > 0 ? "text-green-400" : "text-red-400"}>{(roi.psaRegradePsa9EvRoi * 100).toFixed(0)}%</span>
+                        : <span className="text-gray-600">—</span>}
+                    </td>
                     <td className="px-3 py-2.5 text-right"><EvCell ev={roi.cgcRegradePsa9AuctionEv} /></td>
                     <td className="px-3 py-2.5 text-right"><XirrCell xirr={roi.bestXirr} /></td>
                     <td className="px-3 py-2.5"><StrategyBadge strategy={roi.bestStrategy} /></td>
                   </tr>
                   {isExpanded && (
                     <tr>
-                      <td colSpan={17} className="px-6 py-5 bg-gray-950 border-b border-gray-800">
+                      <td colSpan={19} className="px-6 py-5 bg-gray-950 border-b border-gray-800">
                         <GemSensitivityChart
                           card={card}
                           marketGemRate={roi.psaGemRate}
@@ -1305,7 +1319,7 @@ function GradedTab({ game, code }: { game: string; code: string }) {
             })}
             {sorted.length === 0 && (
               <tr>
-                <td colSpan={17} className="px-3 py-8 text-center text-gray-500">
+                <td colSpan={19} className="px-3 py-8 text-center text-gray-500">
                   No graded data. Run the graded scraper to populate.
                 </td>
               </tr>
