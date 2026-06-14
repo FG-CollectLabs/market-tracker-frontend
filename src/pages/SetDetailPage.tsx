@@ -693,6 +693,28 @@ function FetchPricesPanel({ game, code, set }: { game: string; code: string; set
 type SortKey = "number" | "psa_gem" | "cgc_gem" | "psa_regrade_ev" | "psa_grade_raw_ev" | "cgc_auction_ev" | "cgc_takehome_ev" | "psa_regrade_roi" | "psa_grade_raw_roi" | "psa_10_uplift" | "psa_9_uplift" | "raw_price" | "psa_9_price" | "psa_10_price" | "xirr" | "psa_total_pop";
 type SortDir = "asc" | "desc";
 
+type ColId = "raw" | "psa9" | "psa10" | "cgc10" | "psa_gem" | "cgc_gem" | "pop" | "uplift10" | "uplift9" | "ev_raw" | "ev_raw_roi" | "ev_psa9" | "ev_psa9_roi" | "cgc_ev" | "xirr" | "best";
+
+const ALL_COLS: { id: ColId; label: string }[] = [
+  { id: "raw",        label: "Raw" },
+  { id: "psa9",       label: "PSA 9" },
+  { id: "psa10",      label: "PSA 10" },
+  { id: "cgc10",      label: "CGC 10" },
+  { id: "psa_gem",    label: "PSA gem%" },
+  { id: "cgc_gem",    label: "CGC gem%" },
+  { id: "pop",        label: "Pop" },
+  { id: "uplift10",   label: "10↑raw" },
+  { id: "uplift9",    label: "9↑raw" },
+  { id: "ev_raw",     label: "PSA→raw" },
+  { id: "ev_raw_roi", label: "→raw ROI%" },
+  { id: "ev_psa9",    label: "PSA→9" },
+  { id: "ev_psa9_roi",label: "→9 ROI%" },
+  { id: "cgc_ev",     label: "CGC EV" },
+  { id: "xirr",       label: "XIRR/yr" },
+  { id: "best",       label: "Best" },
+];
+const DEFAULT_HIDDEN = new Set<ColId>(["cgc10", "uplift9", "ev_raw", "ev_raw_roi", "cgc_ev", "xirr"]);
+
 interface CardWithROI {
   card: ROICard;
   roi: ROIResult;
@@ -969,6 +991,8 @@ function GradedTab({ game, code }: { game: string; code: string }) {
   const [gradingMonths, setGradingMonths] = useState(6);
   const [sellingFeePct, setSellingFeePct] = useState(85);
   const [minPopFilter, setMinPopFilter] = useState(0);
+  const [hiddenCols, setHiddenCols] = useState<Set<ColId>>(DEFAULT_HIDDEN);
+  const [selectedRarities, setSelectedRarities] = useState<Set<string>>(new Set());
 
   useEffect(() => {
     Promise.all([
@@ -995,6 +1019,12 @@ function GradedTab({ game, code }: { game: string; code: string }) {
     return opts;
   }, [gemMultiplier, usePsa9Override, psa9OverrideInput, gradingMonths, sellingFeePct]);
 
+  const availableRarities = useMemo(() => {
+    const seen = new Set<string>();
+    for (const c of cards) if (c.rarity && c.rarity !== "Unknown") seen.add(c.rarity);
+    return [...seen].sort();
+  }, [cards]);
+
   const rows = useMemo<CardWithROI[]>(() => {
     const enriched = cards.map((c) => ({ card: c, roi: computeROI(c, roiOpts) }));
     return enriched.filter(({ card, roi }) => {
@@ -1012,9 +1042,13 @@ function GradedTab({ game, code }: { game: string; code: string }) {
           (cgcTotal != null && cgcTotal >= minPopFilter);
         if (!hasEnoughPop) return false;
       }
+      if (selectedRarities.size > 0) {
+        const r = card.rarity ?? "Unknown";
+        if (!selectedRarities.has(r)) return false;
+      }
       return true;
     });
-  }, [cards, filterPositive, minPopFilter, roiOpts]);
+  }, [cards, filterPositive, minPopFilter, selectedRarities, roiOpts]);
 
   const sorted = useMemo(() => {
     return [...rows].sort((a, b) => {
@@ -1070,6 +1104,15 @@ function GradedTab({ game, code }: { game: string; code: string }) {
   if (error) return <ErrorMsg msg={error} />;
 
   const isAdjusted = gemMultiplier !== 1 || (usePsa9Override && !!psa9OverrideInput && !isNaN(parseFloat(psa9OverrideInput))) || gradingMonths !== 6 || sellingFeePct !== 85 || minPopFilter > 0;
+
+  const show = (col: ColId) => !hiddenCols.has(col);
+  const toggleCol = (col: ColId) =>
+    setHiddenCols((prev) => { const next = new Set(prev); next.has(col) ? next.delete(col) : next.add(col); return next; });
+  const toggleRarity = (r: string) =>
+    setSelectedRarities((prev) => { const next = new Set(prev); next.has(r) ? next.delete(r) : next.add(r); return next; });
+
+  // Total visible columns: 3 fixed (watch, #, card) + visible optional cols
+  const visibleColCount = 3 + ALL_COLS.filter(c => show(c.id)).length;
 
   return (
     <div className="space-y-4">
@@ -1183,6 +1226,38 @@ function GradedTab({ game, code }: { game: string; code: string }) {
           <span className="text-gray-500">graded (0 = all)</span>
         </div>
       </div>
+      {/* Rarity filter */}
+      {availableRarities.length > 0 && (
+        <div className="rounded border border-gray-800 bg-gray-900/50 px-4 py-2.5 flex flex-wrap items-center gap-x-3 gap-y-2 text-xs">
+          <span className="text-gray-500 font-medium shrink-0">Rarity:</span>
+          <button
+            onClick={() => setSelectedRarities(new Set())}
+            className={`px-2 py-0.5 rounded transition-colors ${selectedRarities.size === 0 ? "bg-indigo-700 text-white" : "bg-gray-800 text-gray-400 hover:bg-gray-700"}`}
+          >all</button>
+          {availableRarities.map((r) => (
+            <button
+              key={r}
+              onClick={() => toggleRarity(r)}
+              className={`px-2 py-0.5 rounded transition-colors ${selectedRarities.has(r) ? "bg-indigo-700 text-white" : "bg-gray-800 text-gray-400 hover:bg-gray-700"}`}
+            >{r}</button>
+          ))}
+        </div>
+      )}
+      {/* Column visibility */}
+      <div className="rounded border border-gray-800 bg-gray-900/50 px-4 py-2.5 flex flex-wrap items-center gap-x-3 gap-y-2 text-xs">
+        <span className="text-gray-500 font-medium shrink-0">Columns:</span>
+        <button
+          onClick={() => setHiddenCols(new Set())}
+          className={`px-2 py-0.5 rounded transition-colors ${hiddenCols.size === 0 ? "bg-indigo-700 text-white" : "bg-gray-800 text-gray-400 hover:bg-gray-700"}`}
+        >all</button>
+        {ALL_COLS.map(({ id, label }) => (
+          <button
+            key={id}
+            onClick={() => toggleCol(id)}
+            className={`px-2 py-0.5 rounded transition-colors ${show(id) ? "bg-gray-700 text-gray-200" : "bg-gray-900 text-gray-600 line-through"}`}
+          >{label}</button>
+        ))}
+      </div>
       <div className="rounded-lg border border-gray-800 overflow-x-auto">
         <table className="w-full text-xs min-w-[1280px]">
           <thead className="bg-gray-900 text-gray-400">
@@ -1190,22 +1265,22 @@ function GradedTab({ game, code }: { game: string; code: string }) {
               <th className="px-2 py-2.5 w-6" title="Watch — include in graded price scrape">👁</th>
               <SortTh label="#" col="number" />
               <th className="text-left px-3 py-2.5 font-medium">Card</th>
-              <SortTh label="Raw" col="raw_price" right />
-              <SortTh label="PSA 9" col="psa_9_price" right />
-              <SortTh label="PSA 10" col="psa_10_price" right />
-              <th className="text-right px-3 py-2.5 font-medium">CGC 10</th>
-              <SortTh label="PSA gem%" col="psa_gem" right />
-              <SortTh label="CGC gem%" col="cgc_gem" right />
-              <SortTh label="Pop" col="psa_total_pop" right />
-              <SortTh label="10↑raw" col="psa_10_uplift" right />
-              <SortTh label="9↑raw" col="psa_9_uplift" right />
-              <SortTh label="PSA→raw" col="psa_grade_raw_ev" right />
-              <SortTh label="→raw ROI%" col="psa_grade_raw_roi" right />
-              <SortTh label="PSA→9" col="psa_regrade_ev" right />
-              <SortTh label="→9 ROI%" col="psa_regrade_roi" right />
-              <SortTh label="CGC EV" col="cgc_auction_ev" right />
-              <SortTh label="XIRR/yr" col="xirr" right />
-              <th className="text-left px-3 py-2.5 font-medium">Best</th>
+              {show("raw")        && <SortTh label="Raw" col="raw_price" right />}
+              {show("psa9")       && <SortTh label="PSA 9" col="psa_9_price" right />}
+              {show("psa10")      && <SortTh label="PSA 10" col="psa_10_price" right />}
+              {show("cgc10")      && <th className="text-right px-3 py-2.5 font-medium">CGC 10</th>}
+              {show("psa_gem")    && <SortTh label="PSA gem%" col="psa_gem" right />}
+              {show("cgc_gem")    && <SortTh label="CGC gem%" col="cgc_gem" right />}
+              {show("pop")        && <SortTh label="Pop" col="psa_total_pop" right />}
+              {show("uplift10")   && <SortTh label="10↑raw" col="psa_10_uplift" right />}
+              {show("uplift9")    && <SortTh label="9↑raw" col="psa_9_uplift" right />}
+              {show("ev_raw")     && <SortTh label="PSA→raw" col="psa_grade_raw_ev" right />}
+              {show("ev_raw_roi") && <SortTh label="→raw ROI%" col="psa_grade_raw_roi" right />}
+              {show("ev_psa9")    && <SortTh label="PSA→9" col="psa_regrade_ev" right />}
+              {show("ev_psa9_roi")&& <SortTh label="→9 ROI%" col="psa_regrade_roi" right />}
+              {show("cgc_ev")     && <SortTh label="CGC EV" col="cgc_auction_ev" right />}
+              {show("xirr")       && <SortTh label="XIRR/yr" col="xirr" right />}
+              {show("best")       && <th className="text-left px-3 py-2.5 font-medium">Best</th>}
             </tr>
           </thead>
           <tbody className="divide-y divide-gray-800/60">
@@ -1254,58 +1329,58 @@ function GradedTab({ game, code }: { game: string; code: string }) {
                         )}
                       </div>
                     </td>
-                    <td className="px-3 py-2.5 text-right text-gray-400 tabular-nums font-mono">{formatCents(card.raw_price_cents)}</td>
-                    <td className="px-3 py-2.5 text-right text-gray-300 tabular-nums font-mono">{formatCents(card.psa_9_cents)}</td>
-                    <td className="px-3 py-2.5 text-right text-gray-300 tabular-nums font-mono">{formatCents(card.psa_10_cents)}</td>
-                    <td className="px-3 py-2.5 text-right text-gray-300 tabular-nums font-mono">{formatCents(card.cgc_10_cents)}</td>
-                    <td className="px-3 py-2.5 text-right">
+                    {show("raw")         && <td className="px-3 py-2.5 text-right text-gray-400 tabular-nums font-mono">{formatCents(card.raw_price_cents)}</td>}
+                    {show("psa9")        && <td className="px-3 py-2.5 text-right text-gray-300 tabular-nums font-mono">{formatCents(card.psa_9_cents)}</td>}
+                    {show("psa10")       && <td className="px-3 py-2.5 text-right text-gray-300 tabular-nums font-mono">{formatCents(card.psa_10_cents)}</td>}
+                    {show("cgc10")       && <td className="px-3 py-2.5 text-right text-gray-300 tabular-nums font-mono">{formatCents(card.cgc_10_cents)}</td>}
+                    {show("psa_gem")     && <td className="px-3 py-2.5 text-right">
                       {gemMultiplier !== 1 && roi.personalPsaGemRate !== roi.psaGemRate ? (
                         <div className="flex flex-col items-end gap-0.5">
                           <span className="text-gray-600 text-[10px] font-mono">pop <GemBadge rate={roi.psaGemRate} /></span>
                           <span className="text-[10px] text-gray-500">me <GemBadge rate={roi.personalPsaGemRate} /></span>
                         </div>
                       ) : <GemBadge rate={roi.psaGemRate} />}
-                    </td>
-                    <td className="px-3 py-2.5 text-right">
+                    </td>}
+                    {show("cgc_gem")     && <td className="px-3 py-2.5 text-right">
                       {gemMultiplier !== 1 && roi.personalCgcGemRate !== roi.cgcGemRate ? (
                         <div className="flex flex-col items-end gap-0.5">
                           <span className="text-gray-600 text-[10px] font-mono">pop <GemBadge rate={roi.cgcGemRate} /></span>
                           <span className="text-[10px] text-gray-500">me <GemBadge rate={roi.personalCgcGemRate} /></span>
                         </div>
                       ) : <GemBadge rate={roi.cgcGemRate} />}
-                    </td>
-                    <td className="px-3 py-2.5 text-right text-gray-500 tabular-nums font-mono text-[10px]" title={`PSA: ${card.psa_total_pop ?? "—"} total · CGC: ${card.cgc_total_pop ?? "—"} total`}>
+                    </td>}
+                    {show("pop")         && <td className="px-3 py-2.5 text-right text-gray-500 tabular-nums font-mono text-[10px]" title={`PSA: ${card.psa_total_pop ?? "—"} total · CGC: ${card.cgc_total_pop ?? "—"} total`}>
                       {card.psa_total_pop != null ? card.psa_total_pop : <span className="text-gray-700">—</span>}
-                    </td>
-                    <td className="px-3 py-2.5 text-right tabular-nums font-mono">
+                    </td>}
+                    {show("uplift10")    && <td className="px-3 py-2.5 text-right tabular-nums font-mono">
                       {psa10Uplift != null
                         ? <span className={psa10Uplift > 0 ? "text-green-400" : "text-gray-500"}>{formatCents(psa10Uplift)}</span>
                         : <span className="text-gray-600">—</span>}
-                    </td>
-                    <td className="px-3 py-2.5 text-right tabular-nums font-mono">
+                    </td>}
+                    {show("uplift9")     && <td className="px-3 py-2.5 text-right tabular-nums font-mono">
                       {psa9Uplift != null
                         ? <span className="text-gray-400">{formatCents(psa9Uplift)}</span>
                         : <span className="text-gray-600">—</span>}
-                    </td>
-                    <td className="px-3 py-2.5 text-right"><EvCell ev={roi.psaGradeRawEv} /></td>
-                    <td className="px-3 py-2.5 text-right tabular-nums font-mono text-[11px]">
+                    </td>}
+                    {show("ev_raw")      && <td className="px-3 py-2.5 text-right"><EvCell ev={roi.psaGradeRawEv} /></td>}
+                    {show("ev_raw_roi")  && <td className="px-3 py-2.5 text-right tabular-nums font-mono text-[11px]">
                       {roi.psaGradeRawEvRoi != null
                         ? <span className={roi.psaGradeRawEvRoi > 0 ? "text-green-400" : "text-red-400"}>{(roi.psaGradeRawEvRoi * 100).toFixed(0)}%</span>
                         : <span className="text-gray-600">—</span>}
-                    </td>
-                    <td className="px-3 py-2.5 text-right"><EvCell ev={roi.psaRegradePsa9Ev} /></td>
-                    <td className="px-3 py-2.5 text-right tabular-nums font-mono text-[11px]">
+                    </td>}
+                    {show("ev_psa9")     && <td className="px-3 py-2.5 text-right"><EvCell ev={roi.psaRegradePsa9Ev} /></td>}
+                    {show("ev_psa9_roi") && <td className="px-3 py-2.5 text-right tabular-nums font-mono text-[11px]">
                       {roi.psaRegradePsa9EvRoi != null
                         ? <span className={roi.psaRegradePsa9EvRoi > 0 ? "text-green-400" : "text-red-400"}>{(roi.psaRegradePsa9EvRoi * 100).toFixed(0)}%</span>
                         : <span className="text-gray-600">—</span>}
-                    </td>
-                    <td className="px-3 py-2.5 text-right"><EvCell ev={roi.cgcRegradePsa9AuctionEv} /></td>
-                    <td className="px-3 py-2.5 text-right"><XirrCell xirr={roi.bestXirr} /></td>
-                    <td className="px-3 py-2.5"><StrategyBadge strategy={roi.bestStrategy} /></td>
+                    </td>}
+                    {show("cgc_ev")      && <td className="px-3 py-2.5 text-right"><EvCell ev={roi.cgcRegradePsa9AuctionEv} /></td>}
+                    {show("xirr")        && <td className="px-3 py-2.5 text-right"><XirrCell xirr={roi.bestXirr} /></td>}
+                    {show("best")        && <td className="px-3 py-2.5"><StrategyBadge strategy={roi.bestStrategy} /></td>}
                   </tr>
                   {isExpanded && (
                     <tr>
-                      <td colSpan={19} className="px-6 py-5 bg-gray-950 border-b border-gray-800">
+                      <td colSpan={visibleColCount} className="px-6 py-5 bg-gray-950 border-b border-gray-800">
                         <GemSensitivityChart
                           card={card}
                           marketGemRate={roi.psaGemRate}

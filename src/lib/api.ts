@@ -226,6 +226,7 @@ export interface ROICard {
   display_key: string;
   name: string;
   number: string;
+  rarity: string | null;
   finish: string | null;
   image_url: string | null;
   price_week: string | null;
