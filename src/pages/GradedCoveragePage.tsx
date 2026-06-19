@@ -241,6 +241,23 @@ function ConfigureButton({ s, onSaved }: { s: CoverageSet; onSaved: (patch: Part
 type RefreshKey = string; // `${game}:${set_code}:${source}`
 type RefreshState = { status: "idle" | "running" | "failed"; error: string | null };
 
+// Era grouping. Order here is the display order (top to bottom).
+const ERAS = ["Mega Evolution", "Scarlet & Violet", "Sword & Shield", "Other"] as const;
+type Era = (typeof ERAS)[number];
+
+const SV_CODES = new Set([
+  "svi", "pal", "obf", "mew", "par", "paf", "tef", "twm",
+  "sfa", "scr", "ssp", "pre", "jtg", "dri", "blk", "wht",
+]);
+
+function eraOf(setCode: string): Era {
+  const code = setCode.toLowerCase();
+  if (/^me\d/.test(code)) return "Mega Evolution";
+  if (SV_CODES.has(code)) return "Scarlet & Violet";
+  if (code.startsWith("swsh") || code === "cel25" || code === "pgo") return "Sword & Shield";
+  return "Other";
+}
+
 function refreshKey(game: string, setCode: string, source: RefreshSource): RefreshKey {
   return `${game}:${setCode}:${source}`;
 }
@@ -343,111 +360,121 @@ export default function GradedCoveragePage() {
             </tr>
           </thead>
           <tbody className="divide-y divide-gray-800/60">
-            {[...sets]
-              .sort((a, b) => {
-                // Newest first; sets with null release_date go to the bottom.
-                if (a.release_date && b.release_date) return b.release_date.localeCompare(a.release_date);
-                if (a.release_date) return -1;
-                if (b.release_date) return 1;
-                return a.set_name.localeCompare(b.set_name);
-              })
-              .map((s) => {
-              const priceTotal = s.total_cards;
-              const gemTotal = s.cards_with_graded_data;
-              return (
-                <tr key={`${s.game}:${s.set_code}`} className="hover:bg-gray-900/40 transition-colors">
-                  <td className="px-4 py-3 font-medium text-white align-top">
-                    {s.set_name}
-                    <span className="ml-2 text-xs text-gray-500 font-normal">
-                      {s.set_code.toUpperCase()}
-                    </span>
+            {ERAS.flatMap((era) => {
+              const eraSets = sets
+                .filter((s) => eraOf(s.set_code) === era)
+                .sort((a, b) => {
+                  if (a.release_date && b.release_date) return b.release_date.localeCompare(a.release_date);
+                  if (a.release_date) return -1;
+                  if (b.release_date) return 1;
+                  return a.set_code.localeCompare(b.set_code);
+                });
+              if (eraSets.length === 0) return [];
+              return [
+                <tr key={`era:${era}`} className="bg-gray-950/80">
+                  <td colSpan={5} className="px-4 py-2 text-xs uppercase tracking-wider text-indigo-300 font-semibold border-t border-gray-800">
+                    {era} <span className="text-gray-600 font-normal normal-case">· {eraSets.length} set{eraSets.length === 1 ? "" : "s"}</span>
                   </td>
-                  <td className="px-4 py-3 align-top text-gray-400 tabular-nums text-xs">
-                    {s.release_date ?? "—"}
-                  </td>
-                  <td className="px-4 py-3 align-top">
-                    {priceTotal > 0 ? (
-                      <div className="space-y-1">
-                        <CoverageBar
-                          label="Raw"
-                          value={s.cards_with_raw_prices}
-                          total={priceTotal}
-                          updated={s.raw_prices_updated}
-                          color="bg-green-500"
-                          labelColor="text-green-500/70"
-                          {...buildBarRefresh(s, "console-prices", s.pricecharting_console_url)}
-                        />
-                        <CoverageBar
-                          label="PSA"
-                          value={s.cards_with_psa_prices}
-                          total={priceTotal}
-                          updated={s.psa_prices_updated}
-                          color="bg-yellow-400"
-                          labelColor="text-yellow-400/70"
-                          {...buildBarRefresh(s, "console-prices", s.pricecharting_console_url)}
-                        />
-                        <CoverageBar
-                          label="CGC"
-                          value={s.cards_with_cgc_prices}
-                          total={priceTotal}
-                          updated={s.cgc_prices_updated}
-                          color="bg-purple-400"
-                          labelColor="text-purple-400/70"
-                          {...buildBarRefresh(s, "console-prices", s.pricecharting_console_url)}
-                        />
-                      </div>
-                    ) : (
-                      <span className="text-gray-600 text-xs">no data</span>
-                    )}
-                  </td>
-                  <td className="px-4 py-3 align-top">
-                    {gemTotal > 0 ? (
-                      <div className="space-y-1">
-                        <CoverageBar
-                          label="PSA"
-                          value={s.cards_with_psa_gem_rate}
-                          total={gemTotal}
-                          updated={s.psa_gem_rate_updated}
-                          color="bg-yellow-400"
-                          labelColor="text-yellow-400/70"
-                          {...buildBarRefresh(s, "psa-pop", s.psa_pop_url)}
-                        />
-                        <CoverageBar
-                          label="CGC"
-                          value={s.cards_with_cgc_gem_rate}
-                          total={gemTotal}
-                          updated={s.cgc_gem_rate_updated}
-                          color="bg-purple-400"
-                          labelColor="text-purple-400/70"
-                          {...buildBarRefresh(s, "cgc-pop", s.cgc_pop_url)}
-                        />
-                      </div>
-                    ) : (
-                      <span className="text-gray-600 text-xs">no data</span>
-                    )}
-                  </td>
-                  <td className="px-4 py-3 align-top">
-                    <div className="flex items-center justify-end gap-3">
-                      <ConfigureButton
-                        s={s}
-                        onSaved={(patch) =>
-                          setSets((prev) =>
-                            prev.map((x) =>
-                              x.set_code === s.set_code && x.game === s.game ? { ...x, ...patch } : x
-                            )
-                          )
-                        }
-                      />
-                      <Link
-                        to={`/sets/${s.game}/${s.set_code}?tab=graded`}
-                        className="text-indigo-400 hover:text-indigo-300 text-xs font-medium whitespace-nowrap"
-                      >
-                        ROI &rarr;
-                      </Link>
-                    </div>
-                  </td>
-                </tr>
-              );
+                </tr>,
+                ...eraSets.map((s) => {
+                  const priceTotal = s.total_cards;
+                  const gemTotal = s.cards_with_graded_data;
+                  return (
+                    <tr key={`${s.game}:${s.set_code}`} className="hover:bg-gray-900/40 transition-colors">
+                      <td className="px-4 py-3 font-medium text-white align-top">
+                        {s.set_name}
+                        <span className="ml-2 text-xs text-gray-500 font-normal">
+                          {s.set_code.toUpperCase()}
+                        </span>
+                      </td>
+                      <td className="px-4 py-3 align-top text-gray-400 tabular-nums text-xs">
+                        {s.release_date ?? "—"}
+                      </td>
+                      <td className="px-4 py-3 align-top">
+                        {priceTotal > 0 ? (
+                          <div className="space-y-1">
+                            <CoverageBar
+                              label="Raw"
+                              value={s.cards_with_raw_prices}
+                              total={priceTotal}
+                              updated={s.raw_prices_updated}
+                              color="bg-green-500"
+                              labelColor="text-green-500/70"
+                              {...buildBarRefresh(s, "console-prices", s.pricecharting_console_url)}
+                            />
+                            <CoverageBar
+                              label="PSA"
+                              value={s.cards_with_psa_prices}
+                              total={priceTotal}
+                              updated={s.psa_prices_updated}
+                              color="bg-yellow-400"
+                              labelColor="text-yellow-400/70"
+                              {...buildBarRefresh(s, "console-prices", s.pricecharting_console_url)}
+                            />
+                            <CoverageBar
+                              label="CGC"
+                              value={s.cards_with_cgc_prices}
+                              total={priceTotal}
+                              updated={s.cgc_prices_updated}
+                              color="bg-purple-400"
+                              labelColor="text-purple-400/70"
+                              {...buildBarRefresh(s, "console-prices", s.pricecharting_console_url)}
+                            />
+                          </div>
+                        ) : (
+                          <span className="text-gray-600 text-xs">no data</span>
+                        )}
+                      </td>
+                      <td className="px-4 py-3 align-top">
+                        {gemTotal > 0 ? (
+                          <div className="space-y-1">
+                            <CoverageBar
+                              label="PSA"
+                              value={s.cards_with_psa_gem_rate}
+                              total={gemTotal}
+                              updated={s.psa_gem_rate_updated}
+                              color="bg-yellow-400"
+                              labelColor="text-yellow-400/70"
+                              {...buildBarRefresh(s, "psa-pop", s.psa_pop_url)}
+                            />
+                            <CoverageBar
+                              label="CGC"
+                              value={s.cards_with_cgc_gem_rate}
+                              total={gemTotal}
+                              updated={s.cgc_gem_rate_updated}
+                              color="bg-purple-400"
+                              labelColor="text-purple-400/70"
+                              {...buildBarRefresh(s, "cgc-pop", s.cgc_pop_url)}
+                            />
+                          </div>
+                        ) : (
+                          <span className="text-gray-600 text-xs">no data</span>
+                        )}
+                      </td>
+                      <td className="px-4 py-3 align-top">
+                        <div className="flex items-center justify-end gap-3">
+                          <ConfigureButton
+                            s={s}
+                            onSaved={(patch) =>
+                              setSets((prev) =>
+                                prev.map((x) =>
+                                  x.set_code === s.set_code && x.game === s.game ? { ...x, ...patch } : x
+                                )
+                              )
+                            }
+                          />
+                          <Link
+                            to={`/sets/${s.game}/${s.set_code}?tab=graded`}
+                            className="text-indigo-400 hover:text-indigo-300 text-xs font-medium whitespace-nowrap"
+                          >
+                            ROI &rarr;
+                          </Link>
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                }),
+              ];
             })}
           </tbody>
         </table>
