@@ -248,12 +248,14 @@ type Era = (typeof ERAS)[number];
 const SV_CODES = new Set([
   "svi", "pal", "obf", "mew", "par", "paf", "tef", "twm",
   "sfa", "scr", "ssp", "pre", "jtg", "dri", "blk", "wht",
+  "svp",  // Scarlet & Violet Black Star Promos
 ]);
 
 function eraOf(setCode: string): Era {
   const code = setCode.toLowerCase();
   if (/^me\d/.test(code)) return "Mega Evolution";
   if (SV_CODES.has(code)) return "Scarlet & Violet";
+  // swsh* covers swsh1-12, swshp promos, swsh9tg/10tg/11tg/12tg, swsh125gg
   if (code.startsWith("swsh") || code === "cel25" || code === "pgo") return "Sword & Shield";
   return "Other";
 }
