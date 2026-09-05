@@ -269,16 +269,17 @@ export default function GradedCoveragePage() {
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [refreshState, setRefreshState] = useState<Record<RefreshKey, RefreshState>>({});
+  const [includeAllRarities, setIncludeAllRarities] = useState(false);
   const pollers = useRef<Record<string, number>>({});
 
   const reloadCoverage = () => {
-    fetchGradedCoverage("pokemon")
+    fetchGradedCoverage("pokemon", { all: includeAllRarities })
       .then((r) => setSets(r.sets))
       .catch((e: unknown) => setError(String(e)));
   };
 
   useEffect(() => {
-    fetchGradedCoverage("pokemon")
+    fetchGradedCoverage("pokemon", { all: includeAllRarities })
       .then((r) => setSets(r.sets))
       .catch((e: unknown) => setError(String(e)))
       .finally(() => setLoading(false));
@@ -286,7 +287,7 @@ export default function GradedCoveragePage() {
     return () => {
       for (const id of Object.values(refs)) window.clearInterval(id);
     };
-  }, []);
+  }, [includeAllRarities]);
 
   const startRefresh = (set: CoverageSet, source: RefreshSource, url: string) => {
     const key = refreshKey(set.game, set.set_code, source);
@@ -348,6 +349,16 @@ export default function GradedCoveragePage() {
         <p className="text-sm text-gray-400 mt-1">
           Pokemon sets with graded price and pop report data. Click a set to see the full ROI breakdown.
         </p>
+        <label className="mt-2 flex items-center gap-2 text-xs text-gray-400 select-none">
+          <input
+            type="checkbox"
+            className="accent-blue-500"
+            checked={includeAllRarities}
+            onChange={(e) => setIncludeAllRarities(e.target.checked)}
+          />
+          Include bulk rarities (Common / Uncommon / non-holo Rare) — off by default,
+          since these rarely justify grading
+        </label>
       </div>
 
       <div className="rounded-lg border border-gray-800 overflow-visible">

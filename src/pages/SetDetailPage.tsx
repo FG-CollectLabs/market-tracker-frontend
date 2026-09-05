@@ -993,10 +993,12 @@ function GradedTab({ game, code }: { game: string; code: string }) {
   const [minPopFilter, setMinPopFilter] = useState(0);
   const [hiddenCols, setHiddenCols] = useState<Set<ColId>>(DEFAULT_HIDDEN);
   const [selectedRarities, setSelectedRarities] = useState<Set<string>>(new Set());
+  const [includeAllRarities, setIncludeAllRarities] = useState(false);
 
   useEffect(() => {
+    setLoading(true);
     Promise.all([
-      fetchSetGraded(game, code),
+      fetchSetGraded(game, code, { all: includeAllRarities }),
       fetchSet(game, code).catch(() => null),
     ])
       .then(([graded, setRow]) => {
@@ -1005,7 +1007,7 @@ function GradedTab({ game, code }: { game: string; code: string }) {
       })
       .catch((e: unknown) => setError(String(e)))
       .finally(() => setLoading(false));
-  }, [game, code]);
+  }, [game, code, includeAllRarities]);
 
   const roiOpts = useMemo<ROIOptions>(() => {
     const opts: ROIOptions = {};
@@ -1226,6 +1228,16 @@ function GradedTab({ game, code }: { game: string; code: string }) {
           <span className="text-gray-500">graded (0 = all)</span>
         </div>
       </div>
+      {/* Rarity scope — controls what the server returns */}
+      <label className="flex items-center gap-2 text-xs text-gray-400 select-none px-1">
+        <input
+          type="checkbox"
+          className="accent-blue-500"
+          checked={includeAllRarities}
+          onChange={(e) => setIncludeAllRarities(e.target.checked)}
+        />
+        Include bulk rarities (Common / Uncommon / non-holo Rare) — hidden by default
+      </label>
       {/* Rarity filter */}
       {availableRarities.length > 0 && (
         <div className="rounded border border-gray-800 bg-gray-900/50 px-4 py-2.5 flex flex-wrap items-center gap-x-3 gap-y-2 text-xs">

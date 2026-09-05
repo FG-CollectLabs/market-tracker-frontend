@@ -216,8 +216,16 @@ export interface CoverageSet {
   pricecharting_console_url: string | null;
 }
 
-export function fetchGradedCoverage(game = "pokemon"): Promise<{ sets: CoverageSet[] }> {
-  const q = game ? `?game=${encodeURIComponent(game)}` : "";
+// By default the coverage endpoint counts only cards worth grading (holo Rare
+// and up). Pass { all: true } to include Common / Uncommon / non-holo Rare.
+export function fetchGradedCoverage(
+  game = "pokemon",
+  opts?: { all?: boolean },
+): Promise<{ sets: CoverageSet[] }> {
+  const qs = new URLSearchParams();
+  if (game) qs.set("game", game);
+  if (opts?.all) qs.set("all", "true");
+  const q = qs.toString() ? `?${qs}` : "";
   return get(`/v1/graded/coverage${q}`);
 }
 
@@ -242,8 +250,14 @@ export interface ROICard {
   cgc_total_pop: number | null;
 }
 
-export function fetchSetGraded(game: string, setCode: string): Promise<{ game: string; set_code: string; cards: ROICard[] }> {
-  return get(`/v1/sets/${game}/${setCode}/graded`);
+// Defaults to grading-worthy rarities only; pass { all: true } for every card.
+export function fetchSetGraded(
+  game: string,
+  setCode: string,
+  opts?: { all?: boolean },
+): Promise<{ game: string; set_code: string; cards: ROICard[] }> {
+  const q = opts?.all ? "?all=true" : "";
+  return get(`/v1/sets/${game}/${setCode}/graded${q}`);
 }
 
 export function updateSetExternalIds(
