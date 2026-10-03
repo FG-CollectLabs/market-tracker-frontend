@@ -362,3 +362,125 @@ export function fetchCardGraded(displayKey: string): Promise<{
 }> {
   return get(`/v1/cards/${encodeURIComponent(displayKey)}/graded`);
 }
+
+// ---- Graded tracker ----------------------------------------------------------
+// Curated cards with one column group per source; see
+// .github/projects/graded-tracker/ARCHITECTURE.md. Read-only here: sales and
+// supply are entered through the MCP server (market-tracker-backend/cmd/mcp).
+
+export interface PcPrice {
+  cents: number;
+  week_start_date: string;
+  captured_at: string;
+}
+
+export interface SalesSummary {
+  median_all_in_cents: number | null;
+  min_all_in_cents: number | null;
+  sold_7d: number;
+  sold_window: number;
+  sold_total: number;
+  last_sold_at: string | null;
+  last_all_in_cents: number | null;
+  last_recorded_at: string | null;
+}
+
+export interface SupplySummary {
+  active_count: number;
+  observed_at: string;
+  closes_at?: string;
+}
+
+export interface TrackedCard {
+  card_id: string;
+  display_key: string;
+  set_code: string;
+  name: string;
+  number: string;
+  finish?: string;
+  rarity?: string;
+  artist?: string;
+  image_url?: string;
+  reason: string;
+  pinned: boolean;
+  excluded: boolean;
+  note?: string;
+  pricecharting: Record<string, PcPrice>; // grade key -> price
+  sales: Record<string, Record<string, SalesSummary>>; // source -> grade key -> summary
+  supply: Record<string, Record<string, SupplySummary>>;
+}
+
+export interface SourceFreshness {
+  latest_data_at: string | null;
+  last_run_at: string | null;
+  last_run_status: string | null;
+  stale: boolean;
+}
+
+export interface TrackedResponse {
+  game: string;
+  sets: string[];
+  window_days: number;
+  grades: string[];
+  sources: Record<string, SourceFreshness>;
+  cards: TrackedCard[];
+}
+
+export function fetchTracked(params?: { set?: string; windowDays?: number }): Promise<TrackedResponse> {
+  const qs = new URLSearchParams();
+  if (params?.set) qs.set("set", params.set);
+  if (params?.windowDays) qs.set("window_days", String(params.windowDays));
+  const s = qs.toString();
+  return get(`/v1/tracked${s ? `?${s}` : ""}`);
+}
+
+export interface CardSale {
+  id: string;
+  grade_key: string;
+  source: string;
+  sold_at: string;
+  price_cents: number;
+  buyers_premium_pct?: number;
+  shipping_cents?: number;
+  all_in_cents: number;
+  sale_type?: string;
+  external_id?: string;
+  cert_number?: string;
+  url?: string;
+  title_raw?: string;
+  note?: string;
+  entry_method: string;
+  recorded_at: string;
+}
+
+export interface CardSalesWeek {
+  grade_key: string;
+  source: string;
+  week_start_date: string;
+  sold_count: number;
+  median_all_in_cents: number;
+  min_all_in_cents: number;
+  max_all_in_cents: number;
+}
+
+export interface CardSupplySnapshot {
+  id: string;
+  grade_key: string;
+  source: string;
+  observed_at: string;
+  active_count: number;
+  closes_at?: string;
+  url?: string;
+  note?: string;
+  entry_method: string;
+}
+
+export function fetchCardSales(displayKey: string): Promise<{
+  display_key: string;
+  name: string;
+  sales: CardSale[];
+  weekly: CardSalesWeek[];
+  supply: CardSupplySnapshot[];
+}> {
+  return get(`/v1/cards/${encodeURIComponent(displayKey)}/sales`);
+}

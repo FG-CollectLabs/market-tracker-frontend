@@ -3,6 +3,7 @@ import SetsPage from "./pages/SetsPage";
 import SetDetailPage from "./pages/SetDetailPage";
 import CardDetailPage from "./pages/CardDetailPage";
 import GradedCoveragePage from "./pages/GradedCoveragePage";
+import TrackedPage from "./pages/TrackedPage";
 
 function Nav() {
   const linkCls = ({ isActive }: { isActive: boolean }) =>
@@ -21,6 +22,9 @@ function Nav() {
       <NavLink to="/graded" className={linkCls}>
         Graded Coverage
       </NavLink>
+      <NavLink to="/tracked" className={linkCls}>
+        Tracked Cards
+      </NavLink>
     </nav>
   );
 }
@@ -36,6 +40,7 @@ export default function App() {
             <Route path="/sets/:game/:code" element={<SetDetailPage />} />
             <Route path="/cards/:displayKey" element={<CardDetailPage />} />
             <Route path="/graded" element={<GradedCoveragePage />} />
+            <Route path="/tracked" element={<TrackedPage />} />
           </Routes>
         </main>
       </div>
