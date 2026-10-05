@@ -42,6 +42,13 @@ const REASON_FILTERS = [
 
 type SortKey = "number" | "pc-psa-10" | "sold" | "supply";
 
+function matchesSet(code: string, filter: string): boolean {
+  if (!filter) return true;
+  if (filter === "jp") return code.startsWith("jp-");
+  if (filter === "en") return !code.startsWith("jp-");
+  return code === filter;
+}
+
 function daysAgo(iso: string | null | undefined): number | null {
   if (!iso) return null;
   return Math.floor((Date.now() - new Date(iso).getTime()) / 86_400_000);
@@ -320,6 +327,8 @@ export default function TrackedPage() {
   const [error, setError] = useState<string | null>(null);
   const [grade, setGrade] = useState("psa-10");
   const [reason, setReason] = useState("");
+  // "" = all, "en" = English sets, "jp" = Japanese sets, else one set code.
+  const [setFilter, setSetFilter] = useState("");
   const [query, setQuery] = useState("");
   const [sort, setSort] = useState<SortKey>("number");
   const [open, setOpen] = useState<string | null>(null);
@@ -339,6 +348,7 @@ export default function TrackedPage() {
     const out = data.cards.filter(
       (c) =>
         (!reason || c.reason.startsWith(reason)) &&
+        matchesSet(c.set_code, setFilter) &&
         (!q || c.name.toLowerCase().includes(q) || c.number.includes(q) || (c.artist ?? "").toLowerCase().includes(q)),
     );
     const soldCount = (c: TrackedCard) =>
@@ -346,13 +356,21 @@ export default function TrackedPage() {
     const supplyCount = (c: TrackedCard) =>
       Object.values(c.supply).reduce((n, byGrade) => n + (byGrade[grade]?.active_count ?? 0), 0);
     const by: Record<SortKey, (a: TrackedCard, b: TrackedCard) => number> = {
-      number: (a, b) => a.number.localeCompare(b.number) || (a.finish ?? "").localeCompare(b.finish ?? ""),
+      number: (a, b) =>
+        a.set_code.localeCompare(b.set_code) ||
+        a.number.localeCompare(b.number) ||
+        (a.finish ?? "").localeCompare(b.finish ?? ""),
       "pc-psa-10": (a, b) => (b.pricecharting["psa-10"]?.cents ?? -1) - (a.pricecharting["psa-10"]?.cents ?? -1),
       sold: (a, b) => soldCount(b) - soldCount(a),
       supply: (a, b) => supplyCount(b) - supplyCount(a),
     };
     return [...out].sort(by[sort]);
-  }, [data, reason, query, sort, grade]);
+  }, [data, reason, query, sort, grade, setFilter]);
+
+  const setCodes = useMemo(
+    () => [...new Set((data?.cards ?? []).map((c) => c.set_code))].sort(),
+    [data],
+  );
 
   const colCount = 1 + (data?.grades.length ?? 0) + SALES_SOURCES.length * 3 + 1;
 
@@ -399,6 +417,20 @@ export default function TrackedPage() {
             ))}
           </select>
         </label>
+        <select
+          value={setFilter}
+          onChange={(e) => setSetFilter(e.target.value)}
+          className="bg-gray-900 border border-gray-700 rounded px-2 py-1 text-gray-200"
+        >
+          <option value="">All sets</option>
+          <option value="en">English sets</option>
+          <option value="jp">Japanese sets</option>
+          {setCodes.map((code) => (
+            <option key={code} value={code}>
+              {code}
+            </option>
+          ))}
+        </select>
         <select
           value={reason}
           onChange={(e) => setReason(e.target.value)}
@@ -482,6 +514,11 @@ export default function TrackedPage() {
                       <td className="px-3 py-2">
                         <div className="flex items-center gap-2 min-w-[14rem]">
                           <span className="text-gray-500 tabular-nums text-xs w-8">#{c.number}</span>
+                          {c.set_code.startsWith("jp-") && (
+                            <span className="text-[10px] px-1 rounded bg-rose-900/50 text-rose-300" title={c.set_code}>
+                              {c.set_code.slice(3).toUpperCase()}
+                            </span>
+                          )}
                           <span className="text-gray-100">{c.name}</span>
                           {c.finish === "rh" && (
                             <span className="text-[10px] px-1 rounded bg-cyan-900/50 text-cyan-300">RH</span>
