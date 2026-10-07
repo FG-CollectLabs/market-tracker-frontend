@@ -388,9 +388,10 @@ export interface PcPrice {
 }
 
 // A grader's latest population: copies at the top grade (PSA 10 / any CGC 10)
-// out of all graded copies.
+// and at 9, out of all graded copies.
 export interface PopSummary {
   gem: number;
+  nine: number | null; // copies graded a plain 9; null until stored
   total: number;
   week_start_date: string;
   captured_at: string;

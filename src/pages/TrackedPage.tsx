@@ -17,6 +17,7 @@ import { formatCents } from "../lib/roi";
 import { Spinner, ErrorMsg } from "../components/Spinner";
 import { AsOf } from "../components/AsOf";
 import { STALE_DAYS, ago, daysAgo, shortDate } from "../lib/freshness";
+import { DEFAULT_GRADING, gradingMath, type GradingMath, type GradingSettings } from "../lib/grading";
 
 // Sources shown as column groups, in order. PriceCharting is a weekly index;
 // eBay and Fanatics are built from individual sales entered via the MCP server.
@@ -41,7 +42,32 @@ const REASON_FILTERS = [
   { key: "manual", label: "Manual" },
 ];
 
-type SortKey = "number" | "pc-psa-10" | "sold" | "supply";
+type SortKey = "number" | "pc-psa-10" | "sold" | "supply" | "grade-roi" | "ten-value" | "gem";
+type View = "market" | "grading";
+// Where the grading math takes PSA 9 / 10 prices from. Raw is always
+// PriceCharting's ungraded price.
+type PriceSource = "pricecharting" | "fanatics";
+
+function gradedPrice(c: TrackedCard, key: "psa-9" | "psa-10", src: PriceSource): number | null {
+  if (src === "fanatics") {
+    const m = c.sales.fanatics?.[key]?.median_all_in_cents;
+    if (m != null) return m;
+  }
+  return c.pricecharting[key]?.cents ?? null;
+}
+
+function cardMath(c: TrackedCard, gs: GradingSettings, src: PriceSource): GradingMath | null {
+  const pop = c.pop?.psa;
+  if (!pop) return null;
+  return gradingMath({
+    rawCents: c.pricecharting.raw?.cents ?? null,
+    nineCents: gradedPrice(c, "psa-9", src),
+    tenCents: gradedPrice(c, "psa-10", src),
+    gem: pop.gem,
+    nine: pop.nine,
+    total: pop.total,
+  }, gs);
+}
 
 function matchesSet(code: string, filter: string): boolean {
   if (!filter) return true;
@@ -105,6 +131,151 @@ function PcCell({ price }: { price: PcPrice | undefined }) {
       {formatCents(price.cents)}
       {stale && <span className="text-amber-600 ml-0.5">•</span>}
     </span>
+  );
+}
+
+function MoneyInput({ label, cents, onChange, title }: { label: string; cents: number; onChange: (c: number) => void; title?: string }) {
+  return (
+    <label className="flex items-center gap-1.5 text-gray-400" title={title}>
+      {label} $
+      <input
+        type="number" min={0} step={1} value={cents / 100}
+        onChange={(e) => onChange(Math.round((Number(e.target.value) || 0) * 100))}
+        className="w-16 bg-gray-900 border border-gray-700 rounded px-1.5 py-0.5 text-gray-200 font-mono"
+      />
+    </label>
+  );
+}
+
+function CardCell({ c }: { c: TrackedCard }) {
+  return (
+    <td className="px-3 py-2">
+      <div className="flex items-center gap-2 min-w-[14rem]">
+        <span className="text-gray-500 tabular-nums text-xs w-8">#{c.number}</span>
+        {c.set_code.startsWith("jp-") && (
+          <span className="text-[10px] px-1 rounded bg-rose-900/50 text-rose-300" title={c.set_code}>
+            {c.set_code.slice(3).toUpperCase()}
+          </span>
+        )}
+        <span className="text-gray-100">{c.name}</span>
+        {c.finish === "rh" && (
+          <span className="text-[10px] px-1 rounded bg-cyan-900/50 text-cyan-300">RH</span>
+        )}
+        <ReasonBadge reason={c.reason} pinned={c.pinned} />
+      </div>
+      <div className="text-[11px] text-gray-600 ml-10">
+        {c.rarity}
+        {c.artist && <> · {c.artist}</>}
+      </div>
+    </td>
+  );
+}
+
+function Money({ cents, signed }: { cents: number | null; signed?: boolean }) {
+  if (cents == null) return <span className="text-gray-700">—</span>;
+  const color = !signed ? "text-gray-200" : cents > 0 ? "text-green-400" : cents < 0 ? "text-red-400" : "text-gray-400";
+  return (
+    <span className={`tabular-nums font-mono ${color}`}>
+      {signed && cents > 0 ? "+" : ""}
+      {formatCents(cents)}
+    </span>
+  );
+}
+
+function Pct({ v, signed }: { v: number | null; signed?: boolean }) {
+  if (v == null) return <span className="text-gray-700">—</span>;
+  const color = !signed ? "text-gray-200" : v > 0 ? "text-green-400" : v < 0 ? "text-red-400" : "text-gray-400";
+  return <span className={`tabular-nums font-mono ${color}`}>{signed && v > 0 ? "+" : ""}{(v * 100).toFixed(0)}%</span>;
+}
+
+function SignalBadge({ m }: { m: GradingMath | null }) {
+  if (!m?.signal) return <span className="text-gray-700">—</span>;
+  return m.signal === "grade" ? (
+    <span className="px-1.5 py-0.5 rounded text-[11px] font-medium bg-green-900/60 text-green-300" title="Expected grading profit clears your ROI and profit bars: buy raw copies to grade">
+      Grade raw
+    </span>
+  ) : (
+    <span className="px-1.5 py-0.5 rounded text-[11px] font-medium bg-amber-900/60 text-amber-300" title="A PSA 10 sells for less than it costs to make one at this gem rate: buy 10s">
+      Buy 10s
+    </span>
+  );
+}
+
+function PriceCell({ c, k, src }: { c: TrackedCard; k: "raw" | "psa-9" | "psa-10"; src: PriceSource }) {
+  const fan = k !== "raw" && src === "fanatics" ? c.sales.fanatics?.[k] : undefined;
+  if (fan?.median_all_in_cents != null) {
+    return (
+      <AsOf at={fan.last_recorded_at} label={`Fanatics median all-in (${fan.sold_window} sold in window)`}>
+        <span className="tabular-nums font-mono text-yellow-200/90">{formatCents(fan.median_all_in_cents)}</span>
+      </AsOf>
+    );
+  }
+  return <PcCell price={c.pricecharting[k]} />;
+}
+
+function GradingCells({ c, m, src }: { c: TrackedCard; m: GradingMath | null; src: PriceSource }) {
+  const pop = c.pop?.psa;
+  const td = "px-2 py-2 text-right";
+  return (
+    <>
+      <td className={`${td} border-l border-gray-800/70`}><PriceCell c={c} k="raw" src={src} /></td>
+      <td className={td}><PriceCell c={c} k="psa-9" src={src} /></td>
+      <td className={td}><PriceCell c={c} k="psa-10" src={src} /></td>
+      <td className={`${td} border-l border-gray-800/70`}><GemCell pop={pop} grader="PSA" /></td>
+      <td className={td}>
+        {m?.p9 != null && pop ? (
+          <AsOf at={pop.captured_at} label={`PSA ${pop.nine?.toLocaleString()} nines of ${pop.total.toLocaleString()} graded`}>
+            <span className="tabular-nums font-mono text-gray-300">{(m.p9 * 100).toFixed(1)}%</span>
+          </AsOf>
+        ) : <span className="text-gray-700" title="9 count arrives with the next GemRate run">—</span>}
+      </td>
+      <td className={`${td} border-l border-gray-800/70`} title={m?.costCents != null ? `Cost to grade one copy: ${formatCents(m.costCents)}` : undefined}>
+        <Money cents={m?.prem9Cents ?? null} signed />
+      </td>
+      <td className={td} title={m?.costCents != null ? `Cost to grade one copy: ${formatCents(m.costCents)}` : undefined}>
+        <Money cents={m?.prem10Cents ?? null} signed />
+      </td>
+      <td className={`${td} border-l border-gray-800/70`} title={m?.roi != null ? `Expected ROI ${(m.roi * 100).toFixed(0)}% on ${formatCents(m.costCents)}` : undefined}>
+        <Money cents={m?.evCents ?? null} signed />
+        <div className="text-[10px]"><Pct v={m?.roi ?? null} signed /></div>
+      </td>
+      <td className={td} title="Expected spend to end up with one PSA 10, after selling the 9s and lower slabs">
+        <Money cents={m?.costPer10Cents ?? null} />
+        {m?.tenValue != null && (
+          <div className={`text-[10px] tabular-nums ${m.tenValue < 1 ? "text-amber-300" : "text-gray-500"}`}>
+            10 sells {m.tenValue.toFixed(1)}× cost
+          </div>
+        )}
+      </td>
+      <td className="px-2 py-2 border-l border-gray-800/70"><SignalBadge m={m} /></td>
+    </>
+  );
+}
+
+function GradingHead() {
+  const th = "px-2 pb-2 text-right font-normal";
+  return (
+    <>
+      <tr>
+        <th rowSpan={2} className="text-left px-3 py-2 font-medium align-bottom">Card</th>
+        <th colSpan={3} className="px-2 pt-2 font-medium text-purple-300 border-l border-gray-800">Prices</th>
+        <th colSpan={2} className="px-2 pt-2 font-medium text-emerald-300 border-l border-gray-800" title="PSA population odds from GemRate">PSA odds</th>
+        <th colSpan={2} className="px-2 pt-2 font-medium text-sky-300 border-l border-gray-800" title="Graded price minus raw + fee + shipping">Premium over cost</th>
+        <th colSpan={2} className="px-2 pt-2 font-medium text-sky-300 border-l border-gray-800">Grading one raw copy</th>
+        <th rowSpan={2} className="px-2 py-2 font-medium align-bottom border-l border-gray-800">Signal</th>
+      </tr>
+      <tr>
+        <th className={`${th} border-l border-gray-800`}>Raw</th>
+        <th className={th}>PSA 9</th>
+        <th className={th}>PSA 10</th>
+        <th className={`${th} border-l border-gray-800`}>10</th>
+        <th className={th}>9</th>
+        <th className={`${th} border-l border-gray-800`}>If 9</th>
+        <th className={th}>If 10</th>
+        <th className={`${th} border-l border-gray-800`}>EV / ROI</th>
+        <th className={th} title="Expected spend to end up with one PSA 10">Cost per 10</th>
+      </tr>
+    </>
   );
 }
 
@@ -327,6 +498,10 @@ export default function TrackedPage() {
   const [query, setQuery] = useState("");
   const [sort, setSort] = useState<SortKey>("number");
   const [open, setOpen] = useState<string | null>(null);
+  const [view, setView] = useState<View>("market");
+  const [gs, setGs] = useState<GradingSettings>(DEFAULT_GRADING);
+  const [priceSrc, setPriceSrc] = useState<PriceSource>("pricecharting");
+  const [signalFilter, setSignalFilter] = useState<"" | "grade" | "buy10">("");
 
   useEffect(() => {
     setError(null);
@@ -337,6 +512,12 @@ export default function TrackedPage() {
 
   const gradedKeys = useMemo(() => (data?.grades ?? []).filter((g) => g !== "raw"), [data]);
 
+  const math = useMemo(() => {
+    const m = new Map<string, GradingMath | null>();
+    for (const c of data?.cards ?? []) m.set(c.card_id, cardMath(c, gs, priceSrc));
+    return m;
+  }, [data, gs, priceSrc]);
+
   const rows = useMemo(() => {
     if (!data) return [];
     const q = query.trim().toLowerCase();
@@ -344,8 +525,13 @@ export default function TrackedPage() {
       (c) =>
         (!reason || c.reason.startsWith(reason)) &&
         matchesSet(c.set_code, setFilter) &&
+        (!signalFilter || math.get(c.card_id)?.signal === signalFilter) &&
         (!q || c.name.toLowerCase().includes(q) || c.number.includes(q) || (c.artist ?? "").toLowerCase().includes(q)),
     );
+    const mv = (c: TrackedCard, f: (m: GradingMath) => number | null) => {
+      const m = math.get(c.card_id);
+      return (m && f(m)) ?? -Infinity;
+    };
     const soldCount = (c: TrackedCard) =>
       SALES_SOURCES.reduce((n, s) => n + (c.sales[s.key]?.[grade]?.sold_window ?? 0), 0);
     const supplyCount = (c: TrackedCard) =>
@@ -358,16 +544,28 @@ export default function TrackedPage() {
       "pc-psa-10": (a, b) => (b.pricecharting["psa-10"]?.cents ?? -1) - (a.pricecharting["psa-10"]?.cents ?? -1),
       sold: (a, b) => soldCount(b) - soldCount(a),
       supply: (a, b) => supplyCount(b) - supplyCount(a),
+      "grade-roi": (a, b) => mv(b, (m) => m.roi) - mv(a, (m) => m.roi),
+      // Cheapest 10s relative to what they cost to make come first; cards
+      // without the numbers go last.
+      "ten-value": (a, b) => {
+        const x = math.get(a.card_id)?.tenValue ?? null;
+        const y = math.get(b.card_id)?.tenValue ?? null;
+        if (x == null || y == null) return x == null ? (y == null ? 0 : 1) : -1;
+        return x - y;
+      },
+      gem: (a, b) => mv(b, (m) => m.p10) - mv(a, (m) => m.p10),
     };
     return [...out].sort(by[sort]);
-  }, [data, reason, query, sort, grade, setFilter]);
+  }, [data, reason, query, sort, grade, setFilter, signalFilter, math]);
 
   const setCodes = useMemo(
     () => [...new Set((data?.cards ?? []).map((c) => c.set_code))].sort(),
     [data],
   );
 
-  const colCount = 1 + (data?.grades.length ?? 0) + 2 + SALES_SOURCES.length * 3 + 1;
+  const colCount = view === "grading"
+    ? 1 + 3 + 2 + 2 + 2 + 1
+    : 1 + (data?.grades.length ?? 0) + 2 + SALES_SOURCES.length * 3 + 1;
 
   return (
     <div>
@@ -382,6 +580,56 @@ export default function TrackedPage() {
       </div>
 
       {data && <FreshnessStrip sources={data.sources} />}
+
+      <div className="flex flex-wrap items-center gap-3 mb-4 text-sm">
+        <div className="inline-flex rounded border border-gray-700 overflow-hidden">
+          {(["market", "grading"] as const).map((v) => (
+            <button
+              key={v}
+              onClick={() => {
+                setView(v);
+                if (v === "grading" && sort === "number") setSort("grade-roi");
+              }}
+              className={`px-3 py-1 ${view === v ? "bg-indigo-700 text-white" : "bg-gray-900 text-gray-400 hover:text-gray-200"}`}
+            >
+              {v === "market" ? "Market" : "Grading (PSA)"}
+            </button>
+          ))}
+        </div>
+        {view === "grading" && (
+          <>
+            <MoneyInput label="Fee" cents={gs.feeCents} onChange={(v) => setGs({ ...gs, feeCents: v })} title="PSA grading fee per card" />
+            <MoneyInput label="Ship/handling" cents={gs.extraCents} onChange={(v) => setGs({ ...gs, extraCents: v })} title="Per-card shipping, insurance and handling" />
+            <label className="flex items-center gap-1.5 text-gray-400" title="Show 'Grade raw' when expected ROI is at least this">
+              Min ROI
+              <input
+                type="number" min={0} step={5} value={Math.round(gs.minRoi * 100)}
+                onChange={(e) => setGs({ ...gs, minRoi: (Number(e.target.value) || 0) / 100 })}
+                className="w-14 bg-gray-900 border border-gray-700 rounded px-1.5 py-0.5 text-gray-200 font-mono"
+              />%
+            </label>
+            <MoneyInput label="Min profit" cents={gs.minProfitCents} onChange={(v) => setGs({ ...gs, minProfitCents: v })} title="Show 'Grade raw' only when expected profit is at least this" />
+            <select
+              value={priceSrc}
+              onChange={(e) => setPriceSrc(e.target.value as PriceSource)}
+              className="bg-gray-900 border border-gray-700 rounded px-2 py-1 text-gray-200"
+              title="Where PSA 9 / 10 prices come from; raw is always PriceCharting"
+            >
+              <option value="pricecharting">Prices: PriceCharting</option>
+              <option value="fanatics">Prices: Fanatics median, else PriceCharting</option>
+            </select>
+            <select
+              value={signalFilter}
+              onChange={(e) => setSignalFilter(e.target.value as "" | "grade" | "buy10")}
+              className="bg-gray-900 border border-gray-700 rounded px-2 py-1 text-gray-200"
+            >
+              <option value="">All signals</option>
+              <option value="grade">Grade raw</option>
+              <option value="buy10">Buy 10s</option>
+            </select>
+          </>
+        )}
+      </div>
 
       <div className="flex flex-wrap gap-3 mb-4 text-sm">
         <label className="flex items-center gap-2 text-gray-400">
@@ -446,6 +694,9 @@ export default function TrackedPage() {
           <option value="pc-psa-10">Sort: PriceCharting PSA 10</option>
           <option value="sold">Sort: copies sold (grade)</option>
           <option value="supply">Sort: copies up for sale (grade)</option>
+          <option value="grade-roi">Sort: grading ROI</option>
+          <option value="ten-value">Sort: cheapest 10s vs cost to make</option>
+          <option value="gem">Sort: PSA gem rate</option>
         </select>
         <input
           value={query}
@@ -462,6 +713,8 @@ export default function TrackedPage() {
         <div className="overflow-x-auto rounded-lg border border-gray-800">
           <table className="w-full text-sm">
             <thead className="bg-gray-900/60 text-gray-400 text-xs">
+              {view === "grading" ? <GradingHead /> : (
+                <>
               <tr>
                 <th rowSpan={2} className="text-left px-3 py-2 font-medium align-bottom">
                   Card
@@ -499,6 +752,8 @@ export default function TrackedPage() {
                   </Fragment>
                 ))}
               </tr>
+                </>
+              )}
             </thead>
             <tbody className="divide-y divide-gray-800/70">
               {rows.map((c) => {
@@ -511,25 +766,9 @@ export default function TrackedPage() {
                       className="hover:bg-gray-900/40 cursor-pointer"
                       onClick={() => setOpen(open === c.card_id ? null : c.card_id)}
                     >
-                      <td className="px-3 py-2">
-                        <div className="flex items-center gap-2 min-w-[14rem]">
-                          <span className="text-gray-500 tabular-nums text-xs w-8">#{c.number}</span>
-                          {c.set_code.startsWith("jp-") && (
-                            <span className="text-[10px] px-1 rounded bg-rose-900/50 text-rose-300" title={c.set_code}>
-                              {c.set_code.slice(3).toUpperCase()}
-                            </span>
-                          )}
-                          <span className="text-gray-100">{c.name}</span>
-                          {c.finish === "rh" && (
-                            <span className="text-[10px] px-1 rounded bg-cyan-900/50 text-cyan-300">RH</span>
-                          )}
-                          <ReasonBadge reason={c.reason} pinned={c.pinned} />
-                        </div>
-                        <div className="text-[11px] text-gray-600 ml-10">
-                          {c.rarity}
-                          {c.artist && <> · {c.artist}</>}
-                        </div>
-                      </td>
+                      <CardCell c={c} />
+                      {view === "grading" ? <GradingCells c={c} m={math.get(c.card_id) ?? null} src={priceSrc} /> : (
+                        <>
                       {data.grades.map((g, i) => (
                         <td key={g} className={`px-2 py-2 text-right ${i === 0 ? "border-l border-gray-800/70" : ""}`}>
                           <PcCell price={c.pricecharting[g]} />
@@ -556,6 +795,8 @@ export default function TrackedPage() {
                           ))
                         )}
                       </td>
+                        </>
+                      )}
                     </tr>
                     {open === c.card_id && (
                       <tr className="bg-gray-900/30">
@@ -573,7 +814,14 @@ export default function TrackedPage() {
         </div>
       )}
       <p className="text-[11px] text-gray-600 mt-3">
-        Prices and gem rates marked • are more than {STALE_DAYS} days old; hover any value for its date. eBay/Fanatics medians are all-in
+        Prices and gem rates marked • are more than {STALE_DAYS} days old; hover any value for its date.
+        {view === "grading" && (
+          <>
+            {" "}Grading math uses the PSA population: a 9 sells at the PSA 9 price, 8 and lower at raw. "Grade raw" means
+            expected profit clears your bars; "Buy 10s" means a 10 sells for less than it costs to make one at this gem
+            rate. PriceCharting's "PSA 9" is any-grader 9 for now.
+          </>
+        )} eBay/Fanatics medians are all-in
         (Fanatics hammer + buyer's premium; eBay price + shipping).
       </p>
     </div>
