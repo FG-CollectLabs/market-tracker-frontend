@@ -248,15 +248,28 @@ export interface ROICard {
   psa_total_pop: number | null;
   cgc_gem_pop: number | null;
   cgc_total_pop: number | null;
+  // When each value above was captured.
+  raw_price_at?: string | null;
+  psa_9_at?: string | null;
+  psa_10_at?: string | null;
+  cgc_10_at?: string | null;
+  psa_pop_at?: string | null;
+  cgc_pop_at?: string | null;
+  tracked?: boolean;
+  tracked_reason?: string | null;
 }
 
-// Defaults to grading-worthy rarities only; pass { all: true } for every card.
+// Defaults to grading-worthy rarities only; pass { all: true } for every card,
+// or { tracked: true } for just the graded tracker's cards.
 export function fetchSetGraded(
   game: string,
   setCode: string,
-  opts?: { all?: boolean },
+  opts?: { all?: boolean; tracked?: boolean },
 ): Promise<{ game: string; set_code: string; cards: ROICard[] }> {
-  const q = opts?.all ? "?all=true" : "";
+  const qs = new URLSearchParams();
+  if (opts?.all) qs.set("all", "true");
+  if (opts?.tracked) qs.set("tracked", "true");
+  const q = qs.toString() ? `?${qs}` : "";
   return get(`/v1/sets/${game}/${setCode}/graded${q}`);
 }
 
@@ -374,6 +387,15 @@ export interface PcPrice {
   captured_at: string;
 }
 
+// A grader's latest population: copies at the top grade (PSA 10 / any CGC 10)
+// out of all graded copies.
+export interface PopSummary {
+  gem: number;
+  total: number;
+  week_start_date: string;
+  captured_at: string;
+}
+
 export interface SalesSummary {
   median_all_in_cents: number | null;
   min_all_in_cents: number | null;
@@ -406,6 +428,7 @@ export interface TrackedCard {
   excluded: boolean;
   note?: string;
   pricecharting: Record<string, PcPrice>; // grade key -> price
+  pop?: Record<string, PopSummary>; // grader ("psa" | "cgc") -> latest pop
   sales: Record<string, Record<string, SalesSummary>>; // source -> grade key -> summary
   supply: Record<string, Record<string, SupplySummary>>;
 }

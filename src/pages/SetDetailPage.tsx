@@ -19,6 +19,8 @@ import { PriceCell, SourceBadge } from "../components/PriceCell";
 import { formatCents, formatPct, computeROI, evColor, GRADING_FEES, type ROIResult, type ROIOptions } from "../lib/roi";
 import { useGamePrefs } from "../lib/prefs";
 import { getPokemonSetId, ptcgioCardUrl } from "../lib/ptcgio";
+import { AsOf, FreshnessChips } from "../components/AsOf";
+import { newest } from "../lib/freshness";
 
 // ---- shared ----------------------------------------------------------------
 
@@ -994,20 +996,38 @@ function GradedTab({ game, code }: { game: string; code: string }) {
   const [hiddenCols, setHiddenCols] = useState<Set<ColId>>(DEFAULT_HIDDEN);
   const [selectedRarities, setSelectedRarities] = useState<Set<string>>(new Set());
   const [includeAllRarities, setIncludeAllRarities] = useState(false);
+  // Default to the graded tracker's list (tracking.yaml rules + pins). Sets
+  // with no tracked cards fall back to every grading-worthy card.
+  const [trackedOnly, setTrackedOnly] = useState(true);
+  const [noTrackedCards, setNoTrackedCards] = useState(false);
 
   useEffect(() => {
     setLoading(true);
     Promise.all([
-      fetchSetGraded(game, code, { all: includeAllRarities }),
+      fetchSetGraded(game, code, trackedOnly ? { tracked: true } : { all: includeAllRarities }),
       fetchSet(game, code).catch(() => null),
     ])
       .then(([graded, setRow]) => {
+        if (trackedOnly && graded.cards.length === 0) {
+          setNoTrackedCards(true);
+          setTrackedOnly(false);
+          return;
+        }
         setCards(graded.cards);
         setSet(setRow);
       })
       .catch((e: unknown) => setError(String(e)))
       .finally(() => setLoading(false));
-  }, [game, code, includeAllRarities]);
+  }, [game, code, includeAllRarities, trackedOnly]);
+
+  const freshness = useMemo(() => [
+    { label: "Raw", at: newest(cards.map((c) => c.raw_price_at)) },
+    { label: "PSA 9", at: newest(cards.map((c) => c.psa_9_at)) },
+    { label: "PSA 10", at: newest(cards.map((c) => c.psa_10_at)) },
+    { label: "CGC 10", at: newest(cards.map((c) => c.cgc_10_at)) },
+    { label: "PSA gem rate", at: newest(cards.map((c) => c.psa_pop_at)) },
+    { label: "CGC gem rate", at: newest(cards.map((c) => c.cgc_pop_at)) },
+  ], [cards]);
 
   const roiOpts = useMemo<ROIOptions>(() => {
     const opts: ROIOptions = {};
@@ -1228,16 +1248,31 @@ function GradedTab({ game, code }: { game: string; code: string }) {
           <span className="text-gray-500">graded (0 = all)</span>
         </div>
       </div>
-      {/* Rarity scope — controls what the server returns */}
-      <label className="flex items-center gap-2 text-xs text-gray-400 select-none px-1">
-        <input
-          type="checkbox"
-          className="accent-blue-500"
-          checked={includeAllRarities}
-          onChange={(e) => setIncludeAllRarities(e.target.checked)}
-        />
-        Include bulk rarities (Common / Uncommon / non-holo Rare) — hidden by default
-      </label>
+      {/* Card scope — controls what the server returns */}
+      <div className="flex flex-wrap items-center gap-x-6 gap-y-2 px-1">
+        <label className="flex items-center gap-2 text-xs text-gray-300 select-none" title={noTrackedCards ? "No cards in this set are on the graded tracker" : "Only cards picked by the graded tracker's rules (Tracked Cards page)"}>
+          <input
+            type="checkbox"
+            className="accent-indigo-500"
+            checked={trackedOnly}
+            disabled={noTrackedCards}
+            onChange={(e) => setTrackedOnly(e.target.checked)}
+          />
+          Tracked cards only{noTrackedCards && <span className="text-gray-500"> — none tracked in this set</span>}
+        </label>
+        {!trackedOnly && (
+          <label className="flex items-center gap-2 text-xs text-gray-400 select-none">
+            <input
+              type="checkbox"
+              className="accent-blue-500"
+              checked={includeAllRarities}
+              onChange={(e) => setIncludeAllRarities(e.target.checked)}
+            />
+            Include bulk rarities (Common / Uncommon / non-holo Rare)
+          </label>
+        )}
+      </div>
+      <FreshnessChips fields={freshness} />
       {/* Rarity filter */}
       {availableRarities.length > 0 && (
         <div className="rounded border border-gray-800 bg-gray-900/50 px-4 py-2.5 flex flex-wrap items-center gap-x-3 gap-y-2 text-xs">
@@ -1327,6 +1362,11 @@ function GradedTab({ game, code }: { game: string; code: string }) {
                           {card.name}
                           {card.finish && <span className="ml-1 text-gray-500">{card.finish}</span>}
                         </Link>
+                        {!trackedOnly && card.tracked && (
+                          <span className="text-[10px] px-1 rounded bg-indigo-900/60 text-indigo-300" title={card.tracked_reason ?? "tracked"}>
+                            tracked
+                          </span>
+                        )}
                         {card.pc_url && (
                           <a
                             href={card.pc_url}
@@ -1341,17 +1381,17 @@ function GradedTab({ game, code }: { game: string; code: string }) {
                         )}
                       </div>
                     </td>
-                    {show("raw")         && <td className="px-3 py-2.5 text-right text-gray-400 tabular-nums font-mono">{formatCents(card.raw_price_cents)}</td>}
-                    {show("psa9")        && <td className="px-3 py-2.5 text-right text-gray-300 tabular-nums font-mono">{formatCents(card.psa_9_cents)}</td>}
-                    {show("psa10")       && <td className="px-3 py-2.5 text-right text-gray-300 tabular-nums font-mono">{formatCents(card.psa_10_cents)}</td>}
-                    {show("cgc10")       && <td className="px-3 py-2.5 text-right text-gray-300 tabular-nums font-mono">{formatCents(card.cgc_10_cents)}</td>}
+                    {show("raw")         && <td className="px-3 py-2.5 text-right text-gray-400 tabular-nums font-mono"><AsOf at={card.raw_price_at} label="Raw (PriceCharting)">{formatCents(card.raw_price_cents)}</AsOf></td>}
+                    {show("psa9")        && <td className="px-3 py-2.5 text-right text-gray-300 tabular-nums font-mono"><AsOf at={card.psa_9_at} label="PSA 9 (PriceCharting)">{formatCents(card.psa_9_cents)}</AsOf></td>}
+                    {show("psa10")       && <td className="px-3 py-2.5 text-right text-gray-300 tabular-nums font-mono"><AsOf at={card.psa_10_at} label="PSA 10 (PriceCharting)">{formatCents(card.psa_10_cents)}</AsOf></td>}
+                    {show("cgc10")       && <td className="px-3 py-2.5 text-right text-gray-300 tabular-nums font-mono"><AsOf at={card.cgc_10_at} label="CGC 10 (PriceCharting)">{formatCents(card.cgc_10_cents)}</AsOf></td>}
                     {show("psa_gem")     && <td className="px-3 py-2.5 text-right">
                       {gemMultiplier !== 1 && roi.personalPsaGemRate !== roi.psaGemRate ? (
                         <div className="flex flex-col items-end gap-0.5">
                           <span className="text-gray-600 text-[10px] font-mono">pop <GemBadge rate={roi.psaGemRate} /></span>
                           <span className="text-[10px] text-gray-500">me <GemBadge rate={roi.personalPsaGemRate} /></span>
                         </div>
-                      ) : <GemBadge rate={roi.psaGemRate} />}
+                      ) : <AsOf at={card.psa_pop_at} label={`PSA ${card.psa_gem_pop ?? "—"} gem of ${card.psa_total_pop ?? "—"} graded`}><GemBadge rate={roi.psaGemRate} /></AsOf>}
                     </td>}
                     {show("cgc_gem")     && <td className="px-3 py-2.5 text-right">
                       {gemMultiplier !== 1 && roi.personalCgcGemRate !== roi.cgcGemRate ? (
@@ -1359,10 +1399,10 @@ function GradedTab({ game, code }: { game: string; code: string }) {
                           <span className="text-gray-600 text-[10px] font-mono">pop <GemBadge rate={roi.cgcGemRate} /></span>
                           <span className="text-[10px] text-gray-500">me <GemBadge rate={roi.personalCgcGemRate} /></span>
                         </div>
-                      ) : <GemBadge rate={roi.cgcGemRate} />}
+                      ) : <AsOf at={card.cgc_pop_at} label={`CGC ${card.cgc_gem_pop ?? "—"} gem of ${card.cgc_total_pop ?? "—"} graded`}><GemBadge rate={roi.cgcGemRate} /></AsOf>}
                     </td>}
                     {show("pop")         && <td className="px-3 py-2.5 text-right text-gray-500 tabular-nums font-mono text-[10px]" title={`PSA: ${card.psa_total_pop ?? "—"} total · CGC: ${card.cgc_total_pop ?? "—"} total`}>
-                      {card.psa_total_pop != null ? card.psa_total_pop : <span className="text-gray-700">—</span>}
+                      {card.psa_total_pop != null ? <AsOf at={card.psa_pop_at} label="PSA pop">{card.psa_total_pop}</AsOf> : <span className="text-gray-700">—</span>}
                     </td>}
                     {show("uplift10")    && <td className="px-3 py-2.5 text-right tabular-nums font-mono">
                       {psa10Uplift != null

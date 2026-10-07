@@ -7,6 +7,7 @@ import {
   type CardSalesWeek,
   type CardSupplySnapshot,
   type PcPrice,
+  type PopSummary,
   type SalesSummary,
   type SourceFreshness,
   type TrackedCard,
@@ -14,6 +15,8 @@ import {
 } from "../lib/api";
 import { formatCents } from "../lib/roi";
 import { Spinner, ErrorMsg } from "../components/Spinner";
+import { AsOf } from "../components/AsOf";
+import { STALE_DAYS, ago, daysAgo, shortDate } from "../lib/freshness";
 
 // Sources shown as column groups, in order. PriceCharting is a weekly index;
 // eBay and Fanatics are built from individual sales entered via the MCP server.
@@ -29,8 +32,6 @@ const GRADE_LABELS: Record<string, string> = {
   "cgc-10": "CGC 10",
   "cgc-10-pristine": "CGC Pristine",
 };
-
-const STALE_DAYS = 8;
 
 const REASON_FILTERS = [
   { key: "", label: "All reasons" },
@@ -49,33 +50,18 @@ function matchesSet(code: string, filter: string): boolean {
   return code === filter;
 }
 
-function daysAgo(iso: string | null | undefined): number | null {
-  if (!iso) return null;
-  return Math.floor((Date.now() - new Date(iso).getTime()) / 86_400_000);
-}
-
-function ago(iso: string | null | undefined): string {
-  const d = daysAgo(iso);
-  if (d == null) return "never";
-  if (d <= 0) return "today";
-  return d === 1 ? "1 day ago" : `${d} days ago`;
-}
-
-function shortDate(iso: string | null | undefined): string {
-  if (!iso) return "—";
-  return new Date(iso).toLocaleDateString(undefined, { month: "short", day: "numeric" });
-}
-
 // ---- freshness ------------------------------------------------------------------
 
 const SOURCE_LABELS: Record<string, string> = {
   pricecharting: "PriceCharting",
   ebay: "eBay",
   fanatics: "Fanatics",
+  psa_pop: "PSA gem rate",
+  cgc_pop: "CGC gem rate",
 };
 
 function FreshnessStrip({ sources }: { sources: Record<string, SourceFreshness> }) {
-  const order = ["pricecharting", "ebay", "fanatics"];
+  const order = ["pricecharting", "psa_pop", "cgc_pop", "ebay", "fanatics"];
   return (
     <div className="flex flex-wrap gap-3 mb-5">
       {order.map((src) => {
@@ -119,6 +105,15 @@ function PcCell({ price }: { price: PcPrice | undefined }) {
       {formatCents(price.cents)}
       {stale && <span className="text-amber-600 ml-0.5">•</span>}
     </span>
+  );
+}
+
+function GemCell({ pop, grader }: { pop: PopSummary | undefined; grader: string }) {
+  if (!pop || pop.total <= 0) return <span className="text-gray-700">—</span>;
+  return (
+    <AsOf at={pop.captured_at} label={`${grader} ${pop.gem.toLocaleString()} gem of ${pop.total.toLocaleString()} graded`}>
+      <span className="tabular-nums font-mono text-gray-200">{((pop.gem / pop.total) * 100).toFixed(1)}%</span>
+    </AsOf>
   );
 }
 
@@ -372,7 +367,7 @@ export default function TrackedPage() {
     [data],
   );
 
-  const colCount = 1 + (data?.grades.length ?? 0) + SALES_SOURCES.length * 3 + 1;
+  const colCount = 1 + (data?.grades.length ?? 0) + 2 + SALES_SOURCES.length * 3 + 1;
 
   return (
     <div>
@@ -474,6 +469,9 @@ export default function TrackedPage() {
                 <th colSpan={data.grades.length} className="px-2 pt-2 font-medium text-purple-300 border-l border-gray-800">
                   PriceCharting
                 </th>
+                <th colSpan={2} className="px-2 pt-2 font-medium text-emerald-300 border-l border-gray-800" title="Share of graded copies at the top grade (PSA 10 / any CGC 10)">
+                  Gem rate
+                </th>
                 {SALES_SOURCES.map((s) => (
                   <th key={s.key} colSpan={3} className="px-2 pt-2 font-medium text-yellow-200/80 border-l border-gray-800">
                     {s.label} · {GRADE_LABELS[grade] ?? grade}
@@ -489,6 +487,8 @@ export default function TrackedPage() {
                     {GRADE_LABELS[g] ?? g}
                   </th>
                 ))}
+                <th className="px-2 pb-2 text-right font-normal border-l border-gray-800">PSA</th>
+                <th className="px-2 pb-2 text-right font-normal">CGC</th>
                 {SALES_SOURCES.map((s) => (
                   <Fragment key={s.key}>
                     <th className="px-2 pb-2 text-right font-normal border-l border-gray-800">Median</th>
@@ -535,6 +535,12 @@ export default function TrackedPage() {
                           <PcCell price={c.pricecharting[g]} />
                         </td>
                       ))}
+                      <td className="px-2 py-2 text-right border-l border-gray-800/70">
+                        <GemCell pop={c.pop?.psa} grader="PSA" />
+                      </td>
+                      <td className="px-2 py-2 text-right">
+                        <GemCell pop={c.pop?.cgc} grader="CGC" />
+                      </td>
                       {SALES_SOURCES.map((s) => (
                         <SalesCells key={s.key} s={c.sales[s.key]?.[grade]} windowDays={windowDays} />
                       ))}
@@ -567,7 +573,7 @@ export default function TrackedPage() {
         </div>
       )}
       <p className="text-[11px] text-gray-600 mt-3">
-        PriceCharting prices marked • are more than {STALE_DAYS} days old. eBay/Fanatics medians are all-in
+        Prices and gem rates marked • are more than {STALE_DAYS} days old; hover any value for its date. eBay/Fanatics medians are all-in
         (Fanatics hammer + buyer's premium; eBay price + shipping).
       </p>
     </div>
