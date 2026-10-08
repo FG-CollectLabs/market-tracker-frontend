@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import GradedMarket from "../components/GradedMarket";
 import { useParams, useSearchParams } from "react-router-dom";
 import {
   fetchCard,
@@ -387,12 +388,12 @@ function ListingsTab({ displayKey }: { displayKey: string }) {
 
 // ---- Page ------------------------------------------------------------------
 
-type Tab = "snapshots" | "graded" | "listings";
+type Tab = "market" | "snapshots" | "graded" | "listings";
 
 export default function CardDetailPage() {
   const { displayKey } = useParams<{ displayKey: string }>();
   const [searchParams, setSearchParams] = useSearchParams();
-  const tab = (searchParams.get("tab") as Tab) ?? "snapshots";
+  const tab = (searchParams.get("tab") as Tab) ?? "market";
 
   const [card, setCard] = useState<CardRow | null>(null);
   const [cardError, setCardError] = useState<string | null>(null);
@@ -436,7 +437,7 @@ export default function CardDetailPage() {
 
       {/* Sub-tabs */}
       <div className="flex gap-1 border-b border-gray-800 mb-6">
-        {([["snapshots", "Price History"], ["listings", "Listings"], ["graded", "Graded"]] as const).map(([id, label]) => (
+        {([["market", "Graded market"], ["snapshots", "Price History"], ["listings", "Listings"], ["graded", "Graded"]] as const).map(([id, label]) => (
           <button
             key={id}
             onClick={() => setSearchParams({ tab: id }, { replace: true })}
@@ -451,6 +452,7 @@ export default function CardDetailPage() {
         ))}
       </div>
 
+      {tab === "market" && <GradedMarket displayKey={displayKey} />}
       {tab === "snapshots" && <SnapshotsTab displayKey={displayKey} />}
       {tab === "listings" && <ListingsTab displayKey={displayKey} />}
       {tab === "graded" && <GradedTab displayKey={displayKey} />}
