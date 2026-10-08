@@ -448,6 +448,12 @@ function CardPanel({ card, grade }: { card: TrackedCard; grade: string }) {
         <img src={card.image_url} alt={card.name} className="w-40 rounded-lg hidden md:block" loading="lazy" />
       )}
       <div className="space-y-5 min-w-0">
+        <Link
+          to={`/cards/${encodeURIComponent(card.display_key)}`}
+          className="inline-block text-xs text-indigo-400 hover:text-indigo-300"
+        >
+          Weekly history: prices, Fanatics sold vs listed by grade, gem rate →
+        </Link>
         <div className="grid sm:grid-cols-2 gap-6">
           {SALES_SOURCES.map((src) => (
             <div key={src.key}>

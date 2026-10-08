@@ -544,3 +544,58 @@ export function fetchCardSales(displayKey: string): Promise<{
 }> {
   return get(`/v1/cards/${encodeURIComponent(displayKey)}/sales`);
 }
+
+// ---- card history (GET /v1/cards/{key}/history) ----------------------------
+
+export interface SalesGroup {
+  key: string; // "psa-10" | "psa-9" | "cgc-10-pristine" | "cgc-10" | "cgc-7-9"
+  label: string;
+  grades: string[];
+}
+
+export interface PcHistoryWeek {
+  week_start_date: string;
+  raw: number | null;
+  psa_9: number | null;
+  psa_10: number | null;
+  cgc_10: number | null;
+  cgc_10_pristine: number | null;
+}
+
+// One grade group's Fanatics week. Prices are all-in cents; listed is the
+// most copies up for sale at once that week (null = not counted).
+export interface FanaticsHistoryWeek {
+  week_start_date: string;
+  group: string;
+  sold: number;
+  auctions: number;
+  buy_now: number;
+  avg_cents: number | null;
+  median_cents: number | null;
+  min_cents: number | null;
+  max_cents: number | null;
+  listed: number | null;
+}
+
+export interface PopHistoryWeek {
+  week_start_date: string;
+  company: string;
+  gem: number;
+  nine: number | null;
+  total: number;
+}
+
+export interface CardHistory {
+  display_key: string;
+  name: string;
+  weeks: number;
+  groups: SalesGroup[];
+  pricecharting: PcHistoryWeek[];
+  fanatics: FanaticsHistoryWeek[];
+  pop: PopHistoryWeek[];
+}
+
+export function fetchCardHistory(displayKey: string, weeks = 26): Promise<CardHistory> {
+  return get(`/v1/cards/${encodeURIComponent(displayKey)}/history?weeks=${weeks}`);
+}
+
