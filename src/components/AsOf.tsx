@@ -1,18 +1,18 @@
 import type { ReactNode } from "react";
-import { ago, isStale, shortDate } from "../lib/freshness";
+import { FRESH_TEXT, ago, freshness, isStale, shortDate } from "../lib/freshness";
 
-// Wraps a value with its capture date: a tooltip always, plus a dimmed value
-// and an amber dot once it's older than STALE_DAYS.
+// Wraps a value with its capture date: a tooltip always, an amber dot once
+// it missed a weekly run (> 8 days) and red text past 30 days.
 export function AsOf({ at, label, children }: { at: string | null | undefined; label: string; children: ReactNode }) {
   if (!at) return <>{children}</>;
-  const stale = isStale(at);
+  const f = freshness(at);
   return (
     <span
-      className={stale ? "opacity-60" : undefined}
-      title={`${label} · updated ${shortDate(at)} (${ago(at)})`}
+      className={f === "old" ? `${FRESH_TEXT.old} [&_*]:!text-red-400` : undefined}
+      title={`${label} · updated ${shortDate(at)} (${ago(at)})${f === "old" ? " — over 30 days old" : ""}`}
     >
       {children}
-      {stale && <span className="text-amber-600 ml-0.5">•</span>}
+      {f === "late" && <span className="text-amber-600 ml-0.5">•</span>}
     </span>
   );
 }

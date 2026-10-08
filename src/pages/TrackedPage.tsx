@@ -18,7 +18,7 @@ import {
 import { formatCents } from "../lib/roi";
 import { Spinner, ErrorMsg } from "../components/Spinner";
 import { AsOf } from "../components/AsOf";
-import { STALE_DAYS, ago, daysAgo, shortDate } from "../lib/freshness";
+import { FRESH_TEXT, OLD_DAYS, STALE_DAYS, ago, freshness, shortDate } from "../lib/freshness";
 import { DEFAULT_GRADING, gradingMath, type GradingMath, type GradingSettings } from "../lib/grading";
 
 // Sources shown as column groups, in order. PriceCharting is a weekly index;
@@ -161,16 +161,51 @@ function FreshnessStrip({ sources }: { sources: Record<string, SourceFreshness> 
 
 function PcCell({ price }: { price: PcPrice | undefined }) {
   if (!price) return <span className="text-gray-700">—</span>;
-  const stale = (daysAgo(price.captured_at) ?? 0) > STALE_DAYS;
+  const f = freshness(price.captured_at);
   return (
     <span
-      className={`tabular-nums font-mono ${stale ? "text-gray-500" : "text-gray-200"}`}
-      title={`PriceCharting · week of ${price.week_start_date} · captured ${ago(price.captured_at)}`}
+      className={`tabular-nums font-mono ${FRESH_TEXT[f]}`}
+      title={`PriceCharting · week of ${price.week_start_date} · captured ${shortDate(price.captured_at)} (${ago(price.captured_at)})`}
     >
       {formatCents(price.cents)}
-      {stale && <span className="text-amber-600 ml-0.5">•</span>}
+      {f === "late" && <span className="text-amber-600 ml-0.5">•</span>}
     </span>
   );
+}
+
+// Fanatics sold in one grade group: the window's median all-in price and how
+// many sold; with nothing in the window, the last sale (red past 30 days).
+function GroupSoldCell({ s, windowDays }: { s: SalesSummary | undefined; windowDays: number }) {
+  if (!s || s.sold_total === 0) return <span className="text-gray-700">—</span>;
+  if (s.sold_window > 0 && s.median_all_in_cents != null) {
+    return (
+      <span
+        title={`${s.sold_window} sold in ${windowDays} days (${s.sold_7d} in 7) · median ${formatCents(s.median_all_in_cents)} · low ${formatCents(s.min_all_in_cents)} · last sold ${shortDate(s.last_sold_at)}`}
+      >
+        <span className="tabular-nums font-mono text-gray-100">{formatCents(s.median_all_in_cents)}</span>
+        <span className="block text-[10px] text-gray-500 tabular-nums">{s.sold_window} sold</span>
+      </span>
+    );
+  }
+  const f = freshness(s.last_sold_at);
+  return (
+    <span title={`None sold in ${windowDays} days · last sale ${formatCents(s.last_all_in_cents)} on ${shortDate(s.last_sold_at)} (${ago(s.last_sold_at)})`}>
+      <span className={`tabular-nums font-mono ${f === "old" ? FRESH_TEXT.old : "text-gray-400"}`}>{formatCents(s.last_all_in_cents)}</span>
+      <span className={`block text-[10px] tabular-nums ${f === "old" ? "text-red-400/80" : "text-gray-500"}`}>last {shortDate(s.last_sold_at)}</span>
+    </span>
+  );
+}
+
+// Grade groups shown as sold columns in the market table (the history page
+// shows all of them, including CGC 7-9).
+const SOLD_GROUPS = ["psa-10", "psa-9", "cgc-10-pristine", "cgc-10", "any-6-8"];
+const SOLD_GROUP_LABELS: Record<string, string> = {
+  "psa-10": "PSA 10", "psa-9": "PSA 9", "cgc-10-pristine": "CGC Pristine", "cgc-10": "CGC 10", "any-6-8": "6–8",
+};
+
+function cardThumb(url: string): string {
+  // TCGdex serves a small "low" rendition; PriceCharting's 60 px is fine here.
+  return url.replace(/\/high\.webp$/, "/low.webp");
 }
 
 function MoneyInput({ label, cents, onChange, title }: { label: string; cents: number; onChange: (c: number) => void; title?: string }) {
@@ -189,7 +224,19 @@ function MoneyInput({ label, cents, onChange, title }: { label: string; cents: n
 function CardCell({ c }: { c: TrackedCard }) {
   return (
     <td className="px-3 py-2">
-      <div className="flex items-center gap-2 min-w-[14rem]">
+      <div className="flex items-start gap-2 min-w-[18rem]">
+        {c.image_url ? (
+          <img
+            src={cardThumb(c.image_url)}
+            alt=""
+            loading="lazy"
+            className="w-9 h-[50px] object-cover rounded-sm shrink-0 bg-gray-800"
+          />
+        ) : (
+          <span className="w-9 h-[50px] rounded-sm shrink-0 bg-gray-800/60" />
+        )}
+        <div className="min-w-0">
+      <div className="flex items-center gap-2">
         <span className="text-gray-500 tabular-nums text-xs w-8">#{c.number}</span>
         {c.set_code.startsWith("jp-") && (
           <span className="text-[10px] px-1 rounded bg-rose-900/50 text-rose-300" title={c.set_code}>
@@ -218,6 +265,8 @@ function CardCell({ c }: { c: TrackedCard }) {
             <RankBadge r={c.artist_rank} what={c.artist} />
           </>
         )}
+      </div>
+        </div>
       </div>
     </td>
   );
@@ -337,41 +386,6 @@ function GemCell({ pop, grader }: { pop: PopSummary | undefined; grader: string 
     <AsOf at={pop.captured_at} label={`${grader} ${pop.gem.toLocaleString()} gem of ${pop.total.toLocaleString()} graded`}>
       <span className="tabular-nums font-mono text-gray-200">{((pop.gem / pop.total) * 100).toFixed(1)}%</span>
     </AsOf>
-  );
-}
-
-function SalesCells({ s, windowDays }: { s: SalesSummary | undefined; windowDays: number }) {
-  if (!s) {
-    return (
-      <>
-        <td className="px-2 py-2 text-right text-gray-700">—</td>
-        <td className="px-2 py-2 text-right text-gray-700">—</td>
-        <td className="px-2 py-2 text-right text-gray-700">—</td>
-      </>
-    );
-  }
-  return (
-    <>
-      <td
-        className="px-2 py-2 text-right tabular-nums font-mono text-gray-200"
-        title={`Median all-in over ${windowDays}d · low ${formatCents(s.min_all_in_cents)}`}
-      >
-        {formatCents(s.median_all_in_cents)}
-      </td>
-      <td
-        className="px-2 py-2 text-right tabular-nums text-gray-300"
-        title={`${s.sold_7d} in the last 7 days · ${s.sold_window} in ${windowDays} days · ${s.sold_total} recorded`}
-      >
-        {s.sold_7d}
-        <span className="text-gray-600">/{s.sold_window}</span>
-      </td>
-      <td
-        className="px-2 py-2 text-right text-xs text-gray-400 whitespace-nowrap"
-        title={`Last sale ${formatCents(s.last_all_in_cents)} all-in`}
-      >
-        {shortDate(s.last_sold_at)}
-      </td>
-    </>
   );
 }
 
@@ -650,7 +664,7 @@ export default function TrackedPage() {
 
   const colCount = view === "grading"
     ? 1 + 3 + 2 + 2 + 2 + 1
-    : 1 + (data?.grades.length ?? 0) + 2 + SALES_SOURCES.length * 3 + 1;
+    : 1 + (data?.grades.length ?? 0) + 2 + SOLD_GROUPS.length + 1;
 
   return (
     <div>
@@ -844,11 +858,9 @@ export default function TrackedPage() {
                 <th colSpan={2} className="px-2 pt-2 font-medium text-emerald-300 border-l border-gray-800" title="Share of graded copies at the top grade (PSA 10 / any CGC 10)">
                   Gem rate
                 </th>
-                {SALES_SOURCES.map((s) => (
-                  <th key={s.key} colSpan={3} className="px-2 pt-2 font-medium text-yellow-200/80 border-l border-gray-800">
-                    {s.label} · {GRADE_LABELS[grade] ?? grade}
-                  </th>
-                ))}
+                <th colSpan={SOLD_GROUPS.length} className="px-2 pt-2 font-medium text-yellow-200/80 border-l border-gray-800" title="Median all-in price and copies sold in the window; with none, the last sale">
+                  Fanatics sold · {windowDays}d
+                </th>
                 <th rowSpan={2} className="px-2 py-2 font-medium align-bottom border-l border-gray-800" title="Latest count of copies for sale at this grade">
                   Up now
                 </th>
@@ -861,14 +873,14 @@ export default function TrackedPage() {
                 ))}
                 <th className="px-2 pb-2 text-right font-normal border-l border-gray-800">PSA</th>
                 <th className="px-2 pb-2 text-right font-normal">CGC</th>
-                {SALES_SOURCES.map((s) => (
-                  <Fragment key={s.key}>
-                    <th className="px-2 pb-2 text-right font-normal border-l border-gray-800">Median</th>
-                    <th className="px-2 pb-2 text-right font-normal" title={`7 days / ${windowDays} days`}>
-                      Sold 7d/{windowDays}d
-                    </th>
-                    <th className="px-2 pb-2 text-right font-normal">Last</th>
-                  </Fragment>
+                {SOLD_GROUPS.map((g, i) => (
+                  <th
+                    key={g}
+                    className={`px-2 pb-2 text-right font-normal ${i === 0 ? "border-l border-gray-800" : ""}`}
+                    title={data.sales_groups?.find((x) => x.key === g)?.grades.join(", ")}
+                  >
+                    {SOLD_GROUP_LABELS[g]}
+                  </th>
                 ))}
               </tr>
                 </>
@@ -911,8 +923,10 @@ export default function TrackedPage() {
                       <td className="px-2 py-2 text-right">
                         <GemCell pop={c.pop?.cgc} grader="CGC" />
                       </td>
-                      {SALES_SOURCES.map((s) => (
-                        <SalesCells key={s.key} s={c.sales[s.key]?.[grade]} windowDays={windowDays} />
+                      {SOLD_GROUPS.map((g, i) => (
+                        <td key={g} className={`px-2 py-2 text-right ${i === 0 ? "border-l border-gray-800/70" : ""}`}>
+                          <GroupSoldCell s={c.sales_groups?.fanatics?.[g]} windowDays={windowDays} />
+                        </td>
                       ))}
                       <td className="px-2 py-2 text-right text-xs border-l border-gray-800/70 whitespace-nowrap">
                         {supply.length === 0 ? (
@@ -945,7 +959,7 @@ export default function TrackedPage() {
         </div>
       )}
       <p className="text-[11px] text-gray-600 mt-3">
-        Prices and gem rates marked • are more than {STALE_DAYS} days old; hover any value for its date.
+        Hover any value for its date. • = missed a weekly update (over {STALE_DAYS} days); red = over {OLD_DAYS} days old.
         {view === "grading" && (
           <>
             {" "}Grading math uses the PSA population: a 9 sells at the PSA 9 price, 8 and lower at raw. "Grade raw" means
