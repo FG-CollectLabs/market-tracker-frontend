@@ -19,7 +19,10 @@ import { formatCents } from "../lib/roi";
 import { Spinner, ErrorMsg } from "../components/Spinner";
 import { AsOf } from "../components/AsOf";
 import { FRESH_TEXT, OLD_DAYS, STALE_DAYS, ago, freshness, shortDate } from "../lib/freshness";
-import { DEFAULT_GRADING, gradingMath, type GradingMath, type GradingSettings } from "../lib/grading";
+import {
+  DEFAULT_GRADING, gradeScore, gradingMath, monthsSince,
+  type GradeScore, type GradingMath, type GradingSettings,
+} from "../lib/grading";
 
 // Sources shown as column groups, in order. PriceCharting is a weekly index;
 // eBay and Fanatics are built from individual sales entered via the MCP server.
@@ -44,7 +47,7 @@ const REASON_FILTERS = [
   { key: "manual", label: "Manual" },
 ];
 
-type SortKey = "number" | "pc-psa-10" | "sold" | "supply" | "grade-roi" | "ten-value" | "gem" | "pokemon-rank" | "artist-rank";
+type SortKey = "number" | "pc-psa-10" | "sold" | "supply" | "grade-roi" | "grade-score" | "ten-value" | "gem" | "pokemon-rank" | "artist-rank";
 type GroupBy = "" | "rarity" | "pokemon" | "artist";
 
 function rankLabel(r: CollectRank | undefined): string | null {
@@ -95,10 +98,15 @@ function gradedPrice(c: TrackedCard, key: "psa-9" | "psa-10", src: PriceSource):
   return c.pricecharting[key]?.cents ?? null;
 }
 
-function cardMath(c: TrackedCard, gs: GradingSettings, src: PriceSource): GradingMath | null {
+interface CardGrading {
+  m: GradingMath;
+  score: GradeScore | null;
+}
+
+function cardMath(c: TrackedCard, gs: GradingSettings, src: PriceSource): CardGrading | null {
   const pop = c.pop?.psa;
   if (!pop) return null;
-  return gradingMath({
+  const m = gradingMath({
     rawCents: c.pricecharting.raw?.cents ?? null,
     nineCents: gradedPrice(c, "psa-9", src),
     tenCents: gradedPrice(c, "psa-10", src),
@@ -106,6 +114,27 @@ function cardMath(c: TrackedCard, gs: GradingSettings, src: PriceSource): Gradin
     nine: pop.nine,
     total: pop.total,
   }, gs);
+  return {
+    m,
+    score: gradeScore(m, {
+      monthsSinceRelease: monthsSince(c.set_release_date),
+      psa10Sold30d: c.sales_groups?.fanatics?.["psa-10"]?.sold_window ?? 0,
+      pokemonScore: c.pokemon?.score ?? null,
+      artistScore: c.artist_rank?.score ?? null,
+    }),
+  };
+}
+
+// Score badge: green 70+, amber 50-69, gray below; hover for the breakdown.
+function ScoreBadge({ s }: { s: GradeScore | null }) {
+  if (!s) return <span className="text-gray-700">—</span>;
+  const color = s.score >= 70 ? "bg-green-900/60 text-green-300" : s.score >= 50 ? "bg-amber-900/50 text-amber-300" : "bg-gray-800 text-gray-400";
+  const why = s.parts.map((p) => `${p.points >= 0 ? "+" : ""}${Math.round(p.points)}  ${p.label}: ${p.why}`).join("\n");
+  return (
+    <span className={`inline-block min-w-[2.25rem] text-center px-1.5 py-0.5 rounded font-mono text-xs font-semibold ${color}`} title={`Buy-raw-to-grade score ${s.score}/100\n${why}`}>
+      {s.score}
+    </span>
+  );
 }
 
 function matchesSet(code: string, filter: string): boolean {
@@ -314,7 +343,8 @@ function PriceCell({ c, k, src }: { c: TrackedCard; k: "raw" | "psa-9" | "psa-10
   return <PcCell price={c.pricecharting[k]} />;
 }
 
-function GradingCells({ c, m, src }: { c: TrackedCard; m: GradingMath | null; src: PriceSource }) {
+function GradingCells({ c, g, src }: { c: TrackedCard; g: CardGrading | null; src: PriceSource }) {
+  const m = g?.m ?? null;
   const pop = c.pop?.psa;
   const td = "px-2 py-2 text-right";
   return (
@@ -336,9 +366,9 @@ function GradingCells({ c, m, src }: { c: TrackedCard; m: GradingMath | null; sr
       <td className={td} title={m?.costCents != null ? `Cost to grade one copy: ${formatCents(m.costCents)}` : undefined}>
         <Money cents={m?.prem10Cents ?? null} signed />
       </td>
-      <td className={`${td} border-l border-gray-800/70`} title={m?.roi != null ? `Expected ROI ${(m.roi * 100).toFixed(0)}% on ${formatCents(m.costCents)}` : undefined}>
-        <Money cents={m?.evCents ?? null} signed />
-        <div className="text-[10px]"><Pct v={m?.roi ?? null} signed /></div>
+      <td className={`${td} border-l border-gray-800/70`} title={m?.roi != null ? `Expected value of grading one raw copy, after grading fee, shipping and the selling fee: ${formatCents(m.evCents)} on ${formatCents(m.costCents)}` : undefined}>
+        <Pct v={m?.roi ?? null} signed />
+        <div className="text-[10px]"><Money cents={m?.evCents ?? null} signed /></div>
       </td>
       <td className={td} title="Expected spend to end up with one PSA 10, after selling the 9s and lower slabs">
         <Money cents={m?.costPer10Cents ?? null} />
@@ -348,7 +378,8 @@ function GradingCells({ c, m, src }: { c: TrackedCard; m: GradingMath | null; sr
           </div>
         )}
       </td>
-      <td className="px-2 py-2 border-l border-gray-800/70"><SignalBadge m={m} /></td>
+      <td className="px-2 py-2 text-center border-l border-gray-800/70"><ScoreBadge s={g?.score ?? null} /></td>
+      <td className="px-2 py-2"><SignalBadge m={m} /></td>
     </>
   );
 }
@@ -363,7 +394,8 @@ function GradingHead() {
         <th colSpan={2} className="px-2 pt-2 font-medium text-emerald-300 border-l border-gray-800" title="PSA population odds from GemRate">PSA odds</th>
         <th colSpan={2} className="px-2 pt-2 font-medium text-sky-300 border-l border-gray-800" title="Graded price minus raw + fee + shipping">Premium over cost</th>
         <th colSpan={2} className="px-2 pt-2 font-medium text-sky-300 border-l border-gray-800">Grading one raw copy</th>
-        <th rowSpan={2} className="px-2 py-2 font-medium align-bottom border-l border-gray-800">Signal</th>
+        <th rowSpan={2} className="px-2 py-2 font-medium align-bottom border-l border-gray-800" title="Buy-raw-to-grade score 0-100: EV after fees, adjusted for release age, liquidity, profit size and collectibility. Hover a score for its breakdown.">Score</th>
+        <th rowSpan={2} className="px-2 py-2 font-medium align-bottom">Signal</th>
       </tr>
       <tr>
         <th className={`${th} border-l border-gray-800`}>Raw</th>
@@ -373,7 +405,7 @@ function GradingHead() {
         <th className={th}>9</th>
         <th className={`${th} border-l border-gray-800`}>If 9</th>
         <th className={th}>If 10</th>
-        <th className={`${th} border-l border-gray-800`}>EV / ROI</th>
+        <th className={`${th} border-l border-gray-800`} title="Expected return after grading fee, shipping and selling fee">EV after fees</th>
         <th className={th} title="Expected spend to end up with one PSA 10">Cost per 10</th>
       </tr>
     </>
@@ -594,7 +626,7 @@ export default function TrackedPage() {
   const gradedKeys = useMemo(() => (data?.grades ?? []).filter((g) => g !== "raw"), [data]);
 
   const math = useMemo(() => {
-    const m = new Map<string, GradingMath | null>();
+    const m = new Map<string, CardGrading | null>();
     for (const c of data?.cards ?? []) m.set(c.card_id, cardMath(c, gs, priceSrc));
     return m;
   }, [data, gs, priceSrc]);
@@ -606,11 +638,11 @@ export default function TrackedPage() {
       (c) =>
         (!reason || c.reason.startsWith(reason)) &&
         matchesSet(c.set_code, setFilter) &&
-        (!signalFilter || math.get(c.card_id)?.signal === signalFilter) &&
+        (!signalFilter || math.get(c.card_id)?.m.signal === signalFilter) &&
         (!q || c.name.toLowerCase().includes(q) || c.number.includes(q) || (c.artist ?? "").toLowerCase().includes(q)),
     );
     const mv = (c: TrackedCard, f: (m: GradingMath) => number | null) => {
-      const m = math.get(c.card_id);
+      const m = math.get(c.card_id)?.m;
       return (m && f(m)) ?? -Infinity;
     };
     const soldCount = (c: TrackedCard) =>
@@ -626,11 +658,12 @@ export default function TrackedPage() {
       sold: (a, b) => soldCount(b) - soldCount(a),
       supply: (a, b) => supplyCount(b) - supplyCount(a),
       "grade-roi": (a, b) => mv(b, (m) => m.roi) - mv(a, (m) => m.roi),
+      "grade-score": (a, b) => (math.get(b.card_id)?.score?.score ?? -1) - (math.get(a.card_id)?.score?.score ?? -1),
       // Cheapest 10s relative to what they cost to make come first; cards
       // without the numbers go last.
       "ten-value": (a, b) => {
-        const x = math.get(a.card_id)?.tenValue ?? null;
-        const y = math.get(b.card_id)?.tenValue ?? null;
+        const x = math.get(a.card_id)?.m.tenValue ?? null;
+        const y = math.get(b.card_id)?.m.tenValue ?? null;
         if (x == null || y == null) return x == null ? (y == null ? 0 : 1) : -1;
         return x - y;
       },
@@ -663,7 +696,7 @@ export default function TrackedPage() {
   );
 
   const colCount = view === "grading"
-    ? 1 + 3 + 2 + 2 + 2 + 1
+    ? 1 + 3 + 2 + 2 + 2 + 2
     : 1 + (data?.grades.length ?? 0) + 2 + SOLD_GROUPS.length + 1;
 
   return (
@@ -709,7 +742,7 @@ export default function TrackedPage() {
               key={v}
               onClick={() => {
                 setView(v);
-                if (v === "grading" && sort === "number") setSort("grade-roi");
+                if (v === "grading" && sort === "number") setSort("grade-score");
               }}
               className={`px-3 py-1 ${view === v ? "bg-indigo-700 text-white" : "bg-gray-900 text-gray-400 hover:text-gray-200"}`}
             >
@@ -721,6 +754,14 @@ export default function TrackedPage() {
           <>
             <MoneyInput label="Fee" cents={gs.feeCents} onChange={(v) => setGs({ ...gs, feeCents: v })} title="PSA grading fee per card" />
             <MoneyInput label="Ship/handling" cents={gs.extraCents} onChange={(v) => setGs({ ...gs, extraCents: v })} title="Per-card shipping, insurance and handling" />
+            <label className="flex items-center gap-1.5 text-gray-400" title="Selling fee on every sale: ~6% Fanatics cash payout, 0% FanCash, ~13% eBay">
+              Sell fee
+              <input
+                type="number" min={0} max={30} step={0.5} value={Math.round(gs.sellFeePct * 1000) / 10}
+                onChange={(e) => setGs({ ...gs, sellFeePct: (Number(e.target.value) || 0) / 100 })}
+                className="w-14 bg-gray-900 border border-gray-700 rounded px-1.5 py-0.5 text-gray-200 font-mono"
+              />%
+            </label>
             <label className="flex items-center gap-1.5 text-gray-400" title="Show 'Grade raw' when expected ROI is at least this">
               Min ROI
               <input
@@ -815,7 +856,8 @@ export default function TrackedPage() {
           <option value="pc-psa-10">Sort: PriceCharting PSA 10</option>
           <option value="sold">Sort: copies sold (grade)</option>
           <option value="supply">Sort: copies up for sale (grade)</option>
-          <option value="grade-roi">Sort: grading ROI</option>
+          <option value="grade-score">Sort: buy-raw score</option>
+          <option value="grade-roi">Sort: EV after fees</option>
           <option value="ten-value">Sort: cheapest 10s vs cost to make</option>
           <option value="gem">Sort: PSA gem rate</option>
           <option value="pokemon-rank">Sort: Pokémon rank</option>
@@ -910,7 +952,7 @@ export default function TrackedPage() {
                       onClick={() => setOpen(open === c.card_id ? null : c.card_id)}
                     >
                       <CardCell c={c} />
-                      {view === "grading" ? <GradingCells c={c} m={math.get(c.card_id) ?? null} src={priceSrc} /> : (
+                      {view === "grading" ? <GradingCells c={c} g={math.get(c.card_id) ?? null} src={priceSrc} /> : (
                         <>
                       {data.grades.map((g, i) => (
                         <td key={g} className={`px-2 py-2 text-right ${i === 0 ? "border-l border-gray-800/70" : ""}`}>

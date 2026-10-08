@@ -485,8 +485,9 @@ export interface BrowseSet {
   psa_pop_at: string | null;
 }
 
-export function fetchTrackedSets(): Promise<{ sets: BrowseSet[] }> {
-  return get("/v1/tracked/sets");
+// Sets with tracked cards; { all: true } adds every other Pokémon set too.
+export function fetchTrackedSets(opts?: { all?: boolean }): Promise<{ sets: BrowseSet[] }> {
+  return get(`/v1/tracked/sets${opts?.all ? "?all=true" : ""}`);
 }
 
 export function fetchTracked(params?: { set?: string; windowDays?: number }): Promise<TrackedResponse> {
