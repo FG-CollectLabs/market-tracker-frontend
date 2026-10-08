@@ -450,6 +450,26 @@ export interface TrackedResponse {
   cards: TrackedCard[];
 }
 
+// One tile in the set browser (language -> era -> set).
+export interface BrowseSet {
+  code: string;
+  name: string;
+  lang: "en" | "ja" | string;
+  era: string | null; // "me" | "sv" | "swsh" ...
+  era_name: string | null;
+  release_date: string | null;
+  logo_url: string | null;
+  cover_url: string | null; // priciest tracked card's art; used when there's no logo
+  tracked: number;
+  pricecharting_at: string | null;
+  fanatics_at: string | null;
+  psa_pop_at: string | null;
+}
+
+export function fetchTrackedSets(): Promise<{ sets: BrowseSet[] }> {
+  return get("/v1/tracked/sets");
+}
+
 export function fetchTracked(params?: { set?: string; windowDays?: number }): Promise<TrackedResponse> {
   const qs = new URLSearchParams();
   if (params?.set) qs.set("set", params.set);
