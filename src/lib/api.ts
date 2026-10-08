@@ -414,6 +414,20 @@ export interface SupplySummary {
   closes_at?: string;
 }
 
+// Collectibility rank (backend internal/collectibility/collectibility.yaml):
+// tier "top" (with position), "a", "b", "c", or none; score 0-100.
+export interface CollectRank {
+  tier?: "top" | "a" | "b" | "c";
+  position?: number;
+  score: number;
+}
+
+export interface TrackedPokemon extends CollectRank {
+  slug: string;
+  name: string;
+  dex: number;
+}
+
 export interface TrackedCard {
   card_id: string;
   display_key: string;
@@ -430,6 +444,8 @@ export interface TrackedCard {
   note?: string;
   pricecharting: Record<string, PcPrice>; // grade key -> price
   pop?: Record<string, PopSummary>; // grader ("psa" | "cgc") -> latest pop
+  pokemon?: TrackedPokemon; // species on the card; absent for Trainers / items / energy
+  artist_rank?: CollectRank;
   sales: Record<string, Record<string, SalesSummary>>; // source -> grade key -> summary
   supply: Record<string, Record<string, SupplySummary>>;
 }
