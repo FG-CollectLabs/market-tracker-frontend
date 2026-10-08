@@ -37,12 +37,18 @@ function tileImage(url: string): string {
 function SetTile({ s }: { s: BrowseSet }) {
   const [logoFailed, setLogoFailed] = useState(false);
   const showLogo = s.logo_url && !logoFailed;
-  const stale = isStale(s.pricecharting_at) || isStale(s.fanatics_at);
+  const untracked = s.tracked === 0;
+  const stale = !untracked && (isStale(s.pricecharting_at) || isStale(s.fanatics_at));
   return (
     <Link
-      to={`/browse/${s.code}`}
-      className="group rounded-lg border border-gray-800 bg-gray-900/40 hover:border-indigo-600 hover:bg-gray-900 transition-colors overflow-hidden flex flex-col"
-      title={[
+      // Untracked sets open the full catalog page (every card, sealed, ROI).
+      to={untracked ? `/sets/pokemon/${s.code}` : `/browse/${s.code}`}
+      className={`group rounded-lg border overflow-hidden flex flex-col transition-colors ${
+        untracked
+          ? "border-dashed border-gray-800 bg-gray-950 opacity-50 hover:opacity-90"
+          : "border-gray-800 bg-gray-900/40 hover:border-indigo-600 hover:bg-gray-900"
+      }`}
+      title={untracked ? "Not tracked yet: opens the full set (every card, sealed, graded ROI)" : [
         `PriceCharting: ${s.pricecharting_at ? `${shortDate(s.pricecharting_at)} (${ago(s.pricecharting_at)})` : "never"}`,
         `Fanatics: ${s.fanatics_at ? `${shortDate(s.fanatics_at)} (${ago(s.fanatics_at)})` : "never"}`,
         `PSA gem rate: ${s.psa_pop_at ? `${shortDate(s.psa_pop_at)} (${ago(s.psa_pop_at)})` : "never"}`,
@@ -75,7 +81,7 @@ function SetTile({ s }: { s: BrowseSet }) {
       <div className="px-3 py-2">
         <div className="text-sm text-gray-100 leading-tight">{s.name}</div>
         <div className="mt-1 flex items-center gap-2 text-[11px] text-gray-500">
-          <span>{s.tracked} tracked</span>
+          <span>{untracked ? "not tracked" : `${s.tracked} tracked`}</span>
           {s.lang === "ja" && <span className="font-mono">{s.code.slice(3).toUpperCase()}</span>}
           {s.release_date && <span>{s.release_date.slice(0, 4)}</span>}
           {stale && <span className="text-amber-500" title="Prices older than 8 days">• stale</span>}
@@ -90,12 +96,21 @@ export default function BrowsePage() {
   const [error, setError] = useState<string | null>(null);
   const [params, setParams] = useSearchParams();
   const lang = params.get("lang") === "ja" ? "ja" : "en";
+  const showAll = params.get("all") === "1";
 
   useEffect(() => {
-    fetchTrackedSets()
+    setSets(null);
+    fetchTrackedSets({ all: showAll })
       .then((r) => setSets(r.sets))
       .catch((e: Error) => setError(e.message));
-  }, []);
+  }, [showAll]);
+
+  const setParam = (key: string, value: string | null) => {
+    const next = new URLSearchParams(params);
+    if (value == null) next.delete(key);
+    else next.set(key, value);
+    setParams(next);
+  };
 
   const counts = useMemo(() => {
     const c: Record<string, number> = {};
@@ -106,14 +121,20 @@ export default function BrowsePage() {
 
   return (
     <div>
-      <h1 className="text-xl font-semibold text-white">Tracked sets</h1>
-      <p className="text-sm text-gray-500 mb-4">Tracked cards by language, era and set. Hover a set for when its data was updated.</p>
+      <h1 className="text-xl font-semibold text-white">Sets</h1>
+      <div className="flex flex-wrap items-baseline justify-between gap-3 mb-4">
+        <p className="text-sm text-gray-500">Tracked cards by language, era and set. Hover a set for when its data was updated.</p>
+        <label className="flex items-center gap-2 text-sm text-gray-400" title="Show every Pokémon set in the catalog; untracked ones are dimmed and open the full set page">
+          <input type="checkbox" className="accent-indigo-500" checked={showAll} onChange={(e) => setParam("all", e.target.checked ? "1" : null)} />
+          Show untracked sets
+        </label>
+      </div>
 
       <div className="flex gap-6 border-b border-gray-800 mb-6">
         {LANGS.map((l) => (
           <button
             key={l.key}
-            onClick={() => setParams(l.key === "en" ? {} : { lang: l.key })}
+            onClick={() => setParam("lang", l.key === "en" ? null : l.key)}
             className={`pb-2 -mb-px text-sm border-b-2 transition-colors ${
               lang === l.key ? "border-indigo-500 text-white" : "border-transparent text-gray-500 hover:text-gray-300"
             }`}

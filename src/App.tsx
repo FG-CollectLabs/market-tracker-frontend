@@ -18,10 +18,7 @@ function Nav() {
         Market Tracker
       </NavLink>
       <NavLink to="/" end className={linkCls}>
-        Tracked Sets
-      </NavLink>
-      <NavLink to="/sets" end className={linkCls}>
-        Catalog
+        Sets
       </NavLink>
     </nav>
   );
@@ -36,6 +33,7 @@ export default function App() {
           <Routes>
             <Route path="/" element={<BrowsePage />} />
             <Route path="/browse/:code" element={<TrackedPage />} />
+            {/* Old catalog list; the home page's "Show untracked sets" replaces it. */}
             <Route path="/sets" element={<SetsPage />} />
             <Route path="/sets/:game/:code" element={<SetDetailPage />} />
             <Route path="/cards/:displayKey" element={<CardDetailPage />} />
