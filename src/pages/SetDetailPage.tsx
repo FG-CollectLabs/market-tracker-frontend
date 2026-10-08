@@ -1474,7 +1474,7 @@ export default function SetDetailPage() {
   return (
     <div className="space-y-4">
       <div>
-        <Link to="/" className="text-xs text-gray-500 hover:text-gray-300">
+        <Link to={code.startsWith("jp-") ? "/?lang=ja" : "/"} className="text-xs text-gray-500 hover:text-gray-300">
           ← Sets
         </Link>
         <h1 className="text-xl font-semibold text-white mt-1">

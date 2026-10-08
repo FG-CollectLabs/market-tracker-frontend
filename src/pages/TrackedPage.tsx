@@ -1,7 +1,8 @@
 import { Fragment, useEffect, useMemo, useState } from "react";
-import { Link } from "react-router-dom";
+import { Link, useParams } from "react-router-dom";
 import {
   fetchCardSales,
+  fetchSet,
   fetchTracked,
   type CardSale,
   type CardSalesWeek,
@@ -488,6 +489,9 @@ function CardPanel({ card, grade }: { card: TrackedCard; grade: string }) {
 // ---- page ------------------------------------------------------------------------------
 
 export default function TrackedPage() {
+  // /browse/:code shows one set; /tracked shows every tracked card.
+  const { code } = useParams<{ code?: string }>();
+  const [setName, setSetName] = useState<string | null>(null);
   const [windowDays, setWindowDays] = useState(30);
   const [data, setData] = useState<TrackedResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -505,10 +509,15 @@ export default function TrackedPage() {
 
   useEffect(() => {
     setError(null);
-    fetchTracked({ windowDays })
+    fetchTracked({ windowDays, set: code })
       .then(setData)
       .catch((e: Error) => setError(e.message));
-  }, [windowDays]);
+  }, [windowDays, code]);
+
+  useEffect(() => {
+    setSetName(null);
+    if (code) fetchSet("pokemon", code).then((s) => setSetName(s.name)).catch(() => setSetName(code));
+  }, [code]);
 
   const gradedKeys = useMemo(() => (data?.grades ?? []).filter((g) => g !== "raw"), [data]);
 
@@ -571,10 +580,32 @@ export default function TrackedPage() {
     <div>
       <div className="flex flex-wrap items-baseline justify-between gap-3 mb-4">
         <div>
-          <h1 className="text-xl font-semibold text-white">Tracked Cards</h1>
+          {code && (
+            <Link
+              to={code.startsWith("jp-") ? "/?lang=ja" : "/"}
+              className="text-xs text-gray-500 hover:text-gray-300"
+            >
+              ← Sets
+            </Link>
+          )}
+          <h1 className="text-xl font-semibold text-white">
+            {code ? (setName ?? code) : "Tracked Cards"}
+            {code?.startsWith("jp-") && (
+              <span className="ml-2 align-middle text-xs px-1.5 py-0.5 rounded bg-rose-900/50 text-rose-300">
+                {code.slice(3).toUpperCase()}
+              </span>
+            )}
+          </h1>
           <p className="text-sm text-gray-500">
-            {data ? `${data.cards.length} cards · ${data.sets.join(", ")}` : "Loading…"} · sales are entered
-            with the market-tracker MCP server
+            {data ? `${data.cards.length} tracked cards${code ? "" : ` · ${data.sets.join(", ")}`}` : "Loading…"}
+            {code && (
+              <>
+                {" · "}
+                <Link to={`/sets/pokemon/${code}?tab=graded`} className="text-indigo-400 hover:text-indigo-300">
+                  Graded ROI
+                </Link>
+              </>
+            )}
           </p>
         </div>
       </div>
@@ -660,7 +691,7 @@ export default function TrackedPage() {
             ))}
           </select>
         </label>
-        <select
+        {!code && <select
           value={setFilter}
           onChange={(e) => setSetFilter(e.target.value)}
           className="bg-gray-900 border border-gray-700 rounded px-2 py-1 text-gray-200"
@@ -668,12 +699,12 @@ export default function TrackedPage() {
           <option value="">All sets</option>
           <option value="en">English sets</option>
           <option value="jp">Japanese sets</option>
-          {setCodes.map((code) => (
-            <option key={code} value={code}>
-              {code}
+          {setCodes.map((c) => (
+            <option key={c} value={c}>
+              {c}
             </option>
           ))}
-        </select>
+        </select>}
         <select
           value={reason}
           onChange={(e) => setReason(e.target.value)}

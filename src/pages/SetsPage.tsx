@@ -47,8 +47,9 @@ export default function SetsPage() {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
+    // Pokémon only: the tracker no longer follows MTG (still in the DB).
     fetchSets()
-      .then((r) => setSets(r.sets))
+      .then((r) => setSets(r.sets.filter((s) => s.game === "pokemon")))
       .catch((e: unknown) => setError(String(e)))
       .finally(() => setLoading(false));
   }, []);
@@ -65,9 +66,9 @@ export default function SetsPage() {
   return (
     <div className="space-y-8">
       <div>
-        <h1 className="text-xl font-semibold text-white">Sets</h1>
+        <h1 className="text-xl font-semibold text-white">Catalog</h1>
         <p className="text-sm text-gray-400 mt-1">
-          All tracked sets. Click a set to browse cards, sealed products, and market prices.
+          Every Pokémon set in the catalog. Click a set for its cards, sealed products, market prices and graded ROI.
         </p>
       </div>
 

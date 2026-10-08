@@ -4,6 +4,7 @@ import SetDetailPage from "./pages/SetDetailPage";
 import CardDetailPage from "./pages/CardDetailPage";
 import GradedCoveragePage from "./pages/GradedCoveragePage";
 import TrackedPage from "./pages/TrackedPage";
+import BrowsePage from "./pages/BrowsePage";
 
 function Nav() {
   const linkCls = ({ isActive }: { isActive: boolean }) =>
@@ -17,13 +18,10 @@ function Nav() {
         Market Tracker
       </NavLink>
       <NavLink to="/" end className={linkCls}>
-        Sets
+        Tracked Sets
       </NavLink>
-      <NavLink to="/graded" className={linkCls}>
-        Graded Coverage
-      </NavLink>
-      <NavLink to="/tracked" className={linkCls}>
-        Tracked Cards
+      <NavLink to="/sets" end className={linkCls}>
+        Catalog
       </NavLink>
     </nav>
   );
@@ -36,9 +34,12 @@ export default function App() {
         <Nav />
         <main className="flex-1 p-6 max-w-7xl mx-auto w-full">
           <Routes>
-            <Route path="/" element={<SetsPage />} />
+            <Route path="/" element={<BrowsePage />} />
+            <Route path="/browse/:code" element={<TrackedPage />} />
+            <Route path="/sets" element={<SetsPage />} />
             <Route path="/sets/:game/:code" element={<SetDetailPage />} />
             <Route path="/cards/:displayKey" element={<CardDetailPage />} />
+            {/* Not in the nav: admin view of scrape links and refresh buttons. */}
             <Route path="/graded" element={<GradedCoveragePage />} />
             <Route path="/tracked" element={<TrackedPage />} />
           </Routes>
