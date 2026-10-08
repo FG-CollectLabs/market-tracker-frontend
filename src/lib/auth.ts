@@ -1,134 +1,98 @@
-// Google sign-in for admin actions (uploads, scrape refreshes). The API
-// verifies the Google ID token and checks the email against its allowlist;
-// the client id comes from GET /v1/auth/config, so the build needs no config.
-// The ID token (valid ~1 hour) is kept in sessionStorage for this tab only.
+// Admin sign-in through Firebase Authentication (Google provider), the same
+// setup as the other FG apps. The Firebase web config comes from the API
+// (GET /v1/auth/config), so the build needs no config, and the SDK is only
+// loaded when sign-in is configured. Firebase keeps the user signed in across
+// reloads and refreshes the ID token itself; the API verifies that token and
+// checks the email against its allowlist.
 
 import { useEffect, useState } from "react";
+import type { Auth, User } from "firebase/auth";
 
 const BASE = import.meta.env.VITE_API_URL ?? "";
-const KEY = "fg:google-id-token";
 
 export interface Session {
-  token: string;
   email: string;
-  expiresAt: number; // ms epoch
 }
 
 interface AuthConfig {
-  google_client_id: string;
-  google_enabled: boolean;
+  firebase: Record<string, string> | null;
+  firebase_enabled: boolean;
 }
 
-let configPromise: Promise<AuthConfig> | null = null;
-function authConfig(): Promise<AuthConfig> {
-  configPromise ??= fetch(`${BASE}/v1/auth/config`)
-    .then((r) => (r.ok ? r.json() : { google_client_id: "", google_enabled: false }))
-    .catch(() => ({ google_client_id: "", google_enabled: false }));
-  return configPromise;
-}
+let authPromise: Promise<Auth | null> | null = null;
+let user: User | null = null;
+const listeners = new Set<() => void>();
+const notify = () => listeners.forEach((l) => l());
 
-function decode(token: string): { email?: string; exp?: number } {
-  try {
-    const part = token.split(".")[1].replace(/-/g, "+").replace(/_/g, "/");
-    return JSON.parse(atob(part));
-  } catch {
-    return {};
-  }
+// Firebase Auth, or null when sign-in isn't configured on the API.
+function firebaseAuth(): Promise<Auth | null> {
+  authPromise ??= (async () => {
+    let cfg: AuthConfig;
+    try {
+      const r = await fetch(`${BASE}/v1/auth/config`);
+      cfg = r.ok ? await r.json() : { firebase: null, firebase_enabled: false };
+    } catch {
+      return null;
+    }
+    if (!cfg.firebase_enabled || !cfg.firebase) return null;
+    const [{ initializeApp }, { getAuth, onAuthStateChanged }] = await Promise.all([
+      import("firebase/app"),
+      import("firebase/auth"),
+    ]);
+    const auth = getAuth(initializeApp(cfg.firebase));
+    onAuthStateChanged(auth, (u) => {
+      user = u;
+      notify();
+    });
+    return auth;
+  })();
+  return authPromise;
 }
 
 export function currentSession(): Session | null {
-  try {
-    const token = sessionStorage.getItem(KEY);
-    if (!token) return null;
-    const { email, exp } = decode(token);
-    if (!email || !exp || exp * 1000 < Date.now() + 30_000) {
-      sessionStorage.removeItem(KEY);
-      return null;
-    }
-    return { token, email, expiresAt: exp * 1000 };
-  } catch {
-    return null;
-  }
+  return user?.email ? { email: user.email } : null;
 }
 
-const listeners = new Set<() => void>();
-function notify() {
-  listeners.forEach((l) => l());
+// Authorization header for admin endpoints (empty when signed out). The
+// token is refreshed by Firebase when it's near expiry.
+export async function authHeaders(): Promise<Record<string, string>> {
+  await firebaseAuth();
+  if (!user) return {};
+  return { Authorization: `Bearer ${await user.getIdToken()}` };
 }
 
-export function signOut() {
-  try {
-    sessionStorage.removeItem(KEY);
-  } catch {
-    /* storage blocked: nothing stored */
-  }
-  notify();
+export async function signIn(): Promise<void> {
+  const auth = await firebaseAuth();
+  if (!auth) throw new Error("Sign-in isn't configured on the API");
+  const { GoogleAuthProvider, signInWithPopup } = await import("firebase/auth");
+  await signInWithPopup(auth, new GoogleAuthProvider());
 }
 
-// Authorization header for admin endpoints (empty when signed out).
-export function authHeaders(): Record<string, string> {
-  const s = currentSession();
-  return s ? { Authorization: `Bearer ${s.token}` } : {};
+export async function signOut(): Promise<void> {
+  const auth = await firebaseAuth();
+  if (!auth) return;
+  const { signOut: fbSignOut } = await import("firebase/auth");
+  await fbSignOut(auth);
+}
+
+// Whether sign-in is available (null while loading), and the current session.
+export function useAuth(): { available: boolean | null; session: Session | null } {
+  const [available, setAvailable] = useState<boolean | null>(null);
+  const [session, setSession] = useState(currentSession);
+  useEffect(() => {
+    const l = () => setSession(currentSession());
+    listeners.add(l);
+    firebaseAuth().then((a) => {
+      setAvailable(a != null);
+      l();
+    });
+    return () => {
+      listeners.delete(l);
+    };
+  }, []);
+  return { available, session };
 }
 
 export function useSession(): Session | null {
-  const [s, setS] = useState(currentSession);
-  useEffect(() => {
-    const l = () => setS(currentSession());
-    listeners.add(l);
-    // Re-check near expiry so the UI flips to "sign in" by itself.
-    const t = setInterval(l, 60_000);
-    return () => {
-      listeners.delete(l);
-      clearInterval(t);
-    };
-  }, []);
-  return s;
-}
-
-declare global {
-  interface Window {
-    google?: {
-      accounts: {
-        id: {
-          initialize(o: { client_id: string; callback: (r: { credential: string }) => void; auto_select?: boolean }): void;
-          renderButton(el: HTMLElement, o: Record<string, unknown>): void;
-        };
-      };
-    };
-  }
-}
-
-let gsiPromise: Promise<void> | null = null;
-function loadGsi(): Promise<void> {
-  gsiPromise ??= new Promise((resolve, reject) => {
-    const s = document.createElement("script");
-    s.src = "https://accounts.google.com/gsi/client";
-    s.async = true;
-    s.onload = () => resolve();
-    s.onerror = () => reject(new Error("could not load Google sign-in"));
-    document.head.appendChild(s);
-  });
-  return gsiPromise;
-}
-
-// Renders Google's sign-in button into el. Resolves false when sign-in isn't
-// configured on the API.
-export async function renderSignIn(el: HTMLElement): Promise<boolean> {
-  const cfg = await authConfig();
-  if (!cfg.google_enabled) return false;
-  await loadGsi();
-  window.google!.accounts.id.initialize({
-    client_id: cfg.google_client_id,
-    callback: (r) => {
-      try {
-        sessionStorage.setItem(KEY, r.credential);
-      } catch {
-        /* storage blocked: sign-in lasts until reload */
-      }
-      notify();
-    },
-  });
-  window.google!.accounts.id.renderButton(el, { theme: "filled_black", size: "small", text: "signin_with", shape: "pill" });
-  return true;
+  return useAuth().session;
 }
