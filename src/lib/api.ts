@@ -447,6 +447,8 @@ export interface TrackedCard {
   pokemon?: TrackedPokemon; // species on the card; absent for Trainers / items / energy
   artist_rank?: CollectRank;
   sales: Record<string, Record<string, SalesSummary>>; // source -> grade key -> summary
+  sales_groups?: Record<string, Record<string, SalesSummary>>; // source -> grade group -> summary
+  set_release_date?: string;
   supply: Record<string, Record<string, SupplySummary>>;
 }
 
@@ -463,6 +465,7 @@ export interface TrackedResponse {
   window_days: number;
   grades: string[];
   sources: Record<string, SourceFreshness>;
+  sales_groups?: SalesGroup[];
   cards: TrackedCard[];
 }
 

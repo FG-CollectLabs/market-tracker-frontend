@@ -23,6 +23,24 @@ export function isStale(iso: string | null | undefined): boolean {
   return (daysAgo(iso) ?? 0) > STALE_DAYS;
 }
 
+// Past this a value is old enough to distrust: shown in red.
+export const OLD_DAYS = 30;
+
+export type Freshness = "fresh" | "late" | "old";
+
+// fresh: within a week (+1 day); late: missed a weekly run; old: > 30 days.
+export function freshness(iso: string | null | undefined): Freshness {
+  const d = daysAgo(iso) ?? 0;
+  return d > OLD_DAYS ? "old" : d > STALE_DAYS ? "late" : "fresh";
+}
+
+// Text color for a value of this age: white, white + amber dot, red.
+export const FRESH_TEXT: Record<Freshness, string> = {
+  fresh: "text-gray-100",
+  late: "text-gray-100",
+  old: "text-red-400",
+};
+
 // Newest timestamp in a list, ignoring missing ones.
 export function newest(isos: (string | null | undefined)[]): string | null {
   let best: string | null = null;
