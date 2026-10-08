@@ -8,6 +8,7 @@ import {
   type CardSalesWeek,
   type CardSupplySnapshot,
   type PcPrice,
+  type CollectRank,
   type PopSummary,
   type SalesSummary,
   type SourceFreshness,
@@ -43,7 +44,44 @@ const REASON_FILTERS = [
   { key: "manual", label: "Manual" },
 ];
 
-type SortKey = "number" | "pc-psa-10" | "sold" | "supply" | "grade-roi" | "ten-value" | "gem";
+type SortKey = "number" | "pc-psa-10" | "sold" | "supply" | "grade-roi" | "ten-value" | "gem" | "pokemon-rank" | "artist-rank";
+type GroupBy = "" | "rarity" | "pokemon" | "artist";
+
+function rankLabel(r: CollectRank | undefined): string | null {
+  if (!r?.tier) return null;
+  return r.tier === "top" ? `#${r.position}` : r.tier.toUpperCase();
+}
+
+// Small badge for a Pokémon / artist rank: "#3" for the ordered top list,
+// "A" / "B" / "C" for tiers, nothing when unranked.
+function RankBadge({ r, what }: { r: CollectRank | undefined; what: string }) {
+  const label = rankLabel(r);
+  if (!label) return null;
+  const color =
+    r!.tier === "top" ? "bg-amber-900/60 text-amber-300"
+    : r!.tier === "a" ? "bg-emerald-900/50 text-emerald-300"
+    : r!.tier === "b" ? "bg-sky-900/50 text-sky-300"
+    : "bg-gray-800 text-gray-400";
+  return (
+    <span className={`ml-1 px-1 rounded text-[10px] font-medium ${color}`} title={`${what} collectibility: ${label} (score ${r!.score})`}>
+      {label}
+    </span>
+  );
+}
+
+function groupKey(c: TrackedCard, g: GroupBy): string {
+  if (g === "rarity") return c.rarity || "Unknown rarity";
+  if (g === "pokemon") return c.pokemon?.name ?? "No Pokémon (Trainers, items, energy)";
+  if (g === "artist") return c.artist || "Unknown artist";
+  return "";
+}
+
+// Group order: best-ranked Pokémon / artist first, rarities alphabetical.
+function groupScore(c: TrackedCard, g: GroupBy): number {
+  if (g === "pokemon") return c.pokemon ? c.pokemon.score : -1;
+  if (g === "artist") return c.artist_rank?.score ?? -1;
+  return 0;
+}
 type View = "market" | "grading";
 // Where the grading math takes PSA 9 / 10 prices from. Raw is always
 // PriceCharting's ungraded price.
@@ -166,7 +204,20 @@ function CardCell({ c }: { c: TrackedCard }) {
       </div>
       <div className="text-[11px] text-gray-600 ml-10">
         {c.rarity}
-        {c.artist && <> · {c.artist}</>}
+        {c.pokemon && (
+          <>
+            {" · "}
+            {c.pokemon.name}
+            <RankBadge r={c.pokemon} what={c.pokemon.name} />
+          </>
+        )}
+        {c.artist && (
+          <>
+            {" · "}
+            {c.artist}
+            <RankBadge r={c.artist_rank} what={c.artist} />
+          </>
+        )}
       </div>
     </td>
   );
@@ -506,6 +557,7 @@ export default function TrackedPage() {
   const [gs, setGs] = useState<GradingSettings>(DEFAULT_GRADING);
   const [priceSrc, setPriceSrc] = useState<PriceSource>("pricecharting");
   const [signalFilter, setSignalFilter] = useState<"" | "grade" | "buy10">("");
+  const [groupBy, setGroupBy] = useState<GroupBy>("");
 
   useEffect(() => {
     setError(null);
@@ -563,9 +615,27 @@ export default function TrackedPage() {
         return x - y;
       },
       gem: (a, b) => mv(b, (m) => m.p10) - mv(a, (m) => m.p10),
+      "pokemon-rank": (a, b) => (b.pokemon?.score ?? -1) - (a.pokemon?.score ?? -1),
+      "artist-rank": (a, b) => (b.artist_rank?.score ?? -1) - (a.artist_rank?.score ?? -1),
     };
-    return [...out].sort(by[sort]);
-  }, [data, reason, query, sort, grade, setFilter, signalFilter, math]);
+    const sorted = [...out].sort(by[sort]);
+    if (!groupBy) return sorted;
+    // Keep the chosen sort inside each group; order groups by rank, then name.
+    return sorted
+      .map((c, i) => ({ c, i, k: groupKey(c, groupBy), s: groupScore(c, groupBy) }))
+      .sort((x, y) => {
+        const gx = groupBy === "rarity" ? 0 : y.s - x.s;
+        return gx || x.k.localeCompare(y.k) || x.i - y.i;
+      })
+      .map((x) => x.c);
+  }, [data, reason, query, sort, grade, setFilter, signalFilter, math, groupBy]);
+
+  // Cards per group, for the group header rows.
+  const groupCounts = useMemo(() => {
+    const m = new Map<string, number>();
+    if (groupBy) for (const c of rows) m.set(groupKey(c, groupBy), (m.get(groupKey(c, groupBy)) ?? 0) + 1);
+    return m;
+  }, [rows, groupBy]);
 
   const setCodes = useMemo(
     () => [...new Set((data?.cards ?? []).map((c) => c.set_code))].sort(),
@@ -728,6 +798,18 @@ export default function TrackedPage() {
           <option value="grade-roi">Sort: grading ROI</option>
           <option value="ten-value">Sort: cheapest 10s vs cost to make</option>
           <option value="gem">Sort: PSA gem rate</option>
+          <option value="pokemon-rank">Sort: Pokémon rank</option>
+          <option value="artist-rank">Sort: artist rank</option>
+        </select>
+        <select
+          value={groupBy}
+          onChange={(e) => setGroupBy(e.target.value as GroupBy)}
+          className="bg-gray-900 border border-gray-700 rounded px-2 py-1 text-gray-200"
+        >
+          <option value="">No grouping</option>
+          <option value="pokemon">Group: Pokémon</option>
+          <option value="artist">Group: artist</option>
+          <option value="rarity">Group: rarity</option>
         </select>
         <input
           value={query}
@@ -787,12 +869,24 @@ export default function TrackedPage() {
               )}
             </thead>
             <tbody className="divide-y divide-gray-800/70">
-              {rows.map((c) => {
+              {rows.map((c, i) => {
+                const gk = groupBy ? groupKey(c, groupBy) : "";
+                const newGroup = groupBy && (i === 0 || groupKey(rows[i - 1], groupBy) !== gk);
                 const supply = Object.entries(c.supply)
                   .map(([src, byGrade]) => [src, byGrade[grade]] as const)
                   .filter(([, s]) => s);
                 return (
                   <Fragment key={c.card_id}>
+                    {newGroup && (
+                      <tr className="bg-gray-900/80">
+                        <td colSpan={colCount} className="px-3 py-1.5 text-xs font-semibold text-gray-300">
+                          {gk}
+                          {groupBy === "pokemon" && <RankBadge r={c.pokemon} what={gk} />}
+                          {groupBy === "artist" && <RankBadge r={c.artist_rank} what={gk} />}
+                          <span className="ml-2 font-normal text-gray-500">{groupCounts.get(gk)} cards</span>
+                        </td>
+                      </tr>
+                    )}
                     <tr
                       className="hover:bg-gray-900/40 cursor-pointer"
                       onClick={() => setOpen(open === c.card_id ? null : c.card_id)}
