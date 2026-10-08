@@ -275,18 +275,19 @@ export function fetchSetGraded(
   return get(`/v1/sets/${game}/${setCode}/graded${q}`);
 }
 
-export function updateSetExternalIds(
+export async function updateSetExternalIds(
   game: string,
   code: string,
   name: string,
   patch: Record<string, string | null>,
 ): Promise<unknown> {
   const BASE = import.meta.env.VITE_API_URL ?? "";
+  const auth = await authHeaders();
   return fetch(`${BASE}/v1/admin/sets`, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
-      ...authHeaders(),
+      ...auth,
     },
     body: JSON.stringify({ game, code, name, external_ids: patch }),
   }).then((r) => {
@@ -313,18 +314,19 @@ export interface RefreshJob {
   log_tail: string;
 }
 
-export function triggerGradedRefresh(
+export async function triggerGradedRefresh(
   game: string,
   setCode: string,
   source: RefreshSource,
   url: string,
 ): Promise<{ job_id: string; status: string }> {
   const BASE = import.meta.env.VITE_API_URL ?? "";
+  const auth = await authHeaders();
   return fetch(`${BASE}/v1/admin/graded/refresh`, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
-      ...authHeaders(),
+      ...auth,
     },
     body: JSON.stringify({ game, set_code: setCode, source, url }),
   }).then((r) => {
@@ -333,23 +335,25 @@ export function triggerGradedRefresh(
   });
 }
 
-export function fetchGradedJob(jobId: string): Promise<RefreshJob> {
+export async function fetchGradedJob(jobId: string): Promise<RefreshJob> {
   const BASE = import.meta.env.VITE_API_URL ?? "";
+  const auth = await authHeaders();
   return fetch(`${BASE}/v1/admin/graded/jobs/${encodeURIComponent(jobId)}`, {
-    headers: authHeaders(),
+    headers: auth,
   }).then((r) => {
     if (!r.ok) throw new Error(`${r.status} fetchGradedJob`);
     return r.json();
   });
 }
 
-export function toggleGradedWatch(displayKey: string, watch: boolean): Promise<{ watch: boolean }> {
+export async function toggleGradedWatch(displayKey: string, watch: boolean): Promise<{ watch: boolean }> {
   const BASE = import.meta.env.VITE_API_URL ?? "";
+  const auth = await authHeaders();
   return fetch(`${BASE}/v1/admin/cards/${encodeURIComponent(displayKey)}/graded-watch`, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
-      ...authHeaders(),
+      ...auth,
     },
     body: JSON.stringify({ watch }),
   }).then((r) => {
@@ -627,7 +631,7 @@ export interface HistoryImport {
 }
 
 async function adminFetch<T>(path: string, init?: RequestInit): Promise<T> {
-  const res = await fetch(`${BASE}${path}`, { ...init, headers: { ...authHeaders(), ...(init?.headers ?? {}) } });
+  const res = await fetch(`${BASE}${path}`, { ...init, headers: { ...(await authHeaders()), ...(init?.headers ?? {}) } });
   if (!res.ok) {
     const body = await res.text().catch(() => "");
     let msg = body;
