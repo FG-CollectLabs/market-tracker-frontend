@@ -585,6 +585,8 @@ export interface FanaticsHistoryWeek {
   min_cents: number | null;
   max_cents: number | null;
   listed: number | null;
+  auction_median_cents: number | null;
+  buy_now_median_cents: number | null;
 }
 
 export interface PopHistoryWeek {
@@ -592,6 +594,7 @@ export interface PopHistoryWeek {
   company: string;
   gem: number;
   nine: number | null;
+  pristine: number | null; // CGC Pristine 10 + Perfect 10
   total: number;
 }
 
@@ -603,6 +606,19 @@ export interface CardHistory {
   pricecharting: PcHistoryWeek[];
   fanatics: FanaticsHistoryWeek[];
   pop: PopHistoryWeek[];
+  live: Record<string, LiveGroup>; // grade group -> what's listed on Fanatics now
+}
+
+// What's listed on Fanatics right now in one grade group.
+export interface LiveGroup {
+  auctions: number;
+  auction_bids: number;
+  auction_high_cents: number | null;
+  auction_low_cents: number | null;
+  buy_now: number;
+  buy_now_low_cents: number | null; // cheapest Buy Now: the current ceiling
+  buy_now_median_cents: number | null;
+  checked_at: string | null;
 }
 
 export function fetchCardHistory(displayKey: string, weeks = 26): Promise<CardHistory> {

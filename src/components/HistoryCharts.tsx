@@ -11,13 +11,6 @@ const PAD = { top: 12, right: 64, bottom: 24, left: 52 };
 const IW = W - PAD.left - PAD.right;
 const IH = H - PAD.top - PAD.bottom;
 
-function niceMax(v: number): number {
-  if (v <= 0) return 1;
-  const mag = 10 ** Math.floor(Math.log10(v));
-  for (const m of [1, 1.5, 2, 2.5, 3, 4, 5, 6, 8, 10]) if (m * mag >= v) return m * mag;
-  return 10 * mag;
-}
-
 // Count axes: a max divisible by 4 so the quarter ticks are whole numbers.
 function countMax(v: number): number {
   return Math.max(4, Math.ceil(v / 4) * 4);
@@ -51,31 +44,6 @@ export function axisMoney(cents: number): string {
 function shortWeek(w: string): string {
   const d = new Date(w + "T00:00:00Z");
   return d.toLocaleDateString(undefined, { month: "short", day: "numeric", timeZone: "UTC" });
-}
-
-// Recessive grid + y labels; x labels on a few weeks so they never collide.
-function Axes({ weeks, max, fmt }: { weeks: string[]; max: number; fmt: (v: number) => string }) {
-  const ticks = [0, 0.25, 0.5, 0.75, 1].map((f) => f * max);
-  const labels = labelIndexes(weeks.length);
-  const x = (i: number) => PAD.left + (weeks.length <= 1 ? IW / 2 : (i * IW) / (weeks.length - 1));
-  return (
-    <g className="text-[10px]" fill="#9ca3af">
-      {ticks.map((t) => {
-        const y = PAD.top + IH - (t / max) * IH;
-        return (
-          <g key={t}>
-            <line x1={PAD.left} x2={PAD.left + IW} y1={y} y2={y} stroke="#374151" strokeWidth={t === 0 ? 1 : 0.5} strokeDasharray={t === 0 ? undefined : "2 3"} />
-            <text x={PAD.left - 6} y={y + 3} textAnchor="end">{fmt(t)}</text>
-          </g>
-        );
-      })}
-      {weeks.map((w, i) =>
-        labels.has(i) ? (
-          <text key={w} x={x(i)} y={H - 6} textAnchor="middle">{shortWeek(w)}</text>
-        ) : null,
-      )}
-    </g>
-  );
 }
 
 function Tooltip({ x, children }: { x: number; children: ReactNode }) {
@@ -112,10 +80,23 @@ export interface LineSeries {
   label: string;
   color: string;
   values: (number | null)[];
+  dashed?: boolean; // second source for the same entity (e.g. Fanatics vs PriceCharting)
+  connect?: boolean; // draw across missing weeks (sparse series like monthly prices)
+  dots?: boolean; // mark each data point
 }
 
-// Multi-series line chart on one y-axis (all series share a unit). Gaps where
-// a week has no value; end-of-line direct labels; crosshair + tooltip.
+// A round tick step (1, 2, 2.5, 5 x 10^k) giving about four intervals.
+function niceStep(span: number): number {
+  const raw = span / 4 || 1;
+  const mag = 10 ** Math.floor(Math.log10(raw));
+  for (const m of [1, 2, 2.5, 5, 10]) if (m * mag >= raw) return m * mag;
+  return 10 * mag;
+}
+
+// Multi-series line chart on one y-axis (all series share a unit). Missing
+// weeks are gaps unless a series connects across them; negative values get
+// a zero baseline. End-of-line direct labels for up to 4 series (legend
+// otherwise); crosshair + tooltip.
 export function LineChart({ weeks, series, fmt, axisFmt }: {
   weeks: string[];
   series: LineSeries[];
@@ -124,30 +105,51 @@ export function LineChart({ weeks, series, fmt, axisFmt }: {
 }) {
   const [hover, setHover] = useState<number | null>(null);
   const all = series.flatMap((s) => s.values.filter((v): v is number => v != null));
-  if (weeks.length === 0 || all.length === 0) return <p className="text-xs text-gray-600 py-6">No data yet.</p>;
-  const max = niceMax(Math.max(...all));
+  if (weeks.length === 0 || all.length === 0) return <p className="text-xs text-gray-600 py-6">No data in this window yet.</p>;
+  // Axis always includes 0; ticks fall on round steps (so 0 is a tick when
+  // values go negative).
+  const step = niceStep(Math.max(...all, 0) - Math.min(...all, 0));
+  const lo = Math.floor(Math.min(0, ...all) / step) * step;
+  const hi = Math.max(lo + step, Math.ceil(Math.max(0, ...all) / step) * step);
   const x = (i: number) => PAD.left + (weeks.length <= 1 ? IW / 2 : (i * IW) / (weeks.length - 1));
-  const y = (v: number) => PAD.top + IH - (v / max) * IH;
+  const y = (v: number) => PAD.top + IH - ((v - lo) / (hi - lo)) * IH;
   const lastIdx = (s: LineSeries) => s.values.map((v, i) => (v != null ? i : -1)).filter((i) => i >= 0).pop();
+  const labelled = series.length <= 4;
   const labelY = spreadLabels(
     series.flatMap((s) => {
       const i = lastIdx(s);
-      return i == null ? [] : [{ key: s.label, y: y(s.values[i]!) + 3 }];
+      return i == null || !labelled ? [] : [{ key: s.label, y: y(s.values[i]!) + 3 }];
     }),
   );
+  const ticks: number[] = [];
+  for (let t = lo; t <= hi + step / 2; t += step) ticks.push(Math.round(t / step) * step);
+  const labels = labelIndexes(weeks.length);
+  const af = axisFmt ?? fmt;
 
   return (
     <div className="relative">
       <svg viewBox={`0 0 ${W} ${H}`} className="w-full h-auto" onMouseLeave={() => setHover(null)}>
-        <Axes weeks={weeks} max={max} fmt={axisFmt ?? fmt} />
+        <g className="text-[10px]" fill="#9ca3af">
+          {ticks.map((t) => (
+            <g key={t}>
+              <line x1={PAD.left} x2={PAD.left + IW} y1={y(t)} y2={y(t)} stroke="#374151" strokeWidth={t === lo ? 1 : 0.5} strokeDasharray={t === lo ? undefined : "2 3"} />
+              <text x={PAD.left - 6} y={y(t) + 3} textAnchor="end">{af(t)}</text>
+            </g>
+          ))}
+          {lo < 0 && <line x1={PAD.left} x2={PAD.left + IW} y1={y(0)} y2={y(0)} stroke="#9ca3af" strokeWidth={1} />}
+          {weeks.map((w, i) =>
+            labels.has(i) ? <text key={w} x={x(i)} y={H - 6} textAnchor="middle">{shortWeek(w)}</text> : null,
+          )}
+        </g>
         {series.map((s) => {
-          // Split into runs so missing weeks show as gaps, not interpolation.
           const runs: string[] = [];
           let cur = "";
           s.values.forEach((v, i) => {
             if (v == null) {
-              if (cur) runs.push(cur);
-              cur = "";
+              if (!s.connect && cur) {
+                runs.push(cur);
+                cur = "";
+              }
             } else cur += `${cur ? "L" : "M"}${x(i)},${y(v)}`;
           });
           if (cur) runs.push(cur);
@@ -155,18 +157,17 @@ export function LineChart({ weeks, series, fmt, axisFmt }: {
           return (
             <g key={s.label}>
               {runs.map((d, k) => (
-                <path key={k} d={d} fill="none" stroke={s.color} strokeWidth={2} strokeLinejoin="round" strokeLinecap="round" />
+                <path key={k} d={d} fill="none" stroke={s.color} strokeWidth={2} strokeLinejoin="round" strokeLinecap="round"
+                  strokeDasharray={s.dashed ? "5 4" : undefined} />
               ))}
-              {/* lone points (one-week runs) need a marker to be visible */}
-              {s.values.map((v, i) =>
-                v != null && (s.values[i - 1] == null) && (s.values[i + 1] == null) ? (
-                  <circle key={i} cx={x(i)} cy={y(v)} r={3} fill={s.color} />
-                ) : null,
-              )}
-              {lastI != null && series.length <= 4 && (
-                <text x={x(lastI) + 6} y={labelY.get(s.label)} fill="#d1d5db" className="text-[10px]">
-                  {s.label}
-                </text>
+              {s.values.map((v, i) => {
+                const lone = v != null && !s.connect && s.values[i - 1] == null && s.values[i + 1] == null;
+                return v != null && (s.dots || lone) ? (
+                  <circle key={i} cx={x(i)} cy={y(v)} r={s.dots ? 2.5 : 3} fill={s.color} />
+                ) : null;
+              })}
+              {lastI != null && labelled && (
+                <text x={x(lastI) + 6} y={labelY.get(s.label)} fill="#d1d5db" className="text-[10px]">{s.label}</text>
               )}
             </g>
           );
@@ -181,29 +182,22 @@ export function LineChart({ weeks, series, fmt, axisFmt }: {
             )}
           </g>
         )}
-        {/* hit targets: one column per week, wider than the marks */}
         {weeks.map((w, i) => (
-          <rect
-            key={w}
-            x={x(i) - IW / Math.max(1, weeks.length - 1) / 2}
-            y={PAD.top}
-            width={IW / Math.max(1, weeks.length - 1)}
-            height={IH}
-            fill="transparent"
-            onMouseEnter={() => setHover(i)}
-          />
+          <rect key={w} x={x(i) - IW / Math.max(1, weeks.length - 1) / 2} y={PAD.top}
+            width={IW / Math.max(1, weeks.length - 1)} height={IH} fill="transparent" onMouseEnter={() => setHover(i)} />
         ))}
       </svg>
       {hover != null && (
         <Tooltip x={x(hover)}>
           <div className="text-gray-400 mb-0.5">Week of {shortWeek(weeks[hover])}</div>
-          {series.map((s) => (
+          {series.filter((s) => s.values[hover] != null).map((s) => (
             <div key={s.label} className="flex items-center gap-1.5">
               <span className="inline-block w-2 h-2 rounded-full" style={{ background: s.color }} />
               <span className="text-gray-400">{s.label}</span>
-              <span className="ml-auto pl-3 tabular-nums">{s.values[hover] != null ? fmt(s.values[hover]!) : "—"}</span>
+              <span className="ml-auto pl-3 tabular-nums">{fmt(s.values[hover]!)}</span>
             </div>
           ))}
+          {series.every((s) => s.values[hover] == null) && <div className="text-gray-500">No data this week</div>}
         </Tooltip>
       )}
     </div>
