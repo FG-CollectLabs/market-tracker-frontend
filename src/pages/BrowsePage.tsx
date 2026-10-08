@@ -28,6 +28,12 @@ function groupByEra(sets: BrowseSet[]): Era[] {
   return [...byId.values()].sort((a, b) => newest(b).localeCompare(newest(a)));
 }
 
+// PriceCharting card images come as 60 px thumbnails ("/60.jpg"); the same
+// image exists at 240 and 1600 px. 240 is sharp at tile size.
+function tileImage(url: string): string {
+  return url.replace(/\/60\.jpg$/, "/240.jpg");
+}
+
 function SetTile({ s }: { s: BrowseSet }) {
   const [logoFailed, setLogoFailed] = useState(false);
   const showLogo = s.logo_url && !logoFailed;
@@ -54,9 +60,9 @@ function SetTile({ s }: { s: BrowseSet }) {
         ) : s.cover_url ? (
           // Whole card, sharp, over a blurred copy of its own art.
           <div className="relative w-full h-full flex items-center justify-center">
-            <img src={s.cover_url} alt="" aria-hidden loading="lazy" className="absolute inset-0 w-full h-full object-cover blur-md opacity-40 scale-110" />
+            <img src={tileImage(s.cover_url)} alt="" aria-hidden loading="lazy" className="absolute inset-0 w-full h-full object-cover blur-md opacity-40 scale-110" />
             <img
-              src={s.cover_url}
+              src={tileImage(s.cover_url)}
               alt={s.name}
               loading="lazy"
               className="relative h-[90%] rounded shadow-lg group-hover:scale-105 transition-transform"
