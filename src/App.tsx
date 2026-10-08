@@ -5,6 +5,7 @@ import CardDetailPage from "./pages/CardDetailPage";
 import GradedCoveragePage from "./pages/GradedCoveragePage";
 import TrackedPage from "./pages/TrackedPage";
 import BrowsePage from "./pages/BrowsePage";
+import { SignIn } from "./components/SignIn";
 
 function Nav() {
   const linkCls = ({ isActive }: { isActive: boolean }) =>
@@ -20,6 +21,7 @@ function Nav() {
       <NavLink to="/" end className={linkCls}>
         Sets
       </NavLink>
+      <SignIn />
     </nav>
   );
 }

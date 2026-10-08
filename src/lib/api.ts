@@ -1,3 +1,5 @@
+import { authHeaders } from "./auth";
+
 const BASE = import.meta.env.VITE_API_URL ?? "";
 
 async function get<T>(path: string): Promise<T> {
@@ -284,7 +286,7 @@ export function updateSetExternalIds(
     method: "POST",
     headers: {
       "Content-Type": "application/json",
-      Authorization: `Bearer ${import.meta.env.VITE_ADMIN_API_KEY ?? ""}`,
+      ...authHeaders(),
     },
     body: JSON.stringify({ game, code, name, external_ids: patch }),
   }).then((r) => {
@@ -322,7 +324,7 @@ export function triggerGradedRefresh(
     method: "POST",
     headers: {
       "Content-Type": "application/json",
-      Authorization: `Bearer ${import.meta.env.VITE_ADMIN_API_KEY ?? ""}`,
+      ...authHeaders(),
     },
     body: JSON.stringify({ game, set_code: setCode, source, url }),
   }).then((r) => {
@@ -334,7 +336,7 @@ export function triggerGradedRefresh(
 export function fetchGradedJob(jobId: string): Promise<RefreshJob> {
   const BASE = import.meta.env.VITE_API_URL ?? "";
   return fetch(`${BASE}/v1/admin/graded/jobs/${encodeURIComponent(jobId)}`, {
-    headers: { Authorization: `Bearer ${import.meta.env.VITE_ADMIN_API_KEY ?? ""}` },
+    headers: authHeaders(),
   }).then((r) => {
     if (!r.ok) throw new Error(`${r.status} fetchGradedJob`);
     return r.json();
@@ -347,7 +349,7 @@ export function toggleGradedWatch(displayKey: string, watch: boolean): Promise<{
     method: "POST",
     headers: {
       "Content-Type": "application/json",
-      Authorization: `Bearer ${import.meta.env.VITE_ADMIN_API_KEY ?? ""}`,
+      ...authHeaders(),
     },
     body: JSON.stringify({ watch }),
   }).then((r) => {
@@ -601,5 +603,61 @@ export interface CardHistory {
 
 export function fetchCardHistory(displayKey: string, weeks = 26): Promise<CardHistory> {
   return get(`/v1/cards/${encodeURIComponent(displayKey)}/history?weeks=${weeks}`);
+}
+
+// ---- history imports (screenshot drop box; admin) ---------------------------
+
+export type ImportSource = "pricecharting" | "fanatics" | "ebay" | "130point" | "other";
+
+export interface HistoryImport {
+  id: string;
+  display_key: string | null;
+  card_name: string | null;
+  source: ImportSource;
+  grade_hint?: string;
+  note?: string;
+  content_type: string;
+  size_bytes: number;
+  status: "pending" | "processing" | "done" | "failed" | "rejected";
+  result?: Record<string, unknown>;
+  error?: string;
+  uploaded_by?: string;
+  created_at: string;
+  processed_at?: string;
+}
+
+async function adminFetch<T>(path: string, init?: RequestInit): Promise<T> {
+  const res = await fetch(`${BASE}${path}`, { ...init, headers: { ...authHeaders(), ...(init?.headers ?? {}) } });
+  if (!res.ok) {
+    const body = await res.text().catch(() => "");
+    let msg = body;
+    try {
+      msg = JSON.parse(body).message ?? body;
+    } catch {
+      /* not JSON */
+    }
+    throw new Error(res.status === 401 ? "Sign in with Google to do this" : `${res.status}: ${msg}`);
+  }
+  return res.json() as Promise<T>;
+}
+
+export function uploadHistoryImport(f: {
+  displayKey: string;
+  source: ImportSource;
+  gradeHint?: string;
+  note?: string;
+  image: Blob;
+}): Promise<HistoryImport> {
+  const form = new FormData();
+  form.set("display_key", f.displayKey);
+  form.set("source", f.source);
+  if (f.gradeHint) form.set("grade_hint", f.gradeHint);
+  if (f.note) form.set("note", f.note);
+  form.set("image", f.image, "screenshot");
+  return adminFetch("/v1/admin/imports", { method: "POST", body: form });
+}
+
+export function fetchHistoryImports(displayKey: string): Promise<{ imports: HistoryImport[] }> {
+  return adminFetch(`/v1/admin/imports?display_key=${encodeURIComponent(displayKey)}&limit=50`);
 }
 
