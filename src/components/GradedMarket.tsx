@@ -3,6 +3,7 @@ import { fetchCardHistory, type CardHistory, type FanaticsHistoryWeek } from "..
 import { formatCents } from "../lib/roi";
 import { Spinner, ErrorMsg } from "./Spinner";
 import { Legend, LineChart, SERIES, SupplyChart, axisMoney, type LineSeries } from "./HistoryCharts";
+import ImportsPanel from "./ImportsPanel";
 
 // Mondays (UTC) from `weeks` weeks ago through this week, matching the
 // backend's date_trunc('week') buckets, so every chart shares one x-axis.
@@ -231,6 +232,8 @@ export default function GradedMarket({ displayKey }: { displayKey: string }) {
         <Legend items={popSeries.map((s) => ({ label: s.label, color: s.color }))} />
         <LineChart weeks={axis} series={popSeries} fmt={(v) => `${v.toFixed(0)}%`} />
       </Section>
+
+      <ImportsPanel displayKey={displayKey} />
     </div>
   );
 }
