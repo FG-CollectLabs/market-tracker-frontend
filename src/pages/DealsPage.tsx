@@ -4,6 +4,8 @@ import { fetchDeals, type Deal } from "../lib/api";
 import { formatCents } from "../lib/roi";
 import { ACTION_STYLE } from "../components/BuyingGuide";
 import { Spinner, ErrorMsg } from "../components/Spinner";
+import { cardThumb } from "../lib/thumb";
+import { FairBar, PHASE_STYLE, PHASE_LABEL } from "../components/BuyingGuide";
 
 const KINDS = [
   { key: "", label: "All" },
@@ -24,17 +26,21 @@ const KIND_LABEL: Record<string, string> = {
 // agent's find_deals tool returns.
 export default function DealsPage() {
   const [kind, setKind] = useState("");
-  const [target, setTarget] = useState(20);
+  const [afterHype, setAfterHype] = useState(false);
+  const [target, setTarget] = useState<number | null>(null); // null = saved setting
   const [deals, setDeals] = useState<Deal[] | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     setDeals(null);
     setError(null);
-    fetchDeals({ kind: kind || undefined, targetMargin: target / 100, limit: 200 })
-      .then((r) => setDeals(r.deals))
+    fetchDeals({ kind: kind || undefined, afterHype, targetMargin: target == null ? undefined : target / 100, limit: 200 })
+      .then((r) => {
+        setDeals(r.deals);
+        if (target == null) setTarget(Math.round(r.settings.target_margin * 100));
+      })
       .catch((e: Error) => setError(e.message));
-  }, [kind, target]);
+  }, [kind, target, afterHype]);
 
   return (
     <div className="space-y-4">
@@ -54,9 +60,14 @@ export default function DealsPage() {
             </button>
           ))}
         </div>
+        <label className="flex items-center gap-1.5 text-gray-400"
+          title="Only cards at or past their typical post-release bottom (release curves; provisional until more sets are tracked)">
+          <input type="checkbox" checked={afterHype} onChange={(e) => setAfterHype(e.target.checked)} className="accent-indigo-500" />
+          Past hype cycle only
+        </label>
         <label className="flex items-center gap-1.5 text-gray-400">
           Target margin
-          <input type="number" min={0} max={200} step={5} value={target} onChange={(e) => setTarget(Number(e.target.value) || 0)}
+          <input type="number" min={0} max={200} step={5} value={target ?? ""} onChange={(e) => setTarget(Number(e.target.value) || 0)}
             className="w-14 bg-gray-900 border border-gray-700 rounded px-1.5 py-0.5 text-gray-200 font-mono" />%
         </label>
       </div>
@@ -68,20 +79,45 @@ export default function DealsPage() {
           <table className="w-full text-sm">
             <thead className="bg-gray-900/60 text-gray-400 text-xs">
               <tr>
-                <th className="text-left px-3 py-2 font-medium">Card</th>
+                <th className="text-left px-3 py-2 font-medium" colSpan={2}>Card</th>
                 <th className="text-left px-3 py-2 font-medium">Do</th>
                 <th className="text-left px-3 py-2 font-medium">Why</th>
                 <th className="text-right px-3 py-2 font-medium">Max</th>
                 <th className="text-right px-3 py-2 font-medium">Market</th>
+                <th className="text-left px-3 py-2 font-medium" title="Fair range of the 10: cost to make one by grading x how cards of the same desirability trade">Fair range</th>
                 <th className="text-right px-3 py-2 font-medium">Margin</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-800/70">
               {deals.map((d, i) => (
                 <tr key={i} className="align-top hover:bg-gray-900/40">
+                  <td className="pl-3 py-2 w-14">
+                    <Link to={`/cards/${encodeURIComponent(d.display_key)}`} className="group relative block">
+                      {d.image_url ? (
+                        <>
+                          <img src={cardThumb(d.image_url)} alt={d.name} loading="lazy" className="w-12 h-[67px] object-cover rounded-sm bg-gray-800" />
+                          <img src={d.image_url} alt="" loading="lazy"
+                            className="pointer-events-none absolute left-14 top-0 z-20 hidden w-56 max-w-none rounded-lg shadow-2xl ring-1 ring-gray-700 group-hover:block" />
+                        </>
+                      ) : (
+                        <span className="block w-12 h-[67px] rounded-sm bg-gray-800/60" />
+                      )}
+                    </Link>
+                  </td>
                   <td className="px-3 py-2 whitespace-nowrap">
                     <Link to={`/cards/${encodeURIComponent(d.display_key)}`} className="text-gray-100 hover:text-indigo-300">{d.name}</Link>
                     <div className="text-[11px] text-gray-500 font-mono">{d.set_code.replace(/^jp-/, "JP ").toUpperCase()}</div>
+                    {d.months_since_release != null && (
+                      <div className="text-[11px] text-gray-500 mt-0.5">
+                        month {Math.floor(d.months_since_release)}
+                        {d.phase && d.phase !== "unknown" && (
+                          <span className={`ml-1.5 px-1 rounded text-[10px] ${PHASE_STYLE[d.phase]}`}
+                            title={d.timing_provisional ? "Provisional: the release curve rests on few sets so far" : undefined}>
+                            {d.post_hype ? "past hype" : PHASE_LABEL[d.phase]}{d.timing_provisional ? "*" : ""}
+                          </span>
+                        )}
+                      </div>
+                    )}
                   </td>
                   <td className="px-3 py-2 whitespace-nowrap">
                     <span className={`px-1.5 py-0.5 rounded border text-[11px] font-medium ${ACTION_STYLE[d.action.kind]}`}>{KIND_LABEL[d.action.kind] ?? d.action.kind}</span>
@@ -92,6 +128,7 @@ export default function DealsPage() {
                   </td>
                   <td className="px-3 py-2 text-right tabular-nums text-gray-100">{d.action.max_cents != null ? formatCents(d.action.max_cents) : "—"}</td>
                   <td className="px-3 py-2 text-right tabular-nums text-gray-400">{d.market_cents ? formatCents(d.market_cents) : "—"}</td>
+                  <td className="px-3 py-2 min-w-[9rem]">{d.fair?.high_cents ? <FairBar f={d.fair} compact /> : <span className="text-gray-600">—</span>}</td>
                   <td className="px-3 py-2 text-right tabular-nums text-green-400">{`${d.margin > 0 ? "+" : ""}${(d.margin * 100).toFixed(0)}%`}</td>
                 </tr>
               ))}

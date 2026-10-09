@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
-import { fetchCardAnalysis, type BuyAction, type CardAnalysis, type GradeAnalysis } from "../lib/api";
+import { Link } from "react-router-dom";
+import { fetchCardAnalysis, type BuyAction, type CardAnalysis, type FairValue, type GradeAnalysis, type GradingEV, type Lifecycle } from "../lib/api";
 import { formatCents } from "../lib/roi";
 import { AsOf } from "./AsOf";
 import { Spinner, ErrorMsg } from "./Spinner";
@@ -24,6 +25,26 @@ export const ACTION_STYLE: Record<BuyAction["kind"], string> = {
   bid_auction: "border-amber-800 bg-amber-950/40 text-amber-200",
   buy_now: "border-emerald-800 bg-emerald-950/40 text-emerald-200",
   watch: "border-gray-800 bg-gray-950/40 text-gray-300",
+};
+
+export const PHASE_LABEL: Record<Lifecycle["phase"], string> = {
+  falling: "still falling",
+  bottom: "at the bottom",
+  recovering: "recovering",
+  unknown: "no curve",
+};
+
+export const PHASE_STYLE: Record<Lifecycle["phase"], string> = {
+  falling: "bg-amber-950/60 text-amber-300",
+  bottom: "bg-green-950/60 text-green-300",
+  recovering: "bg-sky-950/60 text-sky-300",
+  unknown: "bg-gray-800 text-gray-400",
+};
+
+const POSITION_TEXT: Record<string, { label: string; cls: string }> = {
+  below: { label: "below range", cls: "text-green-400" },
+  within: { label: "within range", cls: "text-gray-300" },
+  above: { label: "above range", cls: "text-amber-300" },
 };
 
 const money = (c?: number | null) => (c == null ? "—" : formatCents(c));
@@ -94,19 +115,93 @@ function GradeRow({ g }: { g: GradeAnalysis }) {
   );
 }
 
+// The fair range of a 10 on one track: cost to make one (tick), the range
+// (band) and today's market price (dot), with the numbers as text.
+export function FairBar({ f, compact }: { f: FairValue; compact?: boolean }) {
+  if (!f.high_cents || !f.low_cents) return null;
+  const vals = [f.make_cents, f.low_cents, f.high_cents, f.market_cents ?? f.low_cents];
+  const lo = Math.min(...vals) * 0.92;
+  const hi = Math.max(...vals) * 1.08;
+  const x = (c: number) => `${((c - lo) / (hi - lo)) * 100}%`;
+  const pos = f.position ? POSITION_TEXT[f.position] : null;
+  const title = `Cost to make one: ${money(f.make_cents)} (${f.tier}, ~${f.turnaround_days} days). ${f.desirability === "all" ? "All tracked cards" : `Tier ${f.desirability} Pokémon`} (${f.cards} cards) trade at ${f.markup_median?.toFixed(2)}x that; fair range ${money(f.low_cents)}–${money(f.high_cents)}.`;
+  return (
+    <div title={title} className="space-y-1">
+      <div className="relative h-3">
+        <div className="absolute inset-x-0 top-1/2 h-px bg-gray-700" />
+        <div className="absolute top-0.5 h-2 rounded-sm bg-gray-600/70" style={{ left: x(f.low_cents), width: `calc(${x(f.high_cents)} - ${x(f.low_cents)})` }} />
+        <div className="absolute top-0 h-3 w-px bg-gray-300" style={{ left: x(f.make_cents) }} />
+        {f.market_cents != null && (
+          <div className="absolute top-1/2 h-2.5 w-2.5 -translate-x-1/2 -translate-y-1/2 rounded-full bg-white ring-2 ring-gray-900" style={{ left: x(f.market_cents) }} />
+        )}
+      </div>
+      <div className="text-[11px] text-gray-400 tabular-nums whitespace-nowrap">
+        {money(f.low_cents)}–{money(f.high_cents)}
+        {pos && <span className={`ml-1.5 ${pos.cls}`}>{pos.label}</span>}
+        {!compact && <span className="text-gray-500"> · makes for {money(f.make_cents)}</span>}
+      </div>
+    </div>
+  );
+}
+
+const GRADER_LABEL: Record<string, string> = { psa: "PSA", cgc: "CGC" };
+
+function GraderRow({ ev, minROI }: { ev: GradingEV; minROI: number }) {
+  return (
+    <tr>
+      <td className="py-1.5 pr-3 text-gray-200 whitespace-nowrap">{GRADER_LABEL[ev.grader] ?? ev.grader}</td>
+      <td className="py-1.5 pr-3 text-gray-400 whitespace-nowrap">{ev.tier} · {money(ev.fee_cents)} · ~{ev.turnaround_days}d</td>
+      <td className="py-1.5 pr-3 text-right tabular-nums">{(ev.p10 * 100).toFixed(0)}%</td>
+      <td className="py-1.5 pr-3 text-right tabular-nums"
+        title={`Raw x ${(1 + ev.sourcing_pct).toFixed(2)} sourcing + ${money(ev.fee_cents)} fee + ${money(ev.ship_cents)} shipping + ${money(ev.time_cost_cents)} money tied up`}>
+        {money(ev.cost_cents)}
+      </td>
+      <td className="py-1.5 pr-3 text-right tabular-nums" title="What a 10 must sell for to break even, after the misses resell">{money(ev.break_even_cents)}</td>
+      <td className="py-1.5 pr-3 text-right tabular-nums">
+        {Math.abs(ev.ten_drift) >= 0.005 ? <span className={ev.ten_drift < 0 ? "text-amber-300" : "text-sky-300"}>{pct(ev.ten_drift)}</span> : <span className="text-gray-600">—</span>}
+      </td>
+      <td className="py-1.5 pr-3 text-right tabular-nums">
+        <span className={ev.roi >= minROI ? "text-green-400" : ev.roi < 0 ? "text-red-400" : "text-gray-200"}>{pct(ev.roi)}</span>
+        <span className="block text-[10px] text-gray-500">{money(ev.ev_cents)}</span>
+      </td>
+      <td className="py-1.5 pr-3 text-right tabular-nums text-gray-300">{money(ev.max_raw_cents)}</td>
+    </tr>
+  );
+}
+
+function TimingLine({ l, label }: { l: Lifecycle; label: string }) {
+  return (
+    <span>
+      {label}: <span className={`px-1 rounded ${PHASE_STYLE[l.phase]}`}>{PHASE_LABEL[l.phase]}</span>
+      {l.phase === "falling" && <> typically {pct(l.to_bottom)} more until month {l.bottom_month}</>}
+      {l.post_hype && <> past the hype cycle</>}
+      {l.provisional && <span className="text-gray-500" title={`As few as ${l.min_sets} sets behind the curve so far`}> · provisional</span>}
+      <span className="text-gray-500"> (low-risk months {l.window_from}–{l.window_to}{l.curve_lang === "all" ? ", all languages" : ""})</span>
+    </span>
+  );
+}
+
 // The buying analysis for one card: what to do (with the reasoning), and the
 // per-grade numbers behind it. All math is server-side (shared with the
 // agent's analyze_card tool).
 export default function BuyingGuide({ displayKey }: { displayKey: string }) {
-  const [target, setTarget] = useState(20);
-  const [exitFee, setExitFee] = useState(13.25);
+  // null = use the saved setting; set when the user types an override.
+  const [target, setTarget] = useState<number | null>(null);
+  const [exitFee, setExitFee] = useState<number | null>(null);
   const [a, setA] = useState<CardAnalysis | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     setError(null);
-    fetchCardAnalysis(displayKey, { targetMargin: target / 100, exitFeePct: exitFee / 100 })
-      .then(setA)
+    fetchCardAnalysis(displayKey, {
+      targetMargin: target == null ? undefined : target / 100,
+      exitFeePct: exitFee == null ? undefined : exitFee / 100,
+    })
+      .then((r) => {
+        setA(r);
+        if (target == null) setTarget(Math.round(r.settings.target_margin * 100));
+        if (exitFee == null) setExitFee(+(r.settings.exit_fee_pct * 100).toFixed(2));
+      })
       .catch((e: Error) => setError(e.message));
   }, [displayKey, target, exitFee]);
 
@@ -123,14 +218,15 @@ export default function BuyingGuide({ displayKey }: { displayKey: string }) {
         <div className="flex items-center gap-3 text-xs text-gray-400">
           <label className="flex items-center gap-1.5" title="Profit you want on a flip after the resale fee">
             Target margin
-            <input type="number" min={0} max={200} step={5} value={target} onChange={(e) => setTarget(Number(e.target.value) || 0)}
+            <input type="number" min={0} max={200} step={5} value={target ?? ""} onChange={(e) => setTarget(Number(e.target.value) || 0)}
               className="w-14 bg-gray-950 border border-gray-700 rounded px-1.5 py-0.5 text-gray-200 font-mono" />%
           </label>
           <label className="flex items-center gap-1.5" title="Fee when reselling: eBay ~13.25%, Fanatics cash ~6%, FanCash 0%">
             Resale fee
-            <input type="number" min={0} max={30} step={0.25} value={exitFee} onChange={(e) => setExitFee(Number(e.target.value) || 0)}
+            <input type="number" min={0} max={30} step={0.25} value={exitFee ?? ""} onChange={(e) => setExitFee(Number(e.target.value) || 0)}
               className="w-16 bg-gray-950 border border-gray-700 rounded px-1.5 py-0.5 text-gray-200 font-mono" />%
           </label>
+          <Link to="/settings" className="text-indigo-300 hover:text-indigo-200">Fees & costs →</Link>
         </div>
       </div>
 
@@ -147,15 +243,49 @@ export default function BuyingGuide({ displayKey }: { displayKey: string }) {
             ))}
           </div>
 
-          {a.grading && (
-            <p className="text-xs text-gray-400">
-              Grading one raw copy (PSA, average gem rate {(a.grading.p10 * 100).toFixed(0)}%): EV after fees{" "}
-              <span className={a.grading.roi >= 0.3 ? "text-green-400" : a.grading.roi < 0 ? "text-red-400" : "text-gray-200"}>
-                {pct(a.grading.roi)} ({money(a.grading.ev_cents)})
-              </span>
-              {a.grading.max_raw_cents != null && <> · worth grading up to a raw price of <span className="text-gray-200">{money(a.grading.max_raw_cents)}</span></>}
-              {a.grading.cost_per_10_cents != null && <> · making a PSA 10 costs about {money(a.grading.cost_per_10_cents)}</>}
+          {(a.lifecycle?.["psa-10"] || a.lifecycle?.raw) && (
+            <p className="text-xs text-gray-400 flex flex-wrap gap-x-4 gap-y-1">
+              {a.months_since_release != null && <span className="text-gray-300">Month {Math.floor(a.months_since_release)} since release</span>}
+              {a.lifecycle["psa-10"] && <TimingLine l={a.lifecycle["psa-10"]} label="PSA 10" />}
+              {a.lifecycle.raw && <TimingLine l={a.lifecycle.raw} label="Raw" />}
+              <Link to="/timing" className="text-indigo-300 hover:text-indigo-200">Release curves →</Link>
             </p>
+          )}
+
+          {Object.keys(a.grading_by ?? {}).length > 0 && (
+            <div className="overflow-x-auto">
+              <table className="w-full text-xs">
+                <thead className="text-gray-500">
+                  <tr>
+                    <th className="text-left py-1 pr-3 font-medium">Grade it with</th>
+                    <th className="text-left py-1 pr-3 font-medium">Tier</th>
+                    <th className="text-right py-1 pr-3 font-medium">Gem rate</th>
+                    <th className="text-right py-1 pr-3 font-medium" title="Sourced raw copy + fee + shipping + money tied up over the turnaround">All-in cost</th>
+                    <th className="text-right py-1 pr-3 font-medium" title="What a 10 must sell for to break even">Cost to make a 10</th>
+                    <th className="text-right py-1 pr-3 font-medium" title="Typical change in the 10's price over the turnaround (release curve)">10 by return</th>
+                    <th className="text-right py-1 pr-3 font-medium">EV after fees</th>
+                    <th className="text-right py-1 pr-3 font-medium" title={`Highest raw price that still clears +${(a.settings.min_roi * 100).toFixed(0)}%`}>Max raw</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-gray-800 text-gray-300">
+                  {["psa", "cgc"].filter((g) => a.grading_by[g]).map((g) => <GraderRow key={g} ev={a.grading_by[g]} minROI={a.settings.min_roi} />)}
+                </tbody>
+              </table>
+            </div>
+          )}
+
+          {a.fair?.some((f) => f.high_cents) && (
+            <div className="grid gap-3 md:grid-cols-2">
+              {a.fair.filter((f) => f.high_cents).map((f) => (
+                <div key={f.grade} className="rounded border border-gray-800 bg-gray-950/40 px-3 py-2">
+                  <div className="flex items-baseline justify-between text-xs mb-1.5">
+                    <span className="text-gray-200 font-medium">Fair {GRADE_LABEL[f.grade]} price</span>
+                    <span className="text-gray-500">market {money(f.market_cents)}</span>
+                  </div>
+                  <FairBar f={f} />
+                </div>
+              ))}
+            </div>
           )}
 
           <div className="overflow-x-auto">

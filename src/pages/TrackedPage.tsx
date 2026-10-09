@@ -1,4 +1,5 @@
 import { Fragment, useEffect, useMemo, useState } from "react";
+import { cardThumb } from "../lib/thumb";
 import { Link, useParams } from "react-router-dom";
 import {
   fetchCardSales,
@@ -231,11 +232,6 @@ const SOLD_GROUPS = ["psa-10", "psa-9", "cgc-10-pristine", "cgc-10", "any-6-8"];
 const SOLD_GROUP_LABELS: Record<string, string> = {
   "psa-10": "PSA 10", "psa-9": "PSA 9", "cgc-10-pristine": "CGC Pristine", "cgc-10": "CGC 10", "any-6-8": "6–8",
 };
-
-function cardThumb(url: string): string {
-  // TCGdex serves a small "low" rendition; PriceCharting's 60 px is fine here.
-  return url.replace(/\/high\.webp$/, "/low.webp");
-}
 
 function MoneyInput({ label, cents, onChange, title }: { label: string; cents: number; onChange: (c: number) => void; title?: string }) {
   return (
