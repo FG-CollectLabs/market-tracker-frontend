@@ -722,16 +722,115 @@ export interface BuyAction {
   max_cents?: number;
 }
 
-export interface AnalysisSettings {
+export interface ServiceTier {
+  name: string;
   fee_cents: number;
-  extra_cents: number;
+  max_value_cents: number; // 0 = no cap
+  turnaround_days: number;
+}
+
+export interface Grader {
+  name: string;
+  ship_cents: number; // per card, both ways
+  tiers: ServiceTier[];
+}
+
+export interface AnalysisSettings {
+  graders: Record<string, Grader>;
+  sourcing_pct: number;
+  capital_rate: number;
+  use_timing: boolean;
   sell_fee_pct: number;
-  min_roi: number;
-  min_profit_cents: number;
-  target_margin: number;
   exit_fee_pct: number;
   premium_pct: number;
+  target_margin: number;
+  min_roi: number;
+  min_profit_cents: number;
   buy_ten_below_ev: number;
+  updated_at?: string;
+  updated_by?: string;
+}
+
+export interface GradingEV {
+  grader: string;
+  tier?: string;
+  fee_cents: number;
+  ship_cents: number;
+  turnaround_days: number;
+  sourcing_pct: number;
+  capital_rate: number;
+  sell_fee_pct: number;
+  ten_drift: number;
+  p10: number;
+  p9?: number;
+  cost_cents: number;
+  time_cost_cents: number;
+  ev_cents: number;
+  roi: number;
+  cost_per_10_cents?: number;
+  break_even_cents?: number;
+  ten_value?: number;
+  max_raw_cents?: number;
+}
+
+export interface FairValue {
+  grade: string; // psa-10, cgc-10
+  grader: string;
+  tier: string;
+  make_cents: number;
+  desirability?: string;
+  cards?: number;
+  low_cents?: number;
+  mid_cents?: number;
+  high_cents?: number;
+  market_cents?: number;
+  markup_median?: number;
+  card_markup?: number;
+  position?: "below" | "within" | "above";
+  turnaround_days: number;
+}
+
+export interface Lifecycle {
+  grade: string;
+  curve_lang: string;
+  month: number;
+  phase: "falling" | "bottom" | "recovering" | "unknown";
+  bottom_month: number;
+  window_from: number;
+  window_to: number;
+  to_bottom: number;
+}
+
+export interface CurvePoint {
+  month: number;
+  change: number;
+  n: number;
+}
+
+export interface ReleaseCurve {
+  grade: "raw" | "psa-10" | "premium";
+  lang: "en" | "ja" | "all";
+  points: CurvePoint[];
+  bottom_month: number;
+  bottom_change: number;
+  window_from: number;
+  window_to: number;
+}
+
+export interface CurveBottoms {
+  grade: string;
+  lang: string;
+  cards: number;
+  median_month: number;
+  p25_month: number;
+  p75_month: number;
+  median_drop: number;
+}
+
+export interface ReleaseCurves {
+  built_at: string;
+  curves: ReleaseCurve[];
+  bottoms: CurveBottoms[];
 }
 
 export interface CardAnalysis {
@@ -740,16 +839,11 @@ export interface CardAnalysis {
   set_code: string;
   months_since_release?: number;
   gem_rates: Record<string, number>;
-  grading?: {
-    p10: number;
-    p9?: number;
-    cost_cents: number;
-    ev_cents: number;
-    roi: number;
-    cost_per_10_cents?: number;
-    ten_value?: number;
-    max_raw_cents?: number;
-  };
+  image_url?: string;
+  grading?: GradingEV;
+  grading_by: Record<string, GradingEV>;
+  fair: FairValue[];
+  lifecycle: Record<string, Lifecycle>;
   grades: GradeAnalysis[];
   trend?: Record<string, number>;
   collectibility: Record<string, number>;
@@ -762,6 +856,10 @@ export interface Deal {
   display_key: string;
   name: string;
   set_code: string;
+  image_url?: string;
+  months_since_release?: number;
+  phase?: Lifecycle["phase"];
+  fair?: FairValue;
   action: BuyAction;
   margin: number;
   market_cents: number;
@@ -783,4 +881,20 @@ export function fetchDeals(o?: { targetMargin?: number; exitFeePct?: number; kin
   if (o?.kind) q.set("kind", o.kind);
   q.set("limit", String(o?.limit ?? 100));
   return get(`/v1/analysis/deals?${q}`);
+}
+
+export function fetchReleaseCurves(): Promise<ReleaseCurves> {
+  return get("/v1/analysis/release-curves");
+}
+
+export function fetchSettings(): Promise<{ settings: AnalysisSettings; defaults: AnalysisSettings }> {
+  return get("/v1/settings");
+}
+
+export function saveSettings(s: AnalysisSettings): Promise<{ settings: AnalysisSettings; defaults: AnalysisSettings }> {
+  return adminFetch("/v1/admin/settings", {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(s),
+  });
 }

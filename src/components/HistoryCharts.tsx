@@ -97,8 +97,10 @@ function niceStep(span: number): number {
 // weeks are gaps unless a series connects across them; negative values get
 // a zero baseline. End-of-line direct labels for up to 4 series (legend
 // otherwise); crosshair + tooltip.
-export function LineChart({ weeks, series, fmt, axisFmt }: {
+export function LineChart({ weeks, series, fmt, axisFmt, xLabel, xTitle }: {
   weeks: string[];
+  xLabel?: (w: string) => string; // x tick text (default: week date)
+  xTitle?: (w: string) => string; // tooltip heading (default: "Week of …")
   series: LineSeries[];
   fmt: (v: number) => string; // tooltip values
   axisFmt?: (v: number) => string; // y-axis ticks (default: fmt)
@@ -138,7 +140,7 @@ export function LineChart({ weeks, series, fmt, axisFmt }: {
           ))}
           {lo < 0 && <line x1={PAD.left} x2={PAD.left + IW} y1={y(0)} y2={y(0)} stroke="#9ca3af" strokeWidth={1} />}
           {weeks.map((w, i) =>
-            labels.has(i) ? <text key={w} x={x(i)} y={H - 6} textAnchor="middle">{shortWeek(w)}</text> : null,
+            labels.has(i) ? <text key={w} x={x(i)} y={H - 6} textAnchor="middle">{(xLabel ?? shortWeek)(w)}</text> : null,
           )}
         </g>
         {series.map((s) => {
@@ -189,7 +191,7 @@ export function LineChart({ weeks, series, fmt, axisFmt }: {
       </svg>
       {hover != null && (
         <Tooltip x={x(hover)}>
-          <div className="text-gray-400 mb-0.5">Week of {shortWeek(weeks[hover])}</div>
+          <div className="text-gray-400 mb-0.5">{xTitle ? xTitle(weeks[hover]) : `Week of ${shortWeek(weeks[hover])}`}</div>
           {series.filter((s) => s.values[hover] != null).map((s) => (
             <div key={s.label} className="flex items-center gap-1.5">
               <span className="inline-block w-2 h-2 rounded-full" style={{ background: s.color }} />

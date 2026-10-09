@@ -6,6 +6,8 @@ import GradedCoveragePage from "./pages/GradedCoveragePage";
 import TrackedPage from "./pages/TrackedPage";
 import BrowsePage from "./pages/BrowsePage";
 import DealsPage from "./pages/DealsPage";
+import TimingPage from "./pages/TimingPage";
+import SettingsPage from "./pages/SettingsPage";
 import { SignIn } from "./components/SignIn";
 
 function Nav() {
@@ -25,6 +27,12 @@ function Nav() {
       <NavLink to="/deals" className={linkCls}>
         Deals
       </NavLink>
+      <NavLink to="/timing" className={linkCls}>
+        Timing
+      </NavLink>
+      <NavLink to="/settings" className={linkCls}>
+        Settings
+      </NavLink>
       <SignIn />
     </nav>
   );
@@ -40,6 +48,8 @@ export default function App() {
             <Route path="/" element={<BrowsePage />} />
             <Route path="/browse/:code" element={<TrackedPage />} />
             <Route path="/deals" element={<DealsPage />} />
+            <Route path="/timing" element={<TimingPage />} />
+            <Route path="/settings" element={<SettingsPage />} />
             {/* Old catalog list; the home page's "Show untracked sets" replaces it. */}
             <Route path="/sets" element={<SetsPage />} />
             <Route path="/sets/:game/:code" element={<SetDetailPage />} />
