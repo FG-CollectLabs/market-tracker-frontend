@@ -4,7 +4,7 @@ import { formatCents } from "../lib/roi";
 import { Spinner, ErrorMsg } from "./Spinner";
 import { Legend, LineChart, SERIES, SupplyChart, axisMoney, type LineSeries } from "./HistoryCharts";
 import { AsOf } from "./AsOf";
-import { ago, shortDate } from "../lib/freshness";
+import { FRESH_TEXT, ago, freshness, shortDate } from "../lib/freshness";
 import ImportsPanel from "./ImportsPanel";
 
 // The grades every chart on this tab follows, each with one fixed color.
@@ -166,7 +166,58 @@ function LivePanel({ live, rows, axis }: { live: Record<string, LiveGroup>; rows
           </tbody>
         </table>
       </div>
-      <p className="text-[11px] text-gray-600">eBay live listings aren't tracked yet (eBay blocks the home server); Fanatics only for now.</p>
+    </Section>
+  );
+}
+
+// eBay doesn't let the home server in, so its current listings come from
+// screenshots: each "eBay listed now" upload replaces the snapshot, and its
+// date shows how stale the ceiling is (amber after a week, red after 30 days).
+function EbayLivePanel({ live }: { live: Record<string, LiveGroup> | undefined }) {
+  const groups = GRADES.map((g) => ({ g, l: live?.[g.key === "raw" ? "raw" : g.group] }));
+  const checked = Object.values(live ?? {}).map((l) => l.checked_at).filter((v): v is string => !!v).sort().pop() ?? null;
+  const f = checked ? freshness(checked) : null;
+  return (
+    <Section
+      title="Listed on eBay (from your last screenshot)"
+      sub="eBay blocks the home server, so this comes from an 'eBay listed now' screenshot dropped below. Upload a new one when it goes stale."
+      right={
+        checked ? (
+          <span className={`text-[11px] ${f === "old" ? FRESH_TEXT.old : f === "late" ? "text-amber-400" : "text-gray-500"}`} title={new Date(checked).toLocaleString()}>
+            snapshot {shortDate(checked)} ({ago(checked)})
+          </span>
+        ) : undefined
+      }
+    >
+      {!checked ? (
+        <p className="text-xs text-gray-500">No eBay snapshot yet: drop an "eBay listed now" screenshot in the box below.</p>
+      ) : (
+        <table className="w-full text-xs">
+          <thead className="text-gray-500">
+            <tr>
+              <th className="text-left py-1 pr-3 font-medium">Grade</th>
+              <th className="text-right py-1 pr-3 font-medium">Auctions</th>
+              <th className="text-right py-1 pr-3 font-medium" title="Highest current bid">Top bid</th>
+              <th className="text-right py-1 pr-3 font-medium">Buy It Now</th>
+              <th className="text-right py-1 font-medium" title="Cheapest Buy It Now">Ceiling</th>
+            </tr>
+          </thead>
+          <tbody className={`divide-y divide-gray-800 tabular-nums ${f === "old" ? FRESH_TEXT.old : "text-gray-300"}`}>
+            {groups.map(({ g, l }) => (
+              <tr key={g.key}>
+                <td className="py-1 pr-3 whitespace-nowrap">
+                  <span className="inline-block w-2 h-2 rounded-full mr-1.5" style={{ background: g.color }} />
+                  {g.key === "raw" ? "Raw" : g.label}
+                </td>
+                <td className="py-1 pr-3 text-right">{l?.auctions ?? 0}</td>
+                <td className="py-1 pr-3 text-right">{l?.auction_high_cents != null ? money(l.auction_high_cents) : "—"}</td>
+                <td className="py-1 pr-3 text-right">{l?.buy_now ?? 0}</td>
+                <td className="py-1 text-right">{l?.buy_now_low_cents != null ? money(l.buy_now_low_cents) : "—"}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      )}
     </Section>
   );
 }
@@ -307,6 +358,7 @@ export default function GradedMarket({ displayKey }: { displayKey: string }) {
       </div>
 
       <LivePanel live={data.live ?? {}} rows={data.fanatics} axis={axis} />
+      <EbayLivePanel live={data.live_by_source?.ebay} />
 
       <Section
         title="Price: PriceCharting vs Fanatics"

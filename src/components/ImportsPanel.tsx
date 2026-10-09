@@ -5,13 +5,23 @@ import {
 import { useSession } from "../lib/auth";
 import { ago, shortDate } from "../lib/freshness";
 
-const SOURCES: { key: ImportSource; label: string; hint: string }[] = [
-  { key: "pricecharting", label: "PriceCharting chart", hint: "the price history chart; the agent reads monthly points off it" },
-  { key: "fanatics", label: "Fanatics sold", hint: "sales history results; one sale per row" },
-  { key: "130point", label: "130point sold", hint: "130point.com sold listings (eBay)" },
-  { key: "ebay", label: "eBay sold", hint: "eBay sold / completed listings" },
-  { key: "other", label: "Other", hint: "say what it is in the note" },
+// What a screenshot shows. "eBay listed now" is stored as source ebay with
+// a tag in the note, which tells the agent to record a listings snapshot
+// (what's for sale, stamped with the time) rather than sales.
+const LISTED_NOW_TAG = "[LISTED NOW: active listings snapshot]";
+const SOURCES: { key: string; source: ImportSource; label: string; hint: string; tag?: string }[] = [
+  { key: "130point", source: "130point", label: "130point sold", hint: "130point.com sold listings (eBay)" },
+  { key: "ebay-listed", source: "ebay", label: "eBay listed now", hint: "an eBay search of active listings: becomes this card's current eBay ceiling, dated now", tag: LISTED_NOW_TAG },
+  { key: "ebay", source: "ebay", label: "eBay sold", hint: "eBay sold / completed listings" },
+  { key: "fanatics", source: "fanatics", label: "Fanatics sold", hint: "sales history results; one sale per row" },
+  { key: "pricecharting", source: "pricecharting", label: "PriceCharting chart", hint: "the price history chart; the agent reads monthly points off it" },
+  { key: "other", source: "other", label: "Other", hint: "say what it is in the note" },
 ];
+
+function kindOf(i: HistoryImport) {
+  if (i.note?.startsWith(LISTED_NOW_TAG)) return SOURCES.find((s) => s.key === "ebay-listed")!;
+  return SOURCES.find((s) => s.key === i.source);
+}
 
 const GRADES = ["", "psa-10", "psa-9", "cgc-10-pristine", "cgc-10", "raw"];
 
@@ -30,7 +40,7 @@ export default function ImportsPanel({ displayKey }: { displayKey: string }) {
   const session = useSession();
   const [file, setFile] = useState<File | null>(null);
   const [preview, setPreview] = useState<string | null>(null);
-  const [source, setSource] = useState<ImportSource>("130point");
+  const [kind, setKind] = useState("130point");
   const [grade, setGrade] = useState("");
   const [note, setNote] = useState("");
   const [busy, setBusy] = useState(false);
@@ -75,7 +85,9 @@ export default function ImportsPanel({ displayKey }: { displayKey: string }) {
     setBusy(true);
     setError(null);
     try {
-      await uploadHistoryImport({ displayKey, source, gradeHint: grade || undefined, note: note.trim() || undefined, image: file });
+      const k = SOURCES.find((s) => s.key === kind)!;
+      const fullNote = [k.tag, note.trim()].filter(Boolean).join(" ");
+      await uploadHistoryImport({ displayKey, source: k.source, gradeHint: grade || undefined, note: fullNote || undefined, image: file });
       setFile(null);
       setNote("");
       setPreview((old) => {
@@ -132,10 +144,10 @@ export default function ImportsPanel({ displayKey }: { displayKey: string }) {
 
           <div className="flex flex-wrap items-center gap-2 text-sm">
             <select
-              value={source}
-              onChange={(e) => setSource(e.target.value as ImportSource)}
+              value={kind}
+              onChange={(e) => setKind(e.target.value)}
               className="bg-gray-950 border border-gray-700 rounded px-2 py-1 text-gray-200"
-              title={SOURCES.find((s) => s.key === source)?.hint}
+              title={SOURCES.find((s) => s.key === kind)?.hint}
             >
               {SOURCES.map((s) => (
                 <option key={s.key} value={s.key}>{s.label}</option>
@@ -186,7 +198,7 @@ export default function ImportsPanel({ displayKey }: { displayKey: string }) {
                   {shortDate(i.created_at)} <span className="text-gray-600">({ago(i.created_at)})</span>
                 </td>
                 <td className="py-1 pr-3 whitespace-nowrap">
-                  {SOURCES.find((s) => s.key === i.source)?.label ?? i.source}
+                  {kindOf(i)?.label ?? i.source}
                   {i.grade_hint && <span className="text-gray-500"> · {i.grade_hint}</span>}
                 </td>
                 <td className="py-1 pr-3">

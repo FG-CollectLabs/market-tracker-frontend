@@ -607,6 +607,7 @@ export interface CardHistory {
   fanatics: FanaticsHistoryWeek[];
   pop: PopHistoryWeek[];
   live: Record<string, LiveGroup>; // grade group -> what's listed on Fanatics now
+  live_by_source?: Record<string, Record<string, LiveGroup>>; // source ("fanatics", "ebay") -> grade group -> listed now
 }
 
 // What's listed on Fanatics right now in one grade group.
