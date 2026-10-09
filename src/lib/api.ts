@@ -682,3 +682,105 @@ export function fetchHistoryImports(displayKey: string): Promise<{ imports: Hist
   return adminFetch(`/v1/admin/imports?display_key=${encodeURIComponent(displayKey)}&limit=50`);
 }
 
+
+// ---- buying analysis (GET /v1/cards/{key}/analysis, /v1/analysis/deals) ------
+
+export interface MarketValue {
+  cents: number;
+  source: "pricecharting" | "ebay_sold_90d" | "fanatics_bin" | string;
+  as_of?: string;
+}
+
+export interface GradeAnalysis {
+  grade: string; // raw, psa-10, psa-9, cgc-10, cgc-10-pristine
+  market?: MarketValue;
+  expected_ratio?: number;
+  expected_all_in_cents?: number;
+  expected_hammer_cents?: number;
+  max_bid_cents?: number;
+  max_all_in_cents?: number;
+  flip_margin?: number;
+  supply?: "quiet" | "usual" | "heavy" | "dump";
+  live_auctions: number;
+  usual_auctions_per_week: number;
+  card_auction_weeks: number;
+  card_ratio?: number;
+  baseline_ratio?: number;
+  ceiling_cents?: number;
+  ceiling_source?: string;
+  ceiling_as_of?: string;
+  sales_per_week: number;
+  spread?: number;
+  sales_90d: number;
+}
+
+export interface BuyAction {
+  kind: "buy_raw_to_grade" | "buy_psa10" | "bid_auction" | "buy_now" | "watch";
+  grade?: string;
+  headline: string;
+  why: string;
+  max_cents?: number;
+}
+
+export interface AnalysisSettings {
+  fee_cents: number;
+  extra_cents: number;
+  sell_fee_pct: number;
+  min_roi: number;
+  min_profit_cents: number;
+  target_margin: number;
+  exit_fee_pct: number;
+  premium_pct: number;
+  buy_ten_below_ev: number;
+}
+
+export interface CardAnalysis {
+  display_key: string;
+  name: string;
+  set_code: string;
+  months_since_release?: number;
+  gem_rates: Record<string, number>;
+  grading?: {
+    p10: number;
+    p9?: number;
+    cost_cents: number;
+    ev_cents: number;
+    roi: number;
+    cost_per_10_cents?: number;
+    ten_value?: number;
+    max_raw_cents?: number;
+  };
+  grades: GradeAnalysis[];
+  trend?: Record<string, number>;
+  collectibility: Record<string, number>;
+  actions: BuyAction[];
+  flags: string[];
+  settings: AnalysisSettings;
+}
+
+export interface Deal {
+  display_key: string;
+  name: string;
+  set_code: string;
+  action: BuyAction;
+  margin: number;
+  market_cents: number;
+}
+
+function analysisQS(o?: { targetMargin?: number; exitFeePct?: number }): URLSearchParams {
+  const q = new URLSearchParams();
+  if (o?.targetMargin != null) q.set("target_margin", String(o.targetMargin));
+  if (o?.exitFeePct != null) q.set("exit_fee_pct", String(o.exitFeePct));
+  return q;
+}
+
+export function fetchCardAnalysis(displayKey: string, o?: { targetMargin?: number; exitFeePct?: number }): Promise<CardAnalysis> {
+  return get(`/v1/cards/${encodeURIComponent(displayKey)}/analysis?${analysisQS(o)}`);
+}
+
+export function fetchDeals(o?: { targetMargin?: number; exitFeePct?: number; kind?: string; limit?: number }): Promise<{ deals: Deal[]; settings: AnalysisSettings }> {
+  const q = analysisQS(o);
+  if (o?.kind) q.set("kind", o.kind);
+  q.set("limit", String(o?.limit ?? 100));
+  return get(`/v1/analysis/deals?${q}`);
+}
