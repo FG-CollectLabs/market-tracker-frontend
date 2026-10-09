@@ -6,6 +6,7 @@ import { Legend, LineChart, SERIES, SupplyChart, axisMoney, type LineSeries } fr
 import { AsOf } from "./AsOf";
 import { FRESH_TEXT, ago, freshness, shortDate } from "../lib/freshness";
 import ImportsPanel from "./ImportsPanel";
+import BuyingGuide from "./BuyingGuide";
 
 // The grades every chart on this tab follows, each with one fixed color.
 // "Raw" pairs PriceCharting's ungraded price with Fanatics' CGC 6-9 sales:
@@ -331,6 +332,8 @@ export default function GradedMarket({ displayKey }: { displayKey: string }) {
 
   return (
     <div className="space-y-5">
+      <BuyingGuide displayKey={displayKey} />
+
       <Section title="Gem rates" sub="Share of graded copies at each grade (GemRate). Hover a value for when it was updated.">
         <GemRates pop={data.pop} />
       </Section>
