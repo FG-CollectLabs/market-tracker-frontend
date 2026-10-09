@@ -174,6 +174,8 @@ function TimingLine({ l, label }: { l: Lifecycle; label: string }) {
     <span>
       {label}: <span className={`px-1 rounded ${PHASE_STYLE[l.phase]}`}>{PHASE_LABEL[l.phase]}</span>
       {l.phase === "falling" && <> typically {pct(l.to_bottom)} more until month {l.bottom_month}</>}
+      {l.post_hype && <> past the hype cycle</>}
+      {l.provisional && <span className="text-gray-500" title={`As few as ${l.min_sets} sets behind the curve so far`}> · provisional</span>}
       <span className="text-gray-500"> (low-risk months {l.window_from}–{l.window_to}{l.curve_lang === "all" ? ", all languages" : ""})</span>
     </span>
   );

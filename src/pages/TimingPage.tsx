@@ -37,7 +37,14 @@ function WindowTile({ c, label, note }: { c?: ReleaseCurve; label: string; note:
   if (!c) return null;
   return (
     <div className="rounded-lg border border-gray-800 bg-gray-900 px-4 py-3">
-      <div className="text-xs text-gray-500">{label}</div>
+      <div className="flex items-center justify-between text-xs text-gray-500">
+        <span>{label}</span>
+        {c.provisional && (
+          <span className="px-1.5 rounded bg-amber-950/60 text-amber-300" title="Fewer than 8 sets behind some month up to the window">
+            Provisional · as few as {c.min_sets} set{c.min_sets === 1 ? "" : "s"}
+          </span>
+        )}
+      </div>
       <div className="text-2xl font-semibold text-gray-100 tabular-nums mt-0.5">
         Months {c.window_from}–{c.window_to}
       </div>
@@ -92,6 +99,10 @@ export default function TimingPage() {
         <p className="text-sm text-gray-500">Not enough history for this language yet.</p>
       ) : (
         <>
+          <p className="text-xs text-amber-300/90 max-w-3xl">
+            Placeholders until more sets are tracked. Use timing as a supporting reason (a card past its hype cycle is usually near its lowest),
+            not as a rule on its own. Curves firm up once 8+ sets back every month through the buying window.
+          </p>
           <div className="grid gap-3 md:grid-cols-2">
             <WindowTile c={ten} label="Buy PSA 10s" note="Prices within 3% of the bottom through this window." />
             <WindowTile c={raw} label="Buy raw to grade" note="Grade early in the window so the 10s come back after the PSA 10 bottom." />
@@ -105,7 +116,8 @@ export default function TimingPage() {
             <LineChart weeks={price.xs} series={price.series} fmt={(v) => pct(v / 100)} axisFmt={axisPct}
               xLabel={(m) => `M${m}`} xTitle={(m) => `Month ${m} since release`} />
             <p className="text-xs text-gray-500">
-              Curves stop where fewer than 8 cards have history for the next month. Up to {maxN} cards per step.
+              Curves stop where fewer than 8 cards have history for the next month. Up to {maxN} cards per step; sets per month:{" "}
+              {(ten ?? raw)?.points.slice(1).map((p) => p.sets).join(" · ")}.
             </p>
           </section>
 
@@ -129,7 +141,7 @@ export default function TimingPage() {
                 <thead className="text-xs text-gray-500">
                   <tr>
                     <th className="text-left py-1 font-medium">Grade</th>
-                    <th className="text-right py-1 font-medium">Cards</th>
+                    <th className="text-right py-1 font-medium">Cards (sets)</th>
                     <th className="text-right py-1 font-medium">Median bottom</th>
                     <th className="text-right py-1 font-medium">Middle half</th>
                     <th className="text-right py-1 font-medium">Median drop from launch</th>
@@ -139,7 +151,7 @@ export default function TimingPage() {
                   {bottoms.map((b) => (
                     <tr key={b.grade}>
                       <td className="py-1.5">{b.grade === "raw" ? "Raw" : "PSA 10"}</td>
-                      <td className="py-1.5 text-right">{b.cards}</td>
+                      <td className="py-1.5 text-right">{b.cards} ({b.sets})</td>
                       <td className="py-1.5 text-right">month {b.median_month}</td>
                       <td className="py-1.5 text-right">months {b.p25_month}–{b.p75_month}</td>
                       <td className="py-1.5 text-right">{pct(b.median_drop)}</td>

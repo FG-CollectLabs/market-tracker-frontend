@@ -799,12 +799,16 @@ export interface Lifecycle {
   window_from: number;
   window_to: number;
   to_bottom: number;
+  post_hype: boolean;
+  provisional: boolean;
+  min_sets: number;
 }
 
 export interface CurvePoint {
   month: number;
   change: number;
   n: number;
+  sets: number;
 }
 
 export interface ReleaseCurve {
@@ -815,12 +819,15 @@ export interface ReleaseCurve {
   bottom_change: number;
   window_from: number;
   window_to: number;
+  provisional: boolean;
+  min_sets: number;
 }
 
 export interface CurveBottoms {
   grade: string;
   lang: string;
   cards: number;
+  sets: number;
   median_month: number;
   p25_month: number;
   p75_month: number;
@@ -859,6 +866,8 @@ export interface Deal {
   image_url?: string;
   months_since_release?: number;
   phase?: Lifecycle["phase"];
+  post_hype?: boolean;
+  timing_provisional?: boolean;
   fair?: FairValue;
   action: BuyAction;
   margin: number;
@@ -876,9 +885,10 @@ export function fetchCardAnalysis(displayKey: string, o?: { targetMargin?: numbe
   return get(`/v1/cards/${encodeURIComponent(displayKey)}/analysis?${analysisQS(o)}`);
 }
 
-export function fetchDeals(o?: { targetMargin?: number; exitFeePct?: number; kind?: string; limit?: number }): Promise<{ deals: Deal[]; settings: AnalysisSettings }> {
+export function fetchDeals(o?: { targetMargin?: number; exitFeePct?: number; kind?: string; limit?: number; afterHype?: boolean }): Promise<{ deals: Deal[]; settings: AnalysisSettings }> {
   const q = analysisQS(o);
   if (o?.kind) q.set("kind", o.kind);
+  if (o?.afterHype) q.set("after_hype", "1");
   q.set("limit", String(o?.limit ?? 100));
   return get(`/v1/analysis/deals?${q}`);
 }

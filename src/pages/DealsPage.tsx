@@ -26,6 +26,7 @@ const KIND_LABEL: Record<string, string> = {
 // agent's find_deals tool returns.
 export default function DealsPage() {
   const [kind, setKind] = useState("");
+  const [afterHype, setAfterHype] = useState(false);
   const [target, setTarget] = useState<number | null>(null); // null = saved setting
   const [deals, setDeals] = useState<Deal[] | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -33,13 +34,13 @@ export default function DealsPage() {
   useEffect(() => {
     setDeals(null);
     setError(null);
-    fetchDeals({ kind: kind || undefined, targetMargin: target == null ? undefined : target / 100, limit: 200 })
+    fetchDeals({ kind: kind || undefined, afterHype, targetMargin: target == null ? undefined : target / 100, limit: 200 })
       .then((r) => {
         setDeals(r.deals);
         if (target == null) setTarget(Math.round(r.settings.target_margin * 100));
       })
       .catch((e: Error) => setError(e.message));
-  }, [kind, target]);
+  }, [kind, target, afterHype]);
 
   return (
     <div className="space-y-4">
@@ -59,6 +60,11 @@ export default function DealsPage() {
             </button>
           ))}
         </div>
+        <label className="flex items-center gap-1.5 text-gray-400"
+          title="Only cards at or past their typical post-release bottom (release curves; provisional until more sets are tracked)">
+          <input type="checkbox" checked={afterHype} onChange={(e) => setAfterHype(e.target.checked)} className="accent-indigo-500" />
+          Past hype cycle only
+        </label>
         <label className="flex items-center gap-1.5 text-gray-400">
           Target margin
           <input type="number" min={0} max={200} step={5} value={target ?? ""} onChange={(e) => setTarget(Number(e.target.value) || 0)}
@@ -105,7 +111,10 @@ export default function DealsPage() {
                       <div className="text-[11px] text-gray-500 mt-0.5">
                         month {Math.floor(d.months_since_release)}
                         {d.phase && d.phase !== "unknown" && (
-                          <span className={`ml-1.5 px-1 rounded text-[10px] ${PHASE_STYLE[d.phase]}`}>{PHASE_LABEL[d.phase]}</span>
+                          <span className={`ml-1.5 px-1 rounded text-[10px] ${PHASE_STYLE[d.phase]}`}
+                            title={d.timing_provisional ? "Provisional: the release curve rests on few sets so far" : undefined}>
+                            {d.post_hype ? "past hype" : PHASE_LABEL[d.phase]}{d.timing_provisional ? "*" : ""}
+                          </span>
                         )}
                       </div>
                     )}
