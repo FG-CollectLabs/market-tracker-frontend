@@ -16,6 +16,7 @@ const GRADE_LABEL: Record<string, string> = {
 const SOURCE_LABEL: Record<string, string> = {
   pricecharting: "PriceCharting",
   ebay_sold_90d: "eBay sold (90d median)",
+  sold_90d: "recent sales (90d median; PriceCharting disagreed)",
   fanatics_bin: "cheapest Fanatics Buy Now",
 };
 
@@ -66,7 +67,7 @@ function GradeRow({ g }: { g: GradeAnalysis }) {
             <span title={SOURCE_LABEL[g.market.source] ?? g.market.source}>{money(g.market.cents)}</span>
           </AsOf>
         ) : "—"}
-        {g.market && g.market.source !== "pricecharting" && <span className="block text-[10px] text-gray-500">{g.market.source === "ebay_sold_90d" ? "eBay sold" : "Fanatics BIN"}</span>}
+        {g.market && g.market.source !== "pricecharting" && <span className="block text-[10px] text-gray-500">{g.market.source === "ebay_sold_90d" ? "eBay sold" : g.market.source === "sold_90d" ? "recent sales" : "Fanatics BIN"}</span>}
       </Cell>
       <Cell dim={!graded}>
         {g.expected_hammer_cents != null ? (
