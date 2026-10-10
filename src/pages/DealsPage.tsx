@@ -137,7 +137,15 @@ export default function DealsPage() {
                     <div className="text-gray-200">{d.action.headline}</div>
                     {d.action.why}
                   </td>
-                  <td className="px-3 py-2 text-right tabular-nums text-gray-100">{d.action.max_cents != null ? formatCents(d.action.max_cents) : "—"}</td>
+                  <td className="px-3 py-2 text-right tabular-nums text-gray-100">
+                    {d.action.max_cents != null ? formatCents(d.action.max_cents) : "—"}
+                    {d.action.metrics?.break_even_cents != null && (
+                      <div className="text-[10px] text-gray-500" title="Never pay this much: grading nets $0 here">break-even {formatCents(d.action.metrics.break_even_cents)}</div>
+                    )}
+                    {d.action.metrics?.bottom_cents != null && d.action.metrics.phase === "falling" && (
+                      <div className="text-[10px] text-gray-500" title={`Expected bottom in ~${Math.round(d.action.metrics.months_to_bottom)} months`}>bottom ~{formatCents(d.action.metrics.bottom_cents)}</div>
+                    )}
+                  </td>
                   <td className="px-3 py-2 text-right tabular-nums text-gray-400">{d.market_cents ? formatCents(d.market_cents) : "—"}</td>
                   <td className="px-3 py-2 min-w-[9rem]">{d.fair?.high_cents ? <FairBar f={d.fair} compact /> : <span className="text-gray-600">—</span>}</td>
                   <td className="px-3 py-2 text-right tabular-nums text-green-400">{`${d.margin > 0 ? "+" : ""}${(d.margin * 100).toFixed(0)}%`}</td>
