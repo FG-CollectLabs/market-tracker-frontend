@@ -720,6 +720,20 @@ export interface BuyAction {
   headline: string;
   why: string;
   max_cents?: number;
+  metrics?: ActionMetrics;
+}
+
+export interface ActionMetrics {
+  market_cents?: number;
+  bottom_cents?: number;
+  bottom_month?: number;
+  months_to_bottom: number;
+  buy_under_cents?: number;
+  card_change?: number;
+  curve_bottom?: number;
+  phase?: string;
+  break_even_cents?: number;
+  target_cents?: number;
 }
 
 export interface ServiceTier {
@@ -773,6 +787,7 @@ export interface GradingEV {
   break_even_cents?: number;
   ten_value?: number;
   max_raw_cents?: number;
+  break_even_raw_cents?: number;
 }
 
 export interface FairValue {
@@ -804,6 +819,15 @@ export interface Lifecycle {
   post_hype: boolean;
   provisional: boolean;
   min_sets: number;
+  curve_category: string;
+  bottom_change: number;
+  now_change: number;
+  market_cents?: number;
+  launch_cents?: number;
+  card_change?: number;
+  bottom_cents?: number;
+  buy_under_cents?: number;
+  months_to_bottom: number;
 }
 
 export interface CurvePoint {

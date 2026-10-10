@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
-import { fetchCardAnalysis, type BuyAction, type CardAnalysis, type FairValue, type GradeAnalysis, type GradingEV, type Lifecycle } from "../lib/api";
+import { fetchCardAnalysis, type ActionMetrics, type BuyAction, type CardAnalysis, type FairValue, type GradeAnalysis, type GradingEV, type Lifecycle } from "../lib/api";
 import { formatCents } from "../lib/roi";
 import { AsOf } from "./AsOf";
 import { Spinner, ErrorMsg } from "./Spinner";
@@ -172,15 +172,69 @@ function GraderRow({ ev, minROI }: { ev: GradingEV; minROI: number }) {
   );
 }
 
-function TimingLine({ l, label }: { l: Lifecycle; label: string }) {
+const TIER_LABEL: Record<string, string> = {
+  all: "all cards", ir: "IR-tier", sir: "SIR-tier", ultra: "full-art", gold: "gold", gallery: "gallery", promo: "promo",
+};
+
+// Where the card is on its release curve, in dollars.
+function TimingBlock({ l, label }: { l: Lifecycle; label: string }) {
+  const tier = TIER_LABEL[l.curve_category] ?? l.curve_category;
+  const inRange = l.market_cents != null && l.buy_under_cents != null && l.market_cents <= l.buy_under_cents;
   return (
-    <span>
-      {label}: <span className={`px-1 rounded ${PHASE_STYLE[l.phase]}`}>{PHASE_LABEL[l.phase]}</span>
-      {l.phase === "falling" && <> typically {pct(l.to_bottom)} more until month {l.bottom_month}</>}
-      {l.post_hype && <> past the hype cycle</>}
-      {l.provisional && <span className="text-gray-500" title={`As few as ${l.min_sets} sets behind the curve so far`}> · provisional</span>}
-      <span className="text-gray-500"> (low-risk months {l.window_from}–{l.window_to}{l.curve_lang === "all" ? ", all languages" : ""})</span>
+    <div className="rounded border border-gray-800 bg-gray-950/40 px-3 py-2 text-xs space-y-1">
+      <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
+        <span className="text-gray-200 font-medium">{label}</span>
+        <span className={`px-1 rounded ${PHASE_STYLE[l.phase]}`}>{PHASE_LABEL[l.phase]}</span>
+        {l.post_hype && <span className="text-gray-400">past the hype cycle</span>}
+        <span className="text-gray-500">({tier} curve{l.curve_lang === "all" ? ", all languages" : ""}{l.provisional ? ", provisional" : ""})</span>
+      </div>
+      {l.market_cents != null && (
+        <div className="text-gray-300 tabular-nums">
+          {money(l.market_cents)} now
+          {l.bottom_cents != null && l.phase === "falling" && (
+            <>
+              {" · "}expected bottom <span className="text-gray-100">~{money(l.bottom_cents)}</span> in ~{Math.round(l.months_to_bottom)} month
+              {Math.round(l.months_to_bottom) === 1 ? "" : "s"} (month {l.bottom_month})
+            </>
+          )}
+          {l.bottom_cents != null && l.phase !== "falling" && <> · typical low ~{money(l.bottom_cents)}</>}
+          {l.buy_under_cents != null && (
+            <>
+              {" · "}buy under <span className={inRange ? "text-green-400 font-medium" : "text-gray-100"}>{money(l.buy_under_cents)}</span>
+              {inRange && <span className="text-green-400"> (in range now)</span>}
+            </>
+          )}
+        </div>
+      )}
+      <div className="text-gray-500">
+        {l.card_change != null && <>This card {pct(l.card_change)} since launch; </>}
+        {tier} cards typically bottom at {pct(l.bottom_change)} around month {l.bottom_month} (low-risk months {l.window_from}–{l.window_to}).
+      </div>
+    </div>
+  );
+}
+
+// The price lines for a buy: what it costs, where it should bottom, and what
+// never to pay.
+export function MetricsStrip({ m, unit }: { m: ActionMetrics; unit: string }) {
+  const over = m.market_cents != null && m.break_even_cents != null && m.market_cents >= m.break_even_cents;
+  const chip = (label: string, value: React.ReactNode, title?: string, cls = "") => (
+    <span className={`inline-flex items-baseline gap-1 rounded bg-black/30 px-1.5 py-0.5 ${cls}`} title={title}>
+      <span className="opacity-70">{label}</span>
+      <span className="font-medium tabular-nums">{value}</span>
     </span>
+  );
+  return (
+    <div className="flex flex-wrap gap-1.5 text-[11px] mt-1.5">
+      {m.market_cents != null && chip(`${unit} now`, money(m.market_cents))}
+      {m.bottom_cents != null && m.phase === "falling" &&
+        chip("Expected bottom", `~${money(m.bottom_cents)}`, `In ~${Math.round(m.months_to_bottom)} months (month ${m.bottom_month})${m.card_change != null && m.curve_bottom != null ? `; this card ${pct(m.card_change)} since launch vs a typical ${pct(m.curve_bottom)}` : ""}`)}
+      {m.buy_under_cents != null && chip("Buy under", money(m.buy_under_cents), "Top of the typical bottom band")}
+      {m.target_cents != null && chip("Target ≤", money(m.target_cents), "Highest price that still clears your target return")}
+      {m.break_even_cents != null &&
+        chip("Break-even", money(m.break_even_cents), "Grading nets $0 at this raw price after every cost: never pay this much",
+          over ? "text-red-300 ring-1 ring-red-800" : "")}
+    </div>
   );
 }
 
@@ -241,18 +295,25 @@ export default function BuyingGuide({ displayKey }: { displayKey: string }) {
             {a.actions.map((act, i) => (
               <div key={i} className={`rounded-lg border px-3 py-2 ${ACTION_STYLE[act.kind]}`}>
                 <div className="text-sm font-semibold">{act.headline}</div>
-                <div className="text-xs opacity-80 mt-0.5">{act.why}</div>
+                {act.metrics && <MetricsStrip m={act.metrics} unit={act.grade === "raw" ? "Raw" : "PSA 10"} />}
+                <div className="text-xs opacity-80 mt-1.5">{act.why}</div>
               </div>
             ))}
           </div>
 
           {(a.lifecycle?.["psa-10"] || a.lifecycle?.raw) && (
-            <p className="text-xs text-gray-400 flex flex-wrap gap-x-4 gap-y-1">
-              {a.months_since_release != null && <span className="text-gray-300">Month {Math.floor(a.months_since_release)} since release</span>}
-              {a.lifecycle["psa-10"] && <TimingLine l={a.lifecycle["psa-10"]} label="PSA 10" />}
-              {a.lifecycle.raw && <TimingLine l={a.lifecycle.raw} label="Raw" />}
-              <Link to="/timing" className="text-indigo-300 hover:text-indigo-200">Release curves →</Link>
-            </p>
+            <div className="space-y-2">
+              <div className="flex items-baseline justify-between text-xs">
+                <span className="text-gray-300">
+                  Timing{a.months_since_release != null && <> · month {Math.floor(a.months_since_release)} since release</>}
+                </span>
+                <Link to="/timing" className="text-indigo-300 hover:text-indigo-200">Release curves →</Link>
+              </div>
+              <div className="grid gap-2 md:grid-cols-2">
+                {a.lifecycle.raw && <TimingBlock l={a.lifecycle.raw} label="Raw" />}
+                {a.lifecycle["psa-10"] && <TimingBlock l={a.lifecycle["psa-10"]} label="PSA 10" />}
+              </div>
+            </div>
           )}
 
           {Object.keys(a.grading_by ?? {}).length > 0 && (
