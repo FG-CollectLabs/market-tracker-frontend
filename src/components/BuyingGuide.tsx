@@ -21,6 +21,7 @@ const SOURCE_LABEL: Record<string, string> = {
 
 export const ACTION_STYLE: Record<BuyAction["kind"], string> = {
   buy_raw_to_grade: "border-green-800 bg-green-950/40 text-green-200",
+  buy_raw_to_grade_cgc: "border-teal-800 bg-teal-950/40 text-teal-200",
   buy_psa10: "border-sky-800 bg-sky-950/40 text-sky-200",
   bid_auction: "border-amber-800 bg-amber-950/40 text-amber-200",
   buy_now: "border-emerald-800 bg-emerald-950/40 text-emerald-200",
@@ -151,7 +152,9 @@ function GraderRow({ ev, minROI }: { ev: GradingEV; minROI: number }) {
     <tr>
       <td className="py-1.5 pr-3 text-gray-200 whitespace-nowrap">{GRADER_LABEL[ev.grader] ?? ev.grader}</td>
       <td className="py-1.5 pr-3 text-gray-400 whitespace-nowrap">{ev.tier} · {money(ev.fee_cents)} · ~{ev.turnaround_days}d</td>
-      <td className="py-1.5 pr-3 text-right tabular-nums">{(ev.p10 * 100).toFixed(0)}%</td>
+      <td className="py-1.5 pr-3 text-right tabular-nums" title={ev.p_top != null ? `${(ev.p10 * 100).toFixed(0)}% Gem Mint 10 + ${(ev.p_top * 100).toFixed(0)}% Pristine 10` : undefined}>
+        {(ev.p10 * 100).toFixed(0)}%{ev.p_top != null && <span className="block text-[10px] text-gray-500">+{(ev.p_top * 100).toFixed(0)}% Pristine</span>}
+      </td>
       <td className="py-1.5 pr-3 text-right tabular-nums"
         title={`Raw x ${(1 + ev.sourcing_pct).toFixed(2)} sourcing + ${money(ev.fee_cents)} fee + ${money(ev.ship_cents)} shipping + ${money(ev.time_cost_cents)} money tied up`}>
         {money(ev.cost_cents)}
