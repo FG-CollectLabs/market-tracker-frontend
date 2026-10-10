@@ -715,7 +715,7 @@ export interface GradeAnalysis {
 }
 
 export interface BuyAction {
-  kind: "buy_raw_to_grade" | "buy_psa10" | "bid_auction" | "buy_now" | "watch";
+  kind: "buy_raw_to_grade" | "buy_raw_to_grade_cgc" | "buy_psa10" | "bid_auction" | "buy_now" | "watch";
   grade?: string;
   headline: string;
   why: string;
@@ -763,6 +763,7 @@ export interface GradingEV {
   ten_drift: number;
   p10: number;
   p9?: number;
+  p_top?: number; // CGC Pristine share
   cost_cents: number;
   time_cost_cents: number;
   ev_cents: number;
@@ -885,10 +886,11 @@ export function fetchCardAnalysis(displayKey: string, o?: { targetMargin?: numbe
   return get(`/v1/cards/${encodeURIComponent(displayKey)}/analysis?${analysisQS(o)}`);
 }
 
-export function fetchDeals(o?: { targetMargin?: number; exitFeePct?: number; kind?: string; limit?: number; afterHype?: boolean }): Promise<{ deals: Deal[]; settings: AnalysisSettings }> {
+export function fetchDeals(o?: { targetMargin?: number; exitFeePct?: number; kind?: string; limit?: number; afterHype?: boolean; lang?: "en" | "ja" }): Promise<{ deals: Deal[]; settings: AnalysisSettings }> {
   const q = analysisQS(o);
   if (o?.kind) q.set("kind", o.kind);
   if (o?.afterHype) q.set("after_hype", "1");
+  if (o?.lang) q.set("lang", o.lang);
   q.set("limit", String(o?.limit ?? 100));
   return get(`/v1/analysis/deals?${q}`);
 }

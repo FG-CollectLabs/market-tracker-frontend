@@ -45,6 +45,8 @@ export const PHASES: Phase[] = [
       { title: "English catalog import (SM, SWSH, SV, ME + promos, galleries)", status: "in_progress",
         detail: "import-en creates ~70 English sets from TCGdex; the tracking rules add IR / SIR / UR / HR / MHR, SWSH-SM Secret and Ultra Rares, and every Trainer / Galarian Gallery card (~3,000 cards)." },
       { title: "Chinese cards", status: "next", detail: "TCGdex has Chinese data; Chinese sets and their PriceCharting / pop sources still need mapping. Owned Chinese cards are listed as unmatched until then." },
+      { title: "Promo sources (box vs ETB vs collection)", status: "later",
+        detail: "Neither TCGdex nor PriceCharting says which product a promo came from; a hand-kept list lets the Timing page split box full-art promos from ETB promos." },
       { title: "Japanese promos and Classic decks", status: "next", detail: "SV-P promos and the Trainer Card Game Classic decks aren't in the catalog yet." },
       { title: "Pop reports and prices for the new sets", status: "next", detail: "GemRate set mapping (gemrate-sets --apply), PriceCharting history backfill and Fanatics comps for the new English cards." },
     ],
@@ -73,6 +75,8 @@ export const PHASES: Phase[] = [
         detail: "Expected appreciation of raw, PSA 9, PSA 10, CGC 10 and Pristine by months since release, desirability and supply, with ranges." },
       { title: "Hold vs churn", status: "later",
         detail: "Annualized return of holding a card (forecast appreciation minus cost of capital) vs selling now and redeploying at the typical deal margin." },
+      { title: "Crack CGC/BGS slabs to regrade with PSA", status: "later",
+        detail: "Its own Deals tab. Several strategies (high-grade CGC 10s, BGS 9.5s, centering-driven picks), and the CGC-to-PSA conversion rate isn't published, so it needs our own crack log to estimate." },
       { title: "PSA 9 regrade score", status: "later" },
       { title: "Pristine 10 buying rules", status: "blocked", detail: "Waiting on a decision." },
     ],
@@ -100,6 +104,16 @@ export const PHASES: Phase[] = [
 ];
 
 export const PATCH_NOTES: PatchNote[] = [
+  {
+    date: "2026-10-10",
+    title: "Timing by tier and grade, CGC grading deals",
+    items: [
+      "Timing: filter release curves by card tier (IR, SIR, full art, gold, galleries, promos; era-aware) and grade (PSA 10, PSA 9, CGC 10, Pristine, CGC 7-9, raw).",
+      "Buy-window table with hold returns and realized appreciation vs the S&P after fees.",
+      "Deals: language filter; separate grade-with-PSA and grade-with-CGC tabs (Pristine 10s counted at their own price).",
+      "Catalog cleanup: ~1,250 duplicate cards merged, gallery cards in their parent sets, TCGdex names kept.",
+    ],
+  },
   {
     date: "2026-10-09",
     title: "Owned cards, English sets, roadmap",

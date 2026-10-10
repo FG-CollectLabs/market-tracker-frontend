@@ -11,14 +11,16 @@ const KINDS = [
   { key: "", label: "All" },
   { key: "bid_auction", label: "Bid on auctions" },
   { key: "buy_now", label: "Buy Now under max" },
-  { key: "buy_raw_to_grade", label: "Buy raw to grade" },
+  { key: "buy_raw_to_grade", label: "Grade raw · PSA" },
+  { key: "buy_raw_to_grade_cgc", label: "Grade raw · CGC" },
   { key: "buy_psa10", label: "Buy PSA 10s" },
 ];
 
 const KIND_LABEL: Record<string, string> = {
   bid_auction: "Bid",
   buy_now: "Buy Now",
-  buy_raw_to_grade: "Grade raw",
+  buy_raw_to_grade: "Grade · PSA",
+  buy_raw_to_grade_cgc: "Grade · CGC",
   buy_psa10: "Buy PSA 10",
 };
 
@@ -27,6 +29,7 @@ const KIND_LABEL: Record<string, string> = {
 export default function DealsPage() {
   const [kind, setKind] = useState("");
   const [afterHype, setAfterHype] = useState(false);
+  const [lang, setLang] = useState<"" | "en" | "ja">("");
   const [target, setTarget] = useState<number | null>(null); // null = saved setting
   const [deals, setDeals] = useState<Deal[] | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -34,13 +37,13 @@ export default function DealsPage() {
   useEffect(() => {
     setDeals(null);
     setError(null);
-    fetchDeals({ kind: kind || undefined, afterHype, targetMargin: target == null ? undefined : target / 100, limit: 200 })
+    fetchDeals({ kind: kind || undefined, afterHype, lang: lang || undefined, targetMargin: target == null ? undefined : target / 100, limit: 200 })
       .then((r) => {
         setDeals(r.deals);
         if (target == null) setTarget(Math.round(r.settings.target_margin * 100));
       })
       .catch((e: Error) => setError(e.message));
-  }, [kind, target, afterHype]);
+  }, [kind, target, afterHype, lang]);
 
   return (
     <div className="space-y-4">
@@ -48,10 +51,18 @@ export default function DealsPage() {
         <h1 className="text-xl font-semibold text-white">Deals</h1>
         <p className="text-sm text-gray-500">
           Live opportunities across every tracked card: Fanatics auctions expected to close under your max bid, Buy Nows listed under it, raw cards worth
-          grading, and PSA 10s that cost less than grading for one. Margin is after the resale fee (grading: EV after fees).
+          grading with PSA or with CGC (Pristine upside counted), and PSA 10s that cost less than grading for one. Margin is after the resale fee (grading: EV after fees).
         </p>
       </div>
       <div className="flex flex-wrap items-center gap-3 text-sm">
+        <div className="inline-flex rounded border border-gray-700 overflow-hidden">
+          {([["", "All languages"], ["en", "English"], ["ja", "Japanese"]] as const).map(([k, label]) => (
+            <button key={k} onClick={() => setLang(k)}
+              className={`px-3 py-1 ${lang === k ? "bg-indigo-700 text-white" : "bg-gray-900 text-gray-400 hover:text-gray-200"}`}>
+              {label}
+            </button>
+          ))}
+        </div>
         <div className="inline-flex rounded border border-gray-700 overflow-hidden">
           {KINDS.map((k) => (
             <button key={k.key} onClick={() => setKind(k.key)}
