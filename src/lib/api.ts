@@ -747,6 +747,7 @@ export interface AnalysisSettings {
   min_roi: number;
   min_profit_cents: number;
   buy_ten_below_ev: number;
+  benchmark_rate: number;
   updated_at?: string;
   updated_by?: string;
 }
@@ -811,9 +812,14 @@ export interface CurvePoint {
   sets: number;
 }
 
+export type CurveCategory = "all" | "ir" | "sir" | "ultra" | "gold" | "gallery" | "promo";
+export type CurveGrade = "raw" | "psa-10" | "psa-9" | "cgc-10" | "cgc-10-pristine" | "cgc-7-9" | "premium";
+export type CurveLang = "en" | "ja" | "all";
+
 export interface ReleaseCurve {
-  grade: "raw" | "psa-10" | "premium";
-  lang: "en" | "ja" | "all";
+  category: CurveCategory;
+  grade: CurveGrade;
+  lang: CurveLang;
   points: CurvePoint[];
   bottom_month: number;
   bottom_change: number;
@@ -821,9 +827,11 @@ export interface ReleaseCurve {
   window_to: number;
   provisional: boolean;
   min_sets: number;
+  cards: number;
 }
 
 export interface CurveBottoms {
+  category: CurveCategory;
   grade: string;
   lang: string;
   cards: number;
@@ -834,10 +842,40 @@ export interface CurveBottoms {
   median_drop: number;
 }
 
+export interface Appreciation {
+  cards: number;
+  sets: number;
+  median: number;
+  p25: number;
+  p75: number;
+  beat_share: number;
+  net_median_2y: number;
+}
+
+export interface WindowRow {
+  category: CurveCategory;
+  grade: CurveGrade;
+  lang: CurveLang;
+  bottom_month: number;
+  bottom_change: number;
+  window_from: number;
+  window_to: number;
+  hold_rate?: number;
+  hold_months?: number;
+  trailing?: Appreciation;
+  outperforms: boolean;
+  provisional: boolean;
+  min_sets: number;
+  cards: number;
+}
+
 export interface ReleaseCurves {
   built_at: string;
+  benchmark: number;
+  sell_fee_pct: number;
   curves: ReleaseCurve[];
   bottoms: CurveBottoms[];
+  table: WindowRow[];
 }
 
 export interface CardAnalysis {
