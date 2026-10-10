@@ -762,6 +762,12 @@ export interface AnalysisSettings {
   min_profit_cents: number;
   buy_ten_below_ev: number;
   benchmark_rate: number;
+  ebay_ship_cents: number;
+  vault_inbound_cents: number;
+  vault_withdraw_cents: number;
+  list_markup_pct: number;
+  accept_offer_pct: number;
+  min_offer_pct: number;
   updated_at?: string;
   updated_by?: string;
 }

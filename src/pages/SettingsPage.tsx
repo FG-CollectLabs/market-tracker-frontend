@@ -173,6 +173,28 @@ export default function SettingsPage() {
         </Field>
       </section>
 
+      <h2 className="text-xs font-semibold uppercase tracking-wide text-gray-500">Selling what you own (pricing API)</h2>
+      <section className="rounded-lg border border-gray-800 bg-gray-900 px-4 py-2 divide-y divide-gray-800">
+        <Field label="eBay shipping per sale" hint="Label and supplies when you offer free shipping. The eBay fee is the resale fee above.">
+          <Money cents={s.ebay_ship_cents} onChange={(c) => set({ ebay_ship_cents: c })} />
+        </Field>
+        <Field label="Sending a card to the Fanatics vault" hint="Per card, for cards at home sold on Fanatics.">
+          <Money cents={s.vault_inbound_cents} onChange={(c) => set({ vault_inbound_cents: c })} />
+        </Field>
+        <Field label="Withdrawing a card from the vault" hint="Per card, for vault cards sold on eBay.">
+          <Money cents={s.vault_withdraw_cents} onChange={(c) => set({ vault_withdraw_cents: c })} />
+        </Field>
+        <Field label="List above market by" hint="Room for Best Offers. The list price drops to just under a cheaper competing Buy Now.">
+          <Pct value={s.list_markup_pct} onChange={(v) => set({ list_markup_pct: v })} />
+        </Field>
+        <Field label="Auto-accept offers at" hint="Share of market value.">
+          <Pct value={s.accept_offer_pct} onChange={(v) => set({ accept_offer_pct: v })} />
+        </Field>
+        <Field label="Decline offers below" hint="Share of market value.">
+          <Pct value={s.min_offer_pct} onChange={(v) => set({ min_offer_pct: v })} />
+        </Field>
+      </section>
+
       <h2 className="text-xs font-semibold uppercase tracking-wide text-gray-500">Buying rules</h2>
       <section className="rounded-lg border border-gray-800 bg-gray-900 px-4 py-2 divide-y divide-gray-800">
         <Field label="Target margin on flips" hint="Profit wanted after the resale fee; sets the max bid.">
