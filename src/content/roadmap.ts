@@ -109,13 +109,26 @@ export const PHASES: Phase[] = [
     items: [
       { title: "Developer tab: roadmap, patch notes, architecture", status: "done" },
       { title: "Watchlist with a printable buy list", status: "done" },
-      { title: "Daily owned-cards sync schedule", status: "next", detail: "Proposed; add once the manual runs look right." },
+      { title: "Job queue + worker with priority tiers (phase 1)", status: "done", detail: "fgl-worker, Automation page, audited settings; Fanatics refresh by tier; daily owned-cards sync." },
+      { title: "Move PriceCharting and pop jobs to the worker", status: "next" },
+      { title: "Agent workers (phase 2): deal vetting, data triage, re-checks, briefs, deep dives", status: "next",
+        detail: "PolyEdge's claude -p worker pattern with model routing per job; shares agent1 with PolyEdge." },
+      { title: "Right-size the homelab: tracker off the 1-core LXC 109", status: "next" },
       { title: "Agent tools for the portfolio", status: "later", detail: "MCP tools to read owned cards and the hold / sell analysis." },
     ],
   },
 ];
 
 export const PATCH_NOTES: PatchNote[] = [
+  {
+    date: "2026-10-12",
+    title: "Automation: job queue and worker",
+    items: [
+      "fgl-worker runs the refresh jobs: Fanatics history and listings by card priority tier (hot daily, warm weekly, cold monthly), plus the daily owned-cards sync.",
+      "Automation page: tiers and what's due, cadences, batch sizes, delays, run-now, recent jobs, cancel, and the change history of every setting.",
+      "Deploys no longer wait behind long ingests.",
+    ],
+  },
   {
     date: "2026-10-12",
     title: "Strategy, bid helper, watchlist, investment factors",
