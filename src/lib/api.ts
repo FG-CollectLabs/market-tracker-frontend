@@ -1092,3 +1092,86 @@ export async function unwatchCard(displayKey: string): Promise<void> {
   const res = await fetch(`${BASE}/v1/admin/watchlist/${encodeURIComponent(displayKey)}`, { method: "DELETE", headers: await authHeaders() });
   if (!res.ok && res.status !== 204) throw new Error(`${res.status}`);
 }
+
+// ---- Automation (job queue + worker) ----
+
+export interface KindConfig {
+  enabled: boolean;
+  cadence_hours?: Record<string, number>;
+  batch_size?: number;
+  delay_ms?: number;
+  daily_hour_utc?: number;
+}
+
+export interface TierRules {
+  hot_new_set_months: number;
+  hot_owned: boolean;
+  hot_watchlist: boolean;
+  warm_pokemon_tiers: string[];
+  warm_artist_tiers: string[];
+  warm_rarity_tiers: string[];
+}
+
+export interface Automation {
+  enabled: boolean;
+  tiers: TierRules;
+  kinds: Record<string, KindConfig>;
+  updated_at?: string;
+  updated_by?: string;
+}
+
+export interface Job {
+  id: number;
+  kind: string;
+  lane: string;
+  scope: { tiers?: Record<string, number>; card_ids?: string[] };
+  priority: number;
+  status: "queued" | "running" | "done" | "failed" | "cancelled";
+  source: string;
+  requested_by?: string;
+  claimed_by?: string;
+  claimed_at?: string;
+  finished_at?: string;
+  attempts: number;
+  result?: Record<string, unknown>;
+  error?: string;
+  created_at: string;
+}
+
+export interface AutomationStatus {
+  settings: Automation;
+  defaults: Automation;
+  tiers: Record<string, { cards: number; due: Record<string, number> }>;
+  queue: Record<string, number>;
+  workers: { name: string; last_seen: string; online: boolean; info: Record<string, unknown> }[];
+  recent: Job[];
+}
+
+export interface SettingChange {
+  at: string;
+  key: string;
+  old: unknown;
+  new: unknown;
+  actor?: string;
+}
+
+export function fetchAutomation(): Promise<AutomationStatus> {
+  return get("/v1/automation");
+}
+
+export function saveAutomation(a: Automation): Promise<AutomationStatus> {
+  return adminFetch("/v1/admin/automation", { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify(a) });
+}
+
+export function runJob(body: { kind: string; tier?: string; card_keys?: string[] }): Promise<{ id: number }> {
+  return adminFetch("/v1/admin/jobs", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+}
+
+export async function cancelJob(id: number): Promise<void> {
+  const res = await fetch(`${BASE}/v1/admin/jobs/${id}/cancel`, { method: "POST", headers: await authHeaders() });
+  if (!res.ok && res.status !== 204) throw new Error(`${res.status}`);
+}
+
+export function fetchSettingsAudit(prefix = ""): Promise<{ changes: SettingChange[] }> {
+  return adminFetch(`/v1/admin/settings-audit?prefix=${encodeURIComponent(prefix)}&limit=200`);
+}

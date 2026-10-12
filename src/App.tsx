@@ -10,6 +10,7 @@ import TimingPage from "./pages/TimingPage";
 import SettingsPage from "./pages/SettingsPage";
 import RoadmapPage from "./pages/RoadmapPage";
 import WatchlistPage from "./pages/WatchlistPage";
+import AutomationPage from "./pages/AutomationPage";
 import { SignIn } from "./components/SignIn";
 
 function Nav() {
@@ -38,6 +39,9 @@ function Nav() {
       <NavLink to="/settings" className={linkCls}>
         Settings
       </NavLink>
+      <NavLink to="/automation" className={linkCls}>
+        Automation
+      </NavLink>
       <NavLink to="/developer" className={linkCls}>
         Developer
       </NavLink>
@@ -61,6 +65,7 @@ export default function App() {
             <Route path="/developer" element={<RoadmapPage />} />
             <Route path="/roadmap" element={<RoadmapPage />} />
             <Route path="/watchlist" element={<WatchlistPage />} />
+            <Route path="/automation" element={<AutomationPage />} />
             {/* Old catalog list; the home page's "Show untracked sets" replaces it. */}
             <Route path="/sets" element={<SetsPage />} />
             <Route path="/sets/:game/:code" element={<SetDetailPage />} />
