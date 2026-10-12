@@ -1101,6 +1101,10 @@ export interface KindConfig {
   batch_size?: number;
   delay_ms?: number;
   daily_hour_utc?: number;
+  model?: string;
+  effort?: "low" | "medium" | "high";
+  max_items?: number;
+  timeout_s?: number;
 }
 
 export interface TierRules {
@@ -1116,6 +1120,7 @@ export interface Automation {
   enabled: boolean;
   tiers: TierRules;
   kinds: Record<string, KindConfig>;
+  agents: { mode: "primary_first" | "balanced" };
   updated_at?: string;
   updated_by?: string;
 }
@@ -1174,4 +1179,27 @@ export async function cancelJob(id: number): Promise<void> {
 
 export function fetchSettingsAudit(prefix = ""): Promise<{ changes: SettingChange[] }> {
   return adminFetch(`/v1/admin/settings-audit?prefix=${encodeURIComponent(prefix)}&limit=200`);
+}
+
+export interface AgentFinding {
+  id: number;
+  job_id?: number;
+  kind: "agent_deal_vetting" | "agent_data_triage" | string;
+  display_key?: string;
+  card_name?: string;
+  subject: string;
+  verdict: "ok" | "flag" | "fix" | "info" | string;
+  summary: string;
+  details: { issues?: string[]; fix?: string; confidence?: string; title?: string; url?: string; price_cents?: number; grade_key?: string };
+  model?: string;
+  account?: string;
+  created_at: string;
+}
+
+export function fetchFindings(o?: { kind?: string; card?: string; limit?: number }): Promise<{ findings: AgentFinding[] }> {
+  const q = new URLSearchParams();
+  if (o?.kind) q.set("kind", o.kind);
+  if (o?.card) q.set("card", o.card);
+  q.set("limit", String(o?.limit ?? 100));
+  return get(`/v1/agent/findings?${q}`);
 }

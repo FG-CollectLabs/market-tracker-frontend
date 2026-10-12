@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
-import { fetchDeals, type Deal } from "../lib/api";
+import { fetchDeals, fetchFindings, type AgentFinding, type Deal } from "../lib/api";
 import { formatCents } from "../lib/roi";
 import { ACTION_STYLE } from "../components/BuyingGuide";
 import { Spinner, ErrorMsg } from "../components/Spinner";
@@ -30,6 +30,19 @@ export default function DealsPage() {
   const [kind, setKind] = useState("");
   const [afterHype, setAfterHype] = useState(false);
   const [lang, setLang] = useState<"" | "en" | "ja">("");
+  const [vetted, setVetted] = useState<Map<string, AgentFinding[]>>(new Map());
+  useEffect(() => {
+    fetchFindings({ kind: "agent_deal_vetting", limit: 500 })
+      .then((r) => {
+        const m = new Map<string, AgentFinding[]>();
+        for (const f of r.findings) {
+          if (!f.display_key || Date.now() - new Date(f.created_at).getTime() > 7 * 86400e3) continue;
+          m.set(f.display_key, [...(m.get(f.display_key) ?? []), f]);
+        }
+        setVetted(m);
+      })
+      .catch(() => undefined);
+  }, []);
   const [target, setTarget] = useState<number | null>(null); // null = saved setting
   const [deals, setDeals] = useState<Deal[] | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -136,6 +149,13 @@ export default function DealsPage() {
                   <td className="px-3 py-2 text-xs text-gray-400 max-w-xl">
                     <div className="text-gray-200">{d.action.headline}</div>
                     {d.action.why}
+                    {vetted.get(d.display_key)?.map((f) => (
+                      <div key={f.id} className={`mt-1 ${f.verdict === "flag" ? "text-amber-300" : "text-green-400/90"}`} title={f.details?.title}>
+                        {f.verdict === "flag" ? "⚑ Agent flagged a listing" : "✓ Agent vetted a listing"}
+                        {f.details?.issues?.length ? `: ${f.details.issues.join(", ").replace(/_/g, " ")}` : ""} — {f.summary}
+                        {f.details?.url && <> <a href={f.details.url} target="_blank" rel="noreferrer" className="text-indigo-300">listing</a></>}
+                      </div>
+                    ))}
                   </td>
                   <td className="px-3 py-2 text-right tabular-nums text-gray-100">
                     {d.action.max_cents != null ? formatCents(d.action.max_cents) : "—"}
