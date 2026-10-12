@@ -1,8 +1,9 @@
 import { useEffect, useState } from "react";
 import {
-  cancelJob, fetchAutomation, fetchSettingsAudit, runJob, saveAutomation,
-  type Automation, type AutomationStatus, type KindConfig, type SettingChange,
+  cancelJob, fetchAutomation, fetchFindings, fetchSettingsAudit, runJob, saveAutomation,
+  type AgentFinding, type Automation, type AutomationStatus, type KindConfig, type SettingChange,
 } from "../lib/api";
+import { Link } from "react-router-dom";
 import { useSession } from "../lib/auth";
 import { Spinner, ErrorMsg } from "../components/Spinner";
 
@@ -11,6 +12,18 @@ const KIND_INFO: Record<string, { label: string; hint: string }> = {
   fanatics_history: { label: "Fanatics sold history", hint: "Sold history and live listings per card (2 requests). The heavy one." },
   fanatics_listings: { label: "Fanatics live listings", hint: "Live auctions, Buy Nows and supply only (1 request). Keeps this week's counts and ceilings fresh." },
   sync_owned: { label: "Owned-cards sync", hint: "Your FGL owned-cards feed; every owned card gets tracked." },
+};
+const AGENT_INFO: Record<string, { label: string; hint: string }> = {
+  agent_deal_vetting: { label: "Deal vetting", hint: "Reads the top slab deals' live listings for anything that isn't the card, grade, printing or condition the deal assumes." },
+  agent_data_triage: { label: "Data triage", hint: "Explains unmatched owned cards and PriceCharting prices our sales overruled, with the exact fix." },
+};
+const MODELS = [
+  { id: "claude-haiku-4-5", label: "Haiku 4.5" },
+  { id: "claude-sonnet-5-5", label: "Sonnet 5.5" },
+  { id: "claude-opus-5-5", label: "Opus 5.5" },
+];
+const VERDICT_CLS: Record<string, string> = {
+  ok: "text-green-400", flag: "text-amber-300", fix: "text-amber-300", info: "text-sky-300",
 };
 const TIER_HINT: Record<string, string> = {
   hot: "Owned, watchlist and recently released sets.",
@@ -53,6 +66,10 @@ export default function AutomationPage() {
   const [error, setError] = useState<string | null>(null);
   const [msg, setMsg] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [findings, setFindings] = useState<AgentFinding[] | null>(null);
+  useEffect(() => {
+    fetchFindings({ limit: 60 }).then((r) => setFindings(r.findings)).catch(() => setFindings(null));
+  }, [st?.queue.done_24h]);
 
   const load = () =>
     fetchAutomation()
@@ -73,7 +90,8 @@ export default function AutomationPage() {
   if (!st || !a) return error ? <ErrorMsg msg={error} /> : <Spinner />;
   const setKind = (k: string, patch: Partial<KindConfig>) => setA({ ...a, kinds: { ...a.kinds, [k]: { ...a.kinds[k], ...patch } } });
   const dirty = JSON.stringify(a) !== JSON.stringify(st.settings);
-  const online = st.workers.filter((w) => w.online);
+  const online = st.workers.filter((w) => w.online && w.info?.type !== "agent");
+  const agents = st.workers.filter((w) => w.info?.type === "agent");
   const save = async () => {
     setBusy(true);
     setError(null);
@@ -112,7 +130,7 @@ export default function AutomationPage() {
         <div className="flex items-center gap-2 text-xs">
           <span className={`px-2 py-1 rounded-full border ${online.length ? "border-green-800 text-green-300" : "border-red-800 text-red-300"}`}
             title={st.workers.map((w) => `${w.name}: ${ago(w.last_seen)}`).join("\n")}>
-            {online.length ? `${online.length} worker${online.length > 1 ? "s" : ""} online` : "no worker online"}
+            {online.length ? `${online.length} data worker${online.length > 1 ? "s" : ""} online` : "no data worker online"}
           </span>
           <span className="px-2 py-1 rounded-full border border-gray-700 text-gray-300">
             {st.queue.running ?? 0} running · {st.queue.queued ?? 0} queued · {st.queue.done_24h ?? 0} done / {st.queue.failed_24h ?? 0} failed in 24h
@@ -241,6 +259,108 @@ export default function AutomationPage() {
           {!session && <span className="text-xs text-amber-300">Sign in with Google to change anything.</span>}
           {msg && <span className="text-xs text-green-400">{msg}</span>}
         </div>
+      </section>
+
+      <section className="rounded-lg border border-gray-800 bg-gray-900 p-4 space-y-3">
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div>
+            <h2 className="text-sm font-semibold text-gray-100">Agents</h2>
+            <p className="text-xs text-gray-500 max-w-3xl">
+              Claude agent workers on your subscriptions (claude -p on the agent hosts). The server gathers the facts; the agent judges them and
+              returns structured findings. Prices and math never move to the agent.
+            </p>
+          </div>
+          <label className="flex items-center gap-2 text-xs text-gray-300" title="primary first: the secondary account only works when the primary is offline, paused on a usage limit or full">
+            Accounts
+            <select value={a.agents?.mode ?? "primary_first"} onChange={(e) => setA({ ...a, agents: { mode: e.target.value as "primary_first" | "balanced" } })}
+              className="bg-gray-950 border border-gray-700 rounded px-1.5 py-0.5 text-gray-200">
+              <option value="primary_first">Primary first, then secondary</option>
+              <option value="balanced">Balanced (both claim)</option>
+            </select>
+          </label>
+        </div>
+        <div className="flex flex-wrap gap-2 text-xs">
+          {agents.length === 0 && <span className="text-gray-500">No agent worker has connected yet.</span>}
+          {agents.map((w) => {
+            const info = w.info as { account?: string; rank?: number; slots?: number; busy?: number; paused_until?: string | null };
+            const paused = info.paused_until && new Date(info.paused_until) > new Date();
+            return (
+              <span key={w.name} className={`px-2 py-1 rounded border ${!w.online ? "border-gray-700 text-gray-500" : paused ? "border-amber-800 text-amber-300" : "border-green-800 text-green-300"}`}
+                title={`${w.name} · last seen ${ago(w.last_seen)}`}>
+                {info.rank === 1 ? "Primary" : `Secondary (${info.rank})`} · {info.account ?? "?"} ·{" "}
+                {!w.online ? "offline" : paused ? `paused until ${new Date(info.paused_until!).toLocaleTimeString()}` : `${info.busy ?? 0}/${info.slots ?? 1} busy`}
+              </span>
+            );
+          })}
+        </div>
+        <div className="divide-y divide-gray-800">
+          {Object.entries(AGENT_INFO).map(([k, info]) => {
+            const c = a.kinds[k];
+            if (!c) return null;
+            return (
+              <div key={k} className="py-3 grid gap-2 md:grid-cols-[16rem_1fr] items-start">
+                <div>
+                  <label className="flex items-center gap-2 text-sm text-gray-100">
+                    <input type="checkbox" className="accent-indigo-500" checked={c.enabled} onChange={(e) => setKind(k, { enabled: e.target.checked })} />
+                    {info.label}
+                  </label>
+                  <p className="text-xs text-gray-500 mt-0.5">{info.hint}</p>
+                </div>
+                <div className="flex flex-wrap items-center gap-x-4 gap-y-2 text-xs text-gray-400">
+                  <span className="inline-flex rounded border border-gray-700 overflow-hidden">
+                    {MODELS.map((m) => (
+                      <button key={m.id} onClick={() => setKind(k, { model: m.id })}
+                        className={`px-2 py-0.5 ${c.model === m.id ? "bg-indigo-700 text-white" : "bg-gray-950 text-gray-400 hover:text-gray-200"}`}>{m.label}</button>
+                    ))}
+                  </span>
+                  <label className="flex items-center gap-1">effort
+                    <select value={c.effort ?? "low"} onChange={(e) => setKind(k, { effort: e.target.value as "low" | "medium" | "high" })}
+                      className="bg-gray-950 border border-gray-700 rounded px-1 py-0.5 text-gray-200">
+                      <option>low</option><option>medium</option><option>high</option>
+                    </select></label>
+                  <label className="flex items-center gap-1">up to
+                    <input type="number" min={1} max={200} value={c.max_items ?? 10} className={`${inputCls} w-14`}
+                      onChange={(e) => setKind(k, { max_items: Number(e.target.value) || 1 })} /> items</label>
+                  <label className="flex items-center gap-1">daily at
+                    <input type="number" min={0} max={23} value={c.daily_hour_utc ?? 0} className={`${inputCls} w-14`}
+                      onChange={(e) => setKind(k, { daily_hour_utc: Number(e.target.value) || 0 })} />:00 UTC</label>
+                  {session && <button onClick={() => run({ kind: k })} className="text-indigo-300 hover:text-indigo-200">Run now</button>}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+        <p className="text-[11px] text-gray-500">Model and agent settings save with the Save button above.</p>
+      </section>
+
+      <section className="rounded-lg border border-gray-800 bg-gray-900 p-4 space-y-2">
+        <h2 className="text-sm font-semibold text-gray-100">Agent findings</h2>
+        {!findings || findings.length === 0 ? (
+          <p className="text-xs text-gray-500">No findings yet.</p>
+        ) : (
+          <table className="w-full text-xs">
+            <tbody className="divide-y divide-gray-800 text-gray-300">
+              {findings.map((f) => (
+                <tr key={f.id} className="align-top">
+                  <td className="py-1.5 pr-2 text-gray-500 whitespace-nowrap">{ago(f.created_at)}</td>
+                  <td className="py-1.5 pr-2 whitespace-nowrap">{f.kind === "agent_deal_vetting" ? "Vetting" : "Triage"}</td>
+                  <td className={`py-1.5 pr-2 font-medium ${VERDICT_CLS[f.verdict] ?? ""}`}>{f.verdict}</td>
+                  <td className="py-1.5 pr-2 whitespace-nowrap">
+                    {f.display_key ? <Link to={`/cards/${encodeURIComponent(f.display_key)}`} className="text-gray-100 hover:text-indigo-300">{f.card_name}</Link>
+                      : <span className="text-gray-400">{f.subject.replace(/^owned:/, "owned: ").split("|").slice(1, 4).join(" ") || f.subject}</span>}
+                  </td>
+                  <td className="py-1.5 pr-2 text-gray-400">
+                    {f.summary}
+                    {f.details?.fix && <div className="text-amber-200">Fix: {f.details.fix}</div>}
+                    {f.details?.issues && f.details.issues.length > 0 && <div className="text-amber-200">{f.details.issues.join(", ").replace(/_/g, " ")}</div>}
+                    {f.details?.url && <a href={f.details.url} target="_blank" rel="noreferrer" className="text-indigo-300 hover:text-indigo-200">listing</a>}
+                  </td>
+                  <td className="py-1.5 text-gray-500 whitespace-nowrap" title={f.account}>{f.model?.replace("claude-", "")}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )}
       </section>
 
       <section className="rounded-lg border border-gray-800 bg-gray-900 p-4 space-y-2">

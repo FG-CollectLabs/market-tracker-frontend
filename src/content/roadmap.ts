@@ -111,7 +111,9 @@ export const PHASES: Phase[] = [
       { title: "Watchlist with a printable buy list", status: "done" },
       { title: "Job queue + worker with priority tiers (phase 1)", status: "done", detail: "fgl-worker, Automation page, audited settings; Fanatics refresh by tier; daily owned-cards sync." },
       { title: "Move PriceCharting and pop jobs to the worker", status: "next" },
-      { title: "Agent workers (phase 2): deal vetting, data triage, re-checks, briefs, deep dives", status: "next",
+      { title: "Agent workers (phase 2): deal vetting and data triage", status: "done",
+        detail: "claude -p workers on two subscription accounts (primary first, then secondary); findings on Automation and Deals." },
+      { title: "More agent jobs: watchlist / owned re-checks, weekly category briefs, deep dives, research refresh", status: "next",
         detail: "PolyEdge's claude -p worker pattern with model routing per job; shares agent1 with PolyEdge." },
       { title: "Right-size the homelab: tracker off the 1-core LXC 109", status: "next" },
       { title: "Agent tools for the portfolio", status: "later", detail: "MCP tools to read owned cards and the hold / sell analysis." },
@@ -120,6 +122,15 @@ export const PHASES: Phase[] = [
 ];
 
 export const PATCH_NOTES: PatchNote[] = [
+  {
+    date: "2026-10-12",
+    title: "Agent workers",
+    items: [
+      "Claude agent workers on the agent hosts: daily deal vetting (listings checked against the card, grade, printing and condition) and data triage (unmatched owned cards, PriceCharting disagreements, with the exact fix).",
+      "Two subscription accounts: primary first, the secondary takes over when the primary is offline, paused on a usage limit or full (or balanced).",
+      "Automation page: agent accounts, model / effort / items / schedule per agent job, findings; Deals show vetting verdicts.",
+    ],
+  },
   {
     date: "2026-10-12",
     title: "Automation: job queue and worker",
