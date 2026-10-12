@@ -40,9 +40,9 @@ export const PHASES: Phase[] = [
     title: "1. Coverage: owned cards + the sets worth grading",
     goal: "Every card owned is tracked, plus Illustration Rare-and-better from Sun & Moon through Mega Evolution, so the analytics have enough sets behind them.",
     items: [
-      { title: "Owned-cards sync", status: "in_progress",
+      { title: "Owned-cards sync", status: "done",
         detail: "sync-owned pulls the FGL owned-cards feed into owned_cards (grader + grade + label, quantity, certs) and tracks every match. Cards that leave the feed are flagged, never untracked. Daily schedule proposed." },
-      { title: "English catalog import (SM, SWSH, SV, ME + promos, galleries)", status: "in_progress",
+      { title: "English catalog import (SM, SWSH, SV, ME + promos, galleries)", status: "done",
         detail: "import-en creates ~70 English sets from TCGdex; the tracking rules add IR / SIR / UR / HR / MHR, SWSH-SM Secret and Ultra Rares, and every Trainer / Galarian Gallery card (~3,000 cards)." },
       { title: "Chinese cards", status: "next", detail: "TCGdex has Chinese data; Chinese sets and their PriceCharting / pop sources still need mapping. Owned Chinese cards are listed as unmatched until then." },
       { title: "Promo sources (box vs ETB vs collection)", status: "later",
@@ -56,6 +56,12 @@ export const PHASES: Phase[] = [
     title: "2. Data quality and cost",
     goal: "Trustworthy inputs at the larger scale.",
     items: [
+      { title: "Stamped printings as their own card", status: "done", detail: "Box toppers and set-stamped promos split from the regular card (ME1 Bulbasaur #133)." },
+      { title: "PriceCharting cross-checked against our sales", status: "done", detail: "With 5+ sales in 90 days, a PriceCharting price off by 1.75x+ is replaced by the sales median." },
+      { title: "Market value from what sold, never a listing", status: "done", detail: "Fanatics Buy Nows are competition and ceiling only." },
+      { title: "This week's auctions only", status: "done", detail: "Auction close times stored; next week's lots counted separately." },
+      { title: "Review pull-rate estimates and the trainer tier list", status: "next", detail: "Both are ballpark (factors.yaml); per-set overrides for special sets (151, Prismatic, high-class JP)." },
+      { title: "Warm the caches after each deploy", status: "next", detail: "The first minute after a deploy rebuilds the models; requests can fail meanwhile." },
       { title: "Price groups for every grade owned", status: "next", detail: "Sales groups for PCG, SGC, BGS and CGC 9 so owned slabs at those grades get comps." },
       { title: "Fanatics ingest budget at 3x the cards", status: "next" },
       { title: "423 ingest rows hitting numeric overflow", status: "later" },
@@ -71,6 +77,10 @@ export const PHASES: Phase[] = [
         links: [{ label: "BE #30", href: BE + "30" }, { label: "BE #31", href: BE + "31" }, { label: "FE #14", href: FE + "14" }, { label: "FE #15", href: FE + "15" }] },
       { title: "Release curves on enough sets", status: "next",
         detail: "Provisional until 8+ sets back every month through the buying window; firms up as the English sets' history loads." },
+      { title: "Compare by Pokémon, artist, trainer tier and scarcity", status: "done", detail: "Timing: curves, hold returns, appreciation and selloff risk per group and grade." },
+      { title: "Card strategy and set-page plays", status: "done", detail: "Invest / grade / flip / wait / pass with buy-by prices, on card pages, set tables and the watchlist." },
+      { title: "Bid helper: auctions by week vs cost to grade", status: "done" },
+      { title: "Sell-through supply (weeks of Buy Now supply)", status: "done" },
       { title: "Return forecasts per grade", status: "later",
         detail: "Expected appreciation of raw, PSA 9, PSA 10, CGC 10 and Pristine by months since release, desirability and supply, with ranges." },
       { title: "Hold vs churn", status: "later",
@@ -86,6 +96,7 @@ export const PHASES: Phase[] = [
     title: "4. Portfolio: sell now on Fanatics, or hold",
     goal: "For every owned card: what it's worth today, what it should be worth later, and a sell-now / hold call.",
     items: [
+      { title: "Pricing API for the admin panel", status: "done", detail: "/v1/pricing: list price, offer thresholds and eBay vs Fanatics vault per owned card." },
       { title: "Portfolio view of owned cards", status: "later", detail: "Market value per owned grade, freshness, liquidity, trend and release-curve phase." },
       { title: "Sell-now vs hold recommendation", status: "later", detail: "Net proceeds on Fanatics today vs the forecast, cost of capital and the churn alternative; a batch list to send to Fanatics." },
       { title: "Cost basis and P&L", status: "blocked", detail: "Needs purchase prices (see open questions)." },
@@ -96,7 +107,8 @@ export const PHASES: Phase[] = [
     title: "5. Platform",
     goal: "Keep the system easy to run and audit.",
     items: [
-      { title: "Roadmap and patch notes tab", status: "in_progress" },
+      { title: "Developer tab: roadmap, patch notes, architecture", status: "done" },
+      { title: "Watchlist with a printable buy list", status: "done" },
       { title: "Daily owned-cards sync schedule", status: "next", detail: "Proposed; add once the manual runs look right." },
       { title: "Agent tools for the portfolio", status: "later", detail: "MCP tools to read owned cards and the hold / sell analysis." },
     ],
@@ -104,6 +116,28 @@ export const PHASES: Phase[] = [
 ];
 
 export const PATCH_NOTES: PatchNote[] = [
+  {
+    date: "2026-10-12",
+    title: "Strategy, bid helper, watchlist, investment factors",
+    items: [
+      "Card strategy: invest / grade / flip / wait / pass with buy-by prices and an appreciation projection; a one-line play on every set-table row.",
+      "Bid helper: each week's Fanatics auctions next to the raw price, raw + grading and the cost to make the grade.",
+      "Market value comes from what sold (never a Buy Now listing); live auctions count this week's lots only; Buy Now sell-through and weeks of supply.",
+      "Timing: compare by Pokémon tier, artist tier, trainer tier and scarcity (packs per copy), with hold returns and selloff risk.",
+      "Watchlist: star cards, print the buy list by set.",
+      "Developer tab: roadmap, patch notes and architecture.",
+    ],
+  },
+  {
+    date: "2026-10-11",
+    title: "Pricing API, stamped printings, buy-by numbers",
+    items: [
+      "Pricing API for the admin panel: list price, offer thresholds, eBay vs Fanatics vault per owned card (OpenAPI + Swagger).",
+      "Stamped box toppers split from the regular card; PriceCharting cross-checked against our sales.",
+      "Buying guide in dollars: expected bottom, buy-under, target and break-even on grading and buy-the-10 calls.",
+      "Catalog cleanup finished; TCGdex retries longer.",
+    ],
+  },
   {
     date: "2026-10-10",
     title: "Timing by tier and grade, CGC grading deals",
