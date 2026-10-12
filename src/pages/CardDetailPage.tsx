@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import WatchButton from "../components/WatchButton";
 import GradedMarket from "../components/GradedMarket";
 import { useParams, useSearchParams } from "react-router-dom";
 import {
@@ -423,6 +424,7 @@ export default function CardDetailPage() {
             <h1 className="text-xl font-semibold text-white">
               {card.name}
               {card.finish && <span className="ml-2 text-sm text-gray-400 font-normal">{card.finish}</span>}
+              <span className="ml-2 align-middle"><WatchButton displayKey={card.display_key} /></span>
             </h1>
             <p className="text-xs text-gray-500 mt-0.5">
               #{card.number}

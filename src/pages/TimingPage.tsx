@@ -4,6 +4,7 @@ import {
 } from "../lib/api";
 import { LineChart, Legend, SERIES, type LineSeries } from "../components/HistoryCharts";
 import { Spinner, ErrorMsg } from "../components/Spinner";
+import CompareBy from "../components/CompareBy";
 
 const LANGS: { key: CurveLang; label: string }[] = [
   { key: "ja", label: "Japanese" },
@@ -92,7 +93,7 @@ export default function TimingPage() {
 
   const rows = useMemo(() => {
     if (!data) return [];
-    const r = data.table.filter((x) => x.lang === lang && (!tCat || x.category === tCat) && (!tGrade || x.grade === tGrade));
+    const r = data.table.filter((x) => x.lang === lang && x.category in CAT_LABEL && (!tCat || x.category === tCat) && (!tGrade || x.grade === tGrade));
     return [...r].sort((a, b) => (sortValue(a, sort.k) - sortValue(b, sort.k)) * (sort.desc ? -1 : 1));
   }, [data, lang, tCat, tGrade, sort]);
 
@@ -104,7 +105,7 @@ export default function TimingPage() {
   const prem = curves.find((c) => c.grade === "premium");
   const premium = seriesFor(curves, [{ key: "premium", label: "Premium", color: SERIES[0] }]);
   const bottoms = data.bottoms.filter((b) => b.lang === lang && b.category === cat);
-  const winners = data.table.filter((r) => r.lang === lang && r.outperforms && r.trailing).sort((a, b) => b.trailing!.net_median_2y - a.trailing!.net_median_2y);
+  const winners = data.table.filter((r) => r.lang === lang && r.category in CAT_LABEL && r.outperforms && r.trailing).sort((a, b) => b.trailing!.net_median_2y - a.trailing!.net_median_2y);
   const th = (k: SortKey, label: string, title?: string) => (
     <th className="text-right py-1 px-2 font-medium cursor-pointer select-none hover:text-gray-300" title={title}
       onClick={() => setSort((s) => ({ k, desc: s.k === k ? !s.desc : true }))}>
@@ -278,6 +279,8 @@ export default function TimingPage() {
           </table>
         </div>
       </section>
+
+      <CompareBy data={data} lang={lang} />
 
       <section className="rounded-lg border border-gray-800 bg-gray-900 p-4 space-y-2">
         <h2 className="text-sm font-semibold text-gray-100">Outperforming the S&P after fees</h2>

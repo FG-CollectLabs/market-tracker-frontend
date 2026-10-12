@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
+import AuctionWeeksPanel from "./AuctionWeeksPanel";
 import { fetchCardHistory, type CardHistory, type FanaticsHistoryWeek, type LiveGroup, type PcHistoryWeek, type PopHistoryWeek } from "../lib/api";
 import { formatCents } from "../lib/roi";
 import { Spinner, ErrorMsg } from "./Spinner";
@@ -333,6 +334,7 @@ export default function GradedMarket({ displayKey }: { displayKey: string }) {
   return (
     <div className="space-y-5">
       <BuyingGuide displayKey={displayKey} />
+      <AuctionWeeksPanel displayKey={displayKey} />
 
       <Section title="Gem rates" sub="Share of graded copies at each grade (GemRate). Hover a value for when it was updated.">
         <GemRates pop={data.pop} />

@@ -435,6 +435,7 @@ export interface TrackedPokemon extends CollectRank {
 }
 
 export interface TrackedCard {
+  play?: PlaySummary; // where capital should go (strategy summary)
   card_id: string;
   display_key: string;
   set_code: string;
@@ -712,6 +713,10 @@ export interface GradeAnalysis {
   sales_per_week: number;
   spread?: number;
   sales_90d: number;
+  buy_now_listings: number;
+  bin_sales_per_week: number;
+  weeks_of_supply?: number;
+  next_week_auctions: number;
 }
 
 export interface BuyAction {
@@ -843,7 +848,7 @@ export interface CurvePoint {
   sets: number;
 }
 
-export type CurveCategory = "all" | "ir" | "sir" | "ultra" | "gold" | "gallery" | "promo";
+export type CurveCategory = "all" | "ir" | "sir" | "ultra" | "gold" | "gallery" | "promo" | string; // or a factor bucket: poke:top, artist:a, trainer:s, scarcity:4
 export type CurveGrade = "raw" | "psa-10" | "psa-9" | "cgc-10" | "cgc-10-pristine" | "cgc-7-9" | "premium";
 export type CurveLang = "en" | "ja" | "all";
 
@@ -859,6 +864,7 @@ export interface ReleaseCurve {
   provisional: boolean;
   min_sets: number;
   cards: number;
+  returns: { buy_month: number; hold_months: number; change: number }[];
 }
 
 export interface CurveBottoms {
@@ -881,6 +887,9 @@ export interface Appreciation {
   p75: number;
   beat_share: number;
   net_median_2y: number;
+  p10: number;
+  down_share: number;
+  median_drawdown: number;
 }
 
 export interface WindowRow {
@@ -907,6 +916,7 @@ export interface ReleaseCurves {
   curves: ReleaseCurve[];
   bottoms: CurveBottoms[];
   table: WindowRow[];
+  scarcity_bounds?: number[];
 }
 
 export interface CardAnalysis {
@@ -920,6 +930,7 @@ export interface CardAnalysis {
   grading_by: Record<string, GradingEV>;
   fair: FairValue[];
   lifecycle: Record<string, Lifecycle>;
+  strategy?: Strategy;
   grades: GradeAnalysis[];
   trend?: Record<string, number>;
   collectibility: Record<string, number>;
@@ -963,8 +974,8 @@ export function fetchDeals(o?: { targetMargin?: number; exitFeePct?: number; kin
   return get(`/v1/analysis/deals?${q}`);
 }
 
-export function fetchReleaseCurves(): Promise<ReleaseCurves> {
-  return get("/v1/analysis/release-curves");
+export function fetchReleaseCurves(lang?: string): Promise<ReleaseCurves> {
+  return get(`/v1/analysis/release-curves${lang ? `?lang=${lang}` : ""}`);
 }
 
 export function fetchSettings(): Promise<{ settings: AnalysisSettings; defaults: AnalysisSettings }> {
@@ -977,4 +988,107 @@ export function saveSettings(s: AnalysisSettings): Promise<{ settings: AnalysisS
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(s),
   });
+}
+
+export interface StrategyStep {
+  kind: "grade_raw" | "sell_misses" | "bid" | "buy_now" | "hold" | "wait" | string;
+  text: string;
+  cents?: number;
+}
+
+export interface Projection {
+  grade: string;
+  yearly: number;
+  net_yearly_2y: number;
+  beats_benchmark: boolean;
+  basis: { category: string; median: number; cards: number; beat_share: number }[];
+}
+
+export interface Strategy {
+  stance: "invest" | "grade" | "flip" | "wait" | "pass";
+  headline: string;
+  steps: StrategyStep[];
+  projection: Record<string, Projection>;
+}
+
+export interface PlaySummary {
+  stance: Strategy["stance"];
+  headline: string;
+  projection?: number;
+  raw_cents?: number;
+  bottom_cents?: number;
+  target_cents?: number;
+  break_even_cents?: number;
+  bid_cents?: number;
+  grader?: string;
+}
+
+export interface AuctionWeek {
+  week: string;
+  auctions: number;
+  auction_median_all_in_cents?: number;
+  auction_median_hammer_cents?: number;
+  auction_low_all_in_cents?: number;
+  auction_high_all_in_cents?: number;
+  buy_now_sales: number;
+  buy_now_median_cents?: number;
+  ebay_sales: number;
+  ebay_median_cents?: number;
+  raw_cents?: number;
+  floor_cents?: number;
+  make_ten_cents?: number;
+}
+
+export interface AuctionWeeks {
+  display_key: string;
+  grade: string;
+  grader?: string;
+  tier?: string;
+  fee_cents: number;
+  ship_cents: number;
+  gem_rate?: number;
+  weeks: AuctionWeek[];
+  this_week_auctions: number;
+  next_week_auctions: number;
+  buy_now_listings: number;
+  buy_now_low_cents?: number;
+  weeks_of_supply?: number;
+  avg_auctions_per_week: number;
+}
+
+export function fetchAuctionWeeks(displayKey: string, grade: string): Promise<AuctionWeeks> {
+  return get(`/v1/cards/${encodeURIComponent(displayKey)}/auction-weeks?grade=${grade}&weeks=26`);
+}
+
+export type WatchIntent = "grade" | "invest" | "flip" | "watch";
+
+export interface WatchItem {
+  display_key: string;
+  name: string;
+  number: string;
+  set_code: string;
+  set_name: string;
+  set_release_date?: string;
+  image_url?: string;
+  intent: WatchIntent;
+  note?: string;
+  added_by?: string;
+  created_at: string;
+  psa10_cents?: number;
+  play?: PlaySummary;
+}
+
+export function fetchWatchlist(keysOnly = false): Promise<{ count: number; items: WatchItem[] }> {
+  return adminFetch(`/v1/admin/watchlist${keysOnly ? "?keys_only=1" : ""}`);
+}
+
+export function watchCard(displayKey: string, intent: WatchIntent, note?: string): Promise<unknown> {
+  return adminFetch(`/v1/admin/watchlist/${encodeURIComponent(displayKey)}`, {
+    method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ intent, note }),
+  });
+}
+
+export async function unwatchCard(displayKey: string): Promise<void> {
+  const res = await fetch(`${BASE}/v1/admin/watchlist/${encodeURIComponent(displayKey)}`, { method: "DELETE", headers: await authHeaders() });
+  if (!res.ok && res.status !== 204) throw new Error(`${res.status}`);
 }

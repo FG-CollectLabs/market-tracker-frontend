@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
-import { fetchCardAnalysis, type ActionMetrics, type BuyAction, type CardAnalysis, type FairValue, type GradeAnalysis, type GradingEV, type Lifecycle } from "../lib/api";
+import { fetchCardAnalysis, type ActionMetrics, type BuyAction, type CardAnalysis, type Strategy, type FairValue, type GradeAnalysis, type GradingEV, type Lifecycle } from "../lib/api";
 import { formatCents } from "../lib/roi";
 import { AsOf } from "./AsOf";
 import { Spinner, ErrorMsg } from "./Spinner";
@@ -16,8 +16,7 @@ const GRADE_LABEL: Record<string, string> = {
 const SOURCE_LABEL: Record<string, string> = {
   pricecharting: "PriceCharting",
   ebay_sold_90d: "eBay sold (90d median)",
-  sold_90d: "recent sales (90d median; PriceCharting disagreed)",
-  fanatics_bin: "cheapest Fanatics Buy Now",
+  sold_90d: "recent sales (90-day median of what sold; used when PriceCharting is missing or disagrees)",
 };
 
 export const ACTION_STYLE: Record<BuyAction["kind"], string> = {
@@ -67,7 +66,7 @@ function GradeRow({ g }: { g: GradeAnalysis }) {
             <span title={SOURCE_LABEL[g.market.source] ?? g.market.source}>{money(g.market.cents)}</span>
           </AsOf>
         ) : "—"}
-        {g.market && g.market.source !== "pricecharting" && <span className="block text-[10px] text-gray-500">{g.market.source === "ebay_sold_90d" ? "eBay sold" : g.market.source === "sold_90d" ? "recent sales" : "Fanatics BIN"}</span>}
+        {g.market && g.market.source !== "pricecharting" && <span className="block text-[10px] text-gray-500">{g.market.source === "ebay_sold_90d" ? "eBay sold" : "recent sales"}</span>}
       </Cell>
       <Cell dim={!graded}>
         {g.expected_hammer_cents != null ? (
@@ -81,9 +80,17 @@ function GradeRow({ g }: { g: GradeAnalysis }) {
       </Cell>
       <Cell dim={!graded}>
         {graded && g.supply ? (
-          <span title={`${g.live_auctions} in auction now vs ~${g.usual_auctions_per_week.toFixed(1)} a week usually`}>
+          <span title={`${g.live_auctions} auctions close this week vs ~${g.usual_auctions_per_week.toFixed(1)} sold a week usually`}>
             <span className={g.supply === "dump" ? "text-amber-300 font-medium" : g.supply === "heavy" ? "text-amber-200" : ""}>{g.supply}</span>
-            <span className="block text-[10px] text-gray-500">{g.live_auctions} live / ~{g.usual_auctions_per_week.toFixed(1)}</span>
+            <span className="block text-[10px] text-gray-500">
+              {g.live_auctions} this week / ~{g.usual_auctions_per_week.toFixed(1)}{g.next_week_auctions > 0 ? ` · ${g.next_week_auctions} next` : ""}
+            </span>
+            {g.weeks_of_supply != null && g.buy_now_listings > 0 && (
+              <span className={`block text-[10px] ${g.weeks_of_supply >= 8 ? "text-amber-300" : "text-gray-500"}`}
+                title={`${g.buy_now_listings} Buy Nows listed on Fanatics; ~${g.bin_sales_per_week.toFixed(1)} sell a week`}>
+                {g.buy_now_listings} BIN · {g.weeks_of_supply >= 52 ? "52+" : g.weeks_of_supply.toFixed(0)} wk supply
+              </span>
+            )}
           </span>
         ) : "—"}
       </Cell>
@@ -239,6 +246,49 @@ export function MetricsStrip({ m, unit }: { m: ActionMetrics; unit: string }) {
   );
 }
 
+export const STANCE: Record<Strategy["stance"], { label: string; cls: string }> = {
+  invest: { label: "Invest", cls: "border-emerald-700 bg-emerald-950/40 text-emerald-200" },
+  grade: { label: "Grade", cls: "border-green-800 bg-green-950/40 text-green-200" },
+  flip: { label: "Flip", cls: "border-amber-800 bg-amber-950/40 text-amber-200" },
+  wait: { label: "Wait", cls: "border-sky-800 bg-sky-950/40 text-sky-200" },
+  pass: { label: "Pass", cls: "border-gray-700 bg-gray-950/40 text-gray-300" },
+};
+
+const BASIS_LABEL = (c: string) =>
+  ({ ir: "IR tier", sir: "SIR tier", ultra: "full-art tier", gold: "gold tier", gallery: "gallery" } as Record<string, string>)[c] ??
+  c.replace("poke:", "Pokémon tier ").replace("artist:", "artist tier ").replace("trainer:", "trainer tier ").replace(/ (top|a|b|c|s)$/, (m) => m.toUpperCase());
+
+// Where capital should go on this card: the stance, the steps with their
+// price lines, and the appreciation projection behind it.
+function StrategyBlock({ st }: { st: Strategy }) {
+  const s = STANCE[st.stance];
+  const proj = ["psa-10", "raw"].map((g) => st.projection[g] && { g, p: st.projection[g] }).filter(Boolean) as { g: string; p: Strategy["projection"][string] }[];
+  return (
+    <div className={`rounded-lg border px-3 py-2.5 ${s.cls}`}>
+      <div className="flex flex-wrap items-baseline gap-2">
+        <span className="text-[11px] font-semibold uppercase tracking-wide px-1.5 py-0.5 rounded bg-black/30">{s.label}</span>
+        <span className="text-sm font-semibold">{st.headline}</span>
+      </div>
+      {st.steps.length > 0 && (
+        <ol className="mt-1.5 space-y-0.5 text-xs list-decimal pl-5 opacity-90">
+          {st.steps.map((x, i) => <li key={i}>{x.text}</li>)}
+        </ol>
+      )}
+      {proj.length > 0 && (
+        <div className="mt-1.5 text-[11px] opacity-80 space-y-0.5">
+          {proj.map(({ g, p }) => (
+            <div key={g}>
+              {g === "raw" ? "Raw" : "PSA 10"} appreciation for cards like this: <span className="font-medium">{pct(p.yearly)}/yr</span>
+              {" "}({pct(p.net_yearly_2y)}/yr after fees, held two years{p.beats_benchmark ? ", beats the S&P" : ""})
+              {" · "}{p.basis.map((b) => `${BASIS_LABEL(b.category)} ${pct(b.median)} (${b.cards})`).join(", ")}
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 // The buying analysis for one card: what to do (with the reasoning), and the
 // per-grade numbers behind it. All math is server-side (shared with the
 // agent's analyze_card tool).
@@ -292,6 +342,8 @@ export default function BuyingGuide({ displayKey }: { displayKey: string }) {
       {!a && !error && <Spinner />}
       {a && (
         <>
+          {a.strategy && <StrategyBlock st={a.strategy} />}
+
           <div className="grid gap-2 md:grid-cols-2">
             {a.actions.map((act, i) => (
               <div key={i} className={`rounded-lg border px-3 py-2 ${ACTION_STYLE[act.kind]}`}>

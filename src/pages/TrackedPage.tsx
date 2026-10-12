@@ -1,4 +1,7 @@
 import { Fragment, useEffect, useMemo, useState } from "react";
+import WatchButton from "../components/WatchButton";
+import { STANCE } from "../components/BuyingGuide";
+import type { PlaySummary } from "../lib/api";
 import { cardThumb } from "../lib/thumb";
 import { Link, useParams } from "react-router-dom";
 import {
@@ -269,6 +272,7 @@ function CardCell({ c }: { c: TrackedCard }) {
           </span>
         )}
         <span className="text-gray-100">{c.name}</span>
+        <WatchButton displayKey={c.display_key} compact />
         {c.finish === "rh" && (
           <span className="text-[10px] px-1 rounded bg-cyan-900/50 text-cyan-300">RH</span>
         )}
@@ -291,9 +295,29 @@ function CardCell({ c }: { c: TrackedCard }) {
           </>
         )}
       </div>
+      {c.play && <PlayLine p={c.play} />}
         </div>
       </div>
     </td>
+  );
+}
+
+// The card's play in one line: stance, and the prices to buy by.
+function PlayLine({ p }: { p: PlaySummary }) {
+  const st = STANCE[p.stance];
+  const usd = (c?: number) => (c == null ? null : `$${(c / 100).toFixed(2)}`);
+  const parts = [
+    p.target_cents != null && `grade ≤ ${usd(p.target_cents)}${p.grader ? ` (${p.grader})` : ""}`,
+    p.break_even_cents != null && `break-even ${usd(p.break_even_cents)}`,
+    p.bottom_cents != null && `raw low ~${usd(p.bottom_cents)}`,
+    p.bid_cents != null && `PSA 10 bid ≤ ${usd(p.bid_cents)}`,
+    p.projection != null && `${p.projection >= 0 ? "+" : ""}${Math.round(p.projection * 100)}%/yr held`,
+  ].filter(Boolean);
+  return (
+    <div className="ml-10 mt-0.5 text-[11px] text-gray-400" title={p.headline}>
+      <span className={`mr-1.5 px-1 rounded border text-[10px] ${st.cls}`}>{st.label}</span>
+      {parts.join(" · ")}
+    </div>
   );
 }
 
