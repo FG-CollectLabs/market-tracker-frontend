@@ -398,6 +398,8 @@ export interface PcPrice {
 export interface PopSummary {
   gem: number;
   nine: number | null; // copies graded a plain 9; null until stored
+  nine_five?: number | null; // CGC 9.5s (null for PSA / until stored)
+  pristine?: number | null; // CGC Pristine + Perfect 10s, inside gem (null for PSA / until stored)
   total: number;
   week_start_date: string;
   captured_at: string;
@@ -1321,7 +1323,12 @@ export function fetchSetWindows(lang?: "en" | "ja"): Promise<{ band: number; out
   return get(`/v1/analysis/set-windows${lang ? `?lang=${lang}` : ""}`);
 }
 
-export type BuyTarget = "raw" | "psa-10" | "cgc-10";
+// Watchlist buy categories: raw (to grade) or the slab to buy.
+export type BuyTarget = "raw" | "psa-10" | "psa-9" | "cgc-10" | "cgc-10-pristine" | "cgc-9";
+export const BUY_TARGETS: { key: BuyTarget; label: string }[] = [
+  { key: "raw", label: "Raw to grade" }, { key: "psa-10", label: "PSA 10" }, { key: "psa-9", label: "PSA 9" },
+  { key: "cgc-10", label: "CGC 10" }, { key: "cgc-10-pristine", label: "CGC Pristine 10" }, { key: "cgc-9", label: "CGC 9" },
+];
 
 export function watchSetTier(setCode: string, tier: string, intent: WatchIntent, note?: string, target?: BuyTarget): Promise<{ watched: number }> {
   return adminFetch(`/v1/admin/watchlist/bulk`, {

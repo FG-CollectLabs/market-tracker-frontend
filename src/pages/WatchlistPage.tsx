@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
-import { fetchWatchlist, type WatchItem, type WatchIntent } from "../lib/api";
+import { BUY_TARGETS, fetchWatchlist, type BuyTarget, type WatchItem, type WatchIntent } from "../lib/api";
 import { useSession } from "../lib/auth";
 import { STANCE } from "../components/BuyingGuide";
 import { cardThumb } from "../lib/thumb";
@@ -16,6 +16,8 @@ export default function WatchlistPage() {
   const [items, setItems] = useState<WatchItem[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [intent, setIntent] = useState<WatchIntent | "">("");
+  // Buy category tab: "" = everything, "none" = watched without a target.
+  const [cat, setCat] = useState<BuyTarget | "" | "none">("");
 
   useEffect(() => {
     if (!session) return;
@@ -26,12 +28,16 @@ export default function WatchlistPage() {
     const m = new Map<string, { name: string; code: string; items: WatchItem[] }>();
     for (const it of items ?? []) {
       if (intent && it.intent !== intent) continue;
+      const ts = it.targets ?? [];
+      if (cat === "none" ? ts.length > 0 : cat && !ts.includes(cat)) continue;
       const g = m.get(it.set_code) ?? { name: it.set_name, code: it.set_code, items: [] };
       g.items.push(it);
       m.set(it.set_code, g);
     }
     return [...m.values()];
-  }, [items, intent]);
+  }, [items, intent, cat]);
+  const catCount = (k: BuyTarget | "none") =>
+    (items ?? []).filter((it) => (k === "none" ? !(it.targets ?? []).length : (it.targets ?? []).includes(k))).length;
 
   if (!session) return <p className="text-sm text-gray-400">Sign in with Google to see your watchlist.</p>;
   if (error) return <ErrorMsg msg={error} />;
@@ -56,6 +62,14 @@ export default function WatchlistPage() {
           <button onClick={() => window.print()} className="px-3 py-1 rounded bg-indigo-600 text-white text-sm hover:bg-indigo-500">Print</button>
         </div>
       </div>
+      <nav className="flex flex-wrap gap-1 border-b border-gray-800 text-sm print:hidden">
+        {([["", "Everything", items.length], ...BUY_TARGETS.map((t) => [t.key, t.label, catCount(t.key)]), ["none", "No target", catCount("none")]] as [string, string, number][]).map(([k, label, n]) => (
+          <button key={k} onClick={() => setCat(k as BuyTarget | "" | "none")}
+            className={`px-3 py-1.5 -mb-px border-b-2 ${cat === k ? "border-indigo-500 text-white" : "border-transparent text-gray-400 hover:text-gray-200"}`}>
+            {label} <span className="text-xs text-gray-600">{n}</span>
+          </button>
+        ))}
+      </nav>
       {items.length === 0 && <p className="text-sm text-gray-500">Star cards on a set page or a card page to add them.</p>}
       {bySet.map((g) => (
         <section key={g.code} className="rounded-lg border border-gray-800 bg-gray-900 p-3 break-inside-avoid print:border-gray-300 print:bg-white">
@@ -95,7 +109,7 @@ export default function WatchlistPage() {
                       {INTENT_LABEL[it.intent]}
                       {it.targets && it.targets.length > 0 && (
                         <div className="text-[11px] text-yellow-300/90">
-                          buy as {it.targets.map((t) => ({ raw: "raw", "psa-10": "PSA 10", "cgc-10": "CGC 10" })[t]).join(", ")}
+                          buy as {it.targets.map((t) => BUY_TARGETS.find((x) => x.key === t)?.label ?? t).join(", ")}
                         </div>
                       )}
                     </td>

@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
-import { setTargets, watchSetTier, type BuyTarget, type SetWindow, type SetWindows } from "../lib/api";
+import { BUY_TARGETS, setTargets, watchSetTier, type BuyTarget, type SetWindow, type SetWindows } from "../lib/api";
 import { useSession } from "../lib/auth";
 import { onWatchChange, watchChanged, watchedCards } from "./WatchButton";
 
@@ -13,6 +13,9 @@ export const TIER_LABEL: Record<string, string> = {
 };
 export const WGRADE_LABEL: Record<string, string> = { raw: "Raw", "psa-10": "PSA 10", "cgc-10": "CGC 10" };
 const GRADES: BuyTarget[] = ["raw", "psa-10", "cgc-10"];
+// Targets without a buy window of their own, behind the chips' "+" menu.
+const MORE: BuyTarget[] = ["psa-9", "cgc-10-pristine", "cgc-9"];
+const TARGET_LABEL = Object.fromEntries(BUY_TARGETS.map((t) => [t.key, t.label])) as Record<BuyTarget, string>;
 
 const pct = (v: number) => `${v > 0 ? "+" : ""}${Math.round(v * 100)}%`;
 const soon = (w: SetWindow) => w.action === "wait" && (w.months_to_window ?? 99) <= 3;
@@ -91,6 +94,7 @@ export function TargetChips({ displayKey, set, tier }: { displayKey: string; set
   const session = useSession();
   const [targets, setT] = useState<BuyTarget[] | null>(null);
   const [busy, setBusy] = useState(false);
+  const [more, setMore] = useState(false);
   useEffect(() => {
     if (!session) return;
     let live = true;
@@ -128,6 +132,26 @@ export function TargetChips({ displayKey, set, tier }: { displayKey: string; set
           </button>
         );
       })}
+      {MORE.filter((g) => targets.includes(g)).map((g) => (
+        <button key={g} disabled={busy} onClick={() => toggle(g)} title={`Targeted: click to remove ${TARGET_LABEL[g]}`}
+          className="px-1 rounded border text-[10px] leading-4 bg-gray-800/60 text-gray-300 border-gray-700/50 ring-1 ring-yellow-300 font-semibold">
+          ★ {TARGET_LABEL[g]}
+        </button>
+      ))}
+      <span className="relative">
+        <button onClick={() => setMore((v) => !v)} title="More buy targets: PSA 9, CGC Pristine 10, CGC 9"
+          className="px-1 rounded border border-gray-700/50 text-[10px] leading-4 text-gray-500 hover:text-gray-200">+</button>
+        {more && (
+          <span className="absolute z-30 left-0 top-5 flex flex-col gap-0.5 rounded border border-gray-700 bg-gray-950 p-1 shadow-xl">
+            {MORE.map((g) => (
+              <label key={g} className="flex items-center gap-1 whitespace-nowrap text-[11px] text-gray-300">
+                <input type="checkbox" className="accent-indigo-500" checked={targets.includes(g)} disabled={busy} onChange={() => toggle(g)} />
+                {TARGET_LABEL[g]}
+              </label>
+            ))}
+          </span>
+        )}
+      </span>
     </span>
   );
 }
