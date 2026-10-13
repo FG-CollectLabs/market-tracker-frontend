@@ -174,3 +174,71 @@ export function monthsSince(date: string | null | undefined, now = new Date()): 
   const d = new Date(date + "T00:00:00Z");
   return (now.getTime() - d.getTime()) / (30.44 * 86_400_000);
 }
+
+// ---- CGC ------------------------------------------------------------------------
+
+// CGC grading math. Outcomes from the CGC population: Pristine 10 (Pristine
+// + Perfect) at the Pristine price, Gem Mint 10 at the CGC 10 price, 9 (9 and
+// 9.5) at the CGC 9 price (or the floor from Settings when it has none), the
+// rest at raw. Plus the operating model's breakeven: every miss counted as a
+// 9, what a CGC 10 must sell for so an average submission nets zero.
+export interface CgcInputs {
+  rawCents: number | null;
+  tenCents: number | null;
+  pristineCents: number | null; // null = valued as a 10
+  nineCents: number; // market or floor
+  nineFromFloor: boolean;
+  gem: number; // every 10, Pristine included
+  pristine: number | null;
+  nine: number | null; // 9s and 9.5s
+  total: number;
+}
+
+export interface CgcMath extends GradingMath {
+  pPristine: number | null;
+  pGem: number; // any 10
+  nineCents: number;
+  nineFromFloor: boolean;
+  lossPerMissCents: number | null; // cost - what a 9 nets
+  breakEven10Cents: number | null; // operating model
+}
+
+export function cgcMath(i: CgcInputs, s: GradingSettings): CgcMath {
+  const pGem = i.total > 0 ? Math.min(i.gem, i.total) / i.total : 0;
+  const pPristine = i.pristine != null && i.total > 0 ? Math.min(i.pristine, i.gem) / i.total : null;
+  const p9 = i.nine != null && i.total > 0 ? Math.min(i.nine, i.total - i.gem) / i.total : null;
+  const out: CgcMath = {
+    p10: pGem, p9, pPristine, pGem, nineCents: i.nineCents, nineFromFloor: i.nineFromFloor,
+    costCents: null, prem9Cents: null, prem10Cents: null, evCents: null, roi: null, costPer10Cents: null, tenValue: null, signal: null,
+    lossPerMissCents: null, breakEven10Cents: null,
+  };
+  if (i.rawCents == null || i.total <= 0) return out;
+  const keep = 1 - s.sellFeePct;
+  const net = (c: number) => c * keep;
+  const cost = i.rawCents + s.feeCents + s.extraCents;
+  out.costCents = cost;
+  out.prem9Cents = Math.round(net(i.nineCents) - cost);
+  if (i.tenCents != null) out.prem10Cents = Math.round(net(i.tenCents) - cost);
+  out.lossPerMissCents = Math.round(cost - net(i.nineCents));
+  if (pGem > 0 && keep > 0) {
+    // Every miss a 9: (cost - P(miss) x 9's net) / (P(10) x keep), never below the 9.
+    const be = (cost - (1 - pGem) * net(i.nineCents)) / (pGem * keep);
+    out.breakEven10Cents = Math.round(Math.max(be, i.nineCents));
+  }
+  if (i.tenCents == null) return out;
+
+  const pr = pPristine ?? 0;
+  const nineShare = p9 ?? 0;
+  const low = Math.max(0, 1 - pGem - nineShare);
+  const salvage = net(nineShare * i.nineCents + low * i.rawCents);
+  const tens = net(pr * (i.pristineCents ?? i.tenCents) + (pGem - pr) * i.tenCents);
+  out.evCents = Math.round(tens + salvage - cost);
+  out.roi = out.evCents / cost;
+  if (pGem > 0) {
+    out.costPer10Cents = Math.max(0, Math.round((cost - salvage) / pGem));
+    out.tenValue = out.costPer10Cents > 0 ? i.tenCents / out.costPer10Cents : null;
+  }
+  if (out.roi >= s.minRoi && out.evCents >= s.minProfitCents) out.signal = "grade";
+  else if (out.tenValue != null && out.tenValue < 1) out.signal = "buy10";
+  return out;
+}

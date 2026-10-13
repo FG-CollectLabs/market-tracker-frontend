@@ -128,7 +128,9 @@ export const PATCH_NOTES: PatchNote[] = [
     items: [
       "Buy windows has its own tab; the Sets page is back to the tiles, each showing Raw / PSA 10 / CGC 10 as Prime, Early, Too early, Past window or Watch only.",
       "Out-of-print sets (18 months after release by default, or marked by hand on the set page) never say buy raw to grade: raw is watch only, for the odd gradable copy.",
-      "Set pages open with the set's timing per grade and tier, and every card has Raw / PSA 10 / CGC 10 target chips coloured by its window. Targets are saved on the watchlist.",
+      "Set pages open with the set's timing per grade and tier, and every card has Raw / PSA 10 / CGC 10 target chips coloured by its window (plus PSA 9, CGC Pristine 10 and CGC 9 behind +). Targets are saved on the watchlist.",
+      "Watchlist categories: a tab per buy target (Raw to grade, PSA 10, PSA 9, CGC 10, CGC Pristine 10, CGC 9, no target); a card can be in several.",
+      "Set pages get a Grading (CGC) view next to Grading (PSA): CGC odds with Pristine, CGC 10 / Pristine / 9 prices, EV after fees, cost per 10 and the breakeven 10 with every miss a 9. Both grading views start from the Settings page's fees.",
     ],
     links: [{ label: "API #57", href: BE + "57" }],
   },
