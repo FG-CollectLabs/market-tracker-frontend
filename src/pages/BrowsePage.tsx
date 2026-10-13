@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
-import { fetchTrackedSets, type BrowseSet } from "../lib/api";
+import { fetchSetWindows, fetchTrackedSets, type BrowseSet, type SetWindows } from "../lib/api";
+import BuyWindowsPanel, { TileBadges } from "../components/BuyWindows";
 import { Spinner, ErrorMsg } from "../components/Spinner";
 import { ago, isStale, shortDate } from "../lib/freshness";
 
@@ -34,7 +35,7 @@ function tileImage(url: string): string {
   return url.replace(/\/60\.jpg$/, "/240.jpg");
 }
 
-function SetTile({ s }: { s: BrowseSet }) {
+function SetTile({ s, win }: { s: BrowseSet; win?: SetWindows }) {
   const [logoFailed, setLogoFailed] = useState(false);
   const showLogo = s.logo_url && !logoFailed;
   const untracked = s.tracked === 0;
@@ -86,6 +87,7 @@ function SetTile({ s }: { s: BrowseSet }) {
           {s.release_date && <span>{s.release_date.slice(0, 4)}</span>}
           {stale && <span className="text-amber-500" title="Prices older than 8 days">• stale</span>}
         </div>
+        <TileBadges set={win} />
       </div>
     </Link>
   );
@@ -104,6 +106,16 @@ export default function BrowsePage() {
       .then((r) => setSets(r.sets))
       .catch((e: Error) => setError(e.message));
   }, [showAll]);
+
+  // Buy windows load separately: the set grid shouldn't wait on them.
+  const [windows, setWindows] = useState<SetWindows[] | null>(null);
+  useEffect(() => {
+    setWindows(null);
+    fetchSetWindows(lang)
+      .then((r) => setWindows(r.sets))
+      .catch(() => setWindows([]));
+  }, [lang]);
+  const winByCode = useMemo(() => new Map((windows ?? []).map((w) => [w.code, w])), [windows]);
 
   const setParam = (key: string, value: string | null) => {
     const next = new URLSearchParams(params);
@@ -145,6 +157,7 @@ export default function BrowsePage() {
         ))}
       </div>
 
+      {windows && windows.length > 0 && <BuyWindowsPanel sets={windows} />}
       {error && <ErrorMsg msg={error} />}
       {!sets && !error && <Spinner />}
 
@@ -159,7 +172,7 @@ export default function BrowsePage() {
             </h2>
             <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-3">
               {era.sets.map((s) => (
-                <SetTile key={s.code} s={s} />
+                <SetTile key={s.code} s={s} win={winByCode.get(s.code)} />
               ))}
             </div>
           </section>

@@ -907,6 +907,8 @@ export interface WindowRow {
   provisional: boolean;
   min_sets: number;
   cards: number;
+  month4_change?: number;
+  post_hype?: { buy_at: "month_4" | "bottom"; buy_month: number; hold_months: number; yearly: number; total: number }[];
 }
 
 export interface ReleaseCurves {
@@ -1275,4 +1277,45 @@ export function fetchAuctionDeals(o?: { lang?: "en" | "ja"; limit?: number }): P
   if (o?.lang) q.set("lang", o.lang);
   if (o?.limit) q.set("limit", String(o.limit));
   return get(`/v1/deals/auctions?${q}`);
+}
+
+// ---- Set buy windows ----------------------------------------------------------
+
+export interface SetWindow {
+  grade: "raw" | "psa-10" | "cgc-10";
+  tier: string; // all, ir, sir, ultra, gold, gallery, promo
+  curve: string;
+  curve_lang: CurveLang;
+  cards: number;
+  from: number;
+  to: number;
+  bottom_month: number;
+  status: "in_window" | "before" | "after" | "unknown";
+  months_to_window?: number;
+  to_bottom: number;
+  from_bottom: number;
+  provisional: boolean;
+  min_sets: number;
+  headline: string;
+}
+
+export interface SetWindows {
+  code: string;
+  name: string;
+  lang: "en" | "ja";
+  release_date?: string;
+  months_since_release: number;
+  tracked: number;
+  tiers: Record<string, number>;
+  windows: SetWindow[];
+}
+
+export function fetchSetWindows(lang?: "en" | "ja"): Promise<{ band: number; sets: SetWindows[] }> {
+  return get(`/v1/analysis/set-windows${lang ? `?lang=${lang}` : ""}`);
+}
+
+export function watchSetTier(setCode: string, tier: string, intent: WatchIntent, note?: string): Promise<{ watched: number }> {
+  return adminFetch(`/v1/admin/watchlist/bulk`, {
+    method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ set_code: setCode, tier, intent, note }),
+  });
 }

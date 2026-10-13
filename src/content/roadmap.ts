@@ -124,6 +124,16 @@ export const PHASES: Phase[] = [
 export const PATCH_NOTES: PatchNote[] = [
   {
     date: "2026-10-13",
+    title: "Buy windows and after-hype returns",
+    items: [
+      "Sets page: a Buy windows panel lists every set tier whose raw, PSA 10 or CGC 10 prices typically sit in their bottom 10% right now (or within 3 months), with a one-click Watch for the tier's cards. Set tiles show the same as badges.",
+      "Timing: After the hype table, the yearly return of buying at month 4 or at the bottom and holding 12 / 24 months, by rarity, Pokémon tier, artist, trainer or scarcity, next to realized appreciation and the S&P.",
+      "Deals: auction pressure now compares this week's auctions with sales a week across every channel.",
+    ],
+    links: [{ label: "API #53", href: BE + "53" }],
+  },
+  {
+    date: "2026-10-13",
     title: "Deals: this week's auctions",
     items: [
       "Deals is split into sub-tabs: This week's auctions (new, default), Buy Now, Grade raw (PSA / CGC) and Buy PSA 10s. The language filter applies to all of them.",

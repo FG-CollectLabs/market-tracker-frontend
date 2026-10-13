@@ -5,6 +5,7 @@ import {
 import { LineChart, Legend, SERIES, type LineSeries } from "../components/HistoryCharts";
 import { Spinner, ErrorMsg } from "../components/Spinner";
 import CompareBy from "../components/CompareBy";
+import AfterHype from "../components/AfterHype";
 
 const LANGS: { key: CurveLang; label: string }[] = [
   { key: "ja", label: "Japanese" },
@@ -281,6 +282,8 @@ export default function TimingPage() {
       </section>
 
       <CompareBy data={data} lang={lang} />
+
+      <AfterHype data={data} lang={lang} />
 
       <section className="rounded-lg border border-gray-800 bg-gray-900 p-4 space-y-2">
         <h2 className="text-sm font-semibold text-gray-100">Outperforming the S&P after fees</h2>
