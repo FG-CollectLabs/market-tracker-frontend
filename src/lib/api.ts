@@ -1203,3 +1203,75 @@ export function fetchFindings(o?: { kind?: string; card?: string; limit?: number
   q.set("limit", String(o?.limit ?? 100));
   return get(`/v1/agent/findings?${q}`);
 }
+
+// ---- This week's auctions (Deals) -------------------------------------------
+
+export interface AuctionSource {
+  source: string;
+  auctions: number;
+  next_week: number;
+  bids: number;
+  high_bid_cents?: number;
+  low_bid_cents?: number;
+  first_ends_at?: string;
+}
+
+export interface AuctionListing {
+  price_cents: number;
+  title: string;
+  url?: string;
+  kind: "buy_now" | "auction";
+  ends_at?: string;
+}
+
+export interface LaunchAnchor {
+  sales: number;
+  avg_cents: number;
+  at_month: number;
+  first_sold_at: string;
+  now_cents?: number;
+  after: { months_after_first: number; month: number; date: string; expected_cents: number; extrapolated?: boolean }[];
+  note?: string;
+}
+
+export interface AuctionDeal {
+  display_key: string;
+  name: string;
+  set_code: string;
+  image_url?: string;
+  grade: string;
+  search_title?: string;
+  months_since_release?: number;
+  sources: AuctionSource[];
+  live_auctions: number;
+  next_week_auctions: number;
+  usual_per_week: number;
+  pressure?: number;
+  listings?: AuctionListing[];
+  value?: { cents: number; source: string; basis?: { method: string; sales_count: number; note: string } };
+  expected_hammer_cents?: number;
+  expected_all_in_cents?: number;
+  breakeven_cents?: number;
+  cost_to_make_cents?: number;
+  gem_rate_source?: string;
+  launch?: LaunchAnchor;
+  weeks: { week: string; closed: number; avg_cents?: number; vs_breakeven?: number }[];
+  our_value_cents?: number;
+  snipe_all_in_cents?: number;
+  snipe_hammer_cents?: number;
+  edge?: number;
+  advice?: { signal: "sell_now" | "hold"; hold_months: number; reason: string };
+  projection_confidence?: "low" | "medium" | "high";
+  flags: string[];
+}
+
+export function fetchAuctionDeals(o?: { lang?: "en" | "ja"; limit?: number }): Promise<{
+  count: number;
+  auctions: AuctionDeal[];
+  settings: { target_margin: number; sell_fee_pct: number; buyers_premium_pct: number };
+}> {
+  const q = new URLSearchParams();
+  if (o?.lang) q.set("lang", o.lang);
+  if (o?.limit) q.set("limit", String(o.limit));
+  return get(`/v1/deals/auctions?${q}`);
+}

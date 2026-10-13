@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
-import { Link } from "react-router-dom";
+import { Link, useSearchParams } from "react-router-dom";
+import AuctionDealsTab from "../components/AuctionDealsTab";
 import { fetchDeals, fetchFindings, type AgentFinding, type Deal } from "../lib/api";
 import { formatCents } from "../lib/roi";
 import { ACTION_STYLE } from "../components/BuyingGuide";
@@ -7,14 +8,21 @@ import { Spinner, ErrorMsg } from "../components/Spinner";
 import { cardThumb } from "../lib/thumb";
 import { FairBar, PHASE_STYLE, PHASE_LABEL } from "../components/BuyingGuide";
 
-const KINDS = [
-  { key: "", label: "All" },
-  { key: "bid_auction", label: "Bid on auctions" },
+// Sub-tabs: this week's auctions first, then the other buying plays.
+const TABS = [
+  { key: "auctions", label: "This week's auctions" },
   { key: "buy_now", label: "Buy Now under max" },
   { key: "buy_raw_to_grade", label: "Grade raw · PSA" },
   { key: "buy_raw_to_grade_cgc", label: "Grade raw · CGC" },
   { key: "buy_psa10", label: "Buy PSA 10s" },
-];
+] as const;
+
+const TAB_BLURB: Record<string, string> = {
+  buy_now: "Buy Nows listed under the most you could pay and still clear your margin.",
+  buy_raw_to_grade: "Raw cards worth grading with PSA: EV after fees at the public gem rate.",
+  buy_raw_to_grade_cgc: "Raw cards worth grading with CGC (Pristine upside counted): EV after fees at the public gem rate.",
+  buy_psa10: "PSA 10s that cost less than grading for one.",
+};
 
 const KIND_LABEL: Record<string, string> = {
   bid_auction: "Bid",
@@ -24,12 +32,48 @@ const KIND_LABEL: Record<string, string> = {
   buy_psa10: "Buy PSA 10",
 };
 
-// Every tracked card's live buying opportunities, ranked. The same list the
-// agent's find_deals tool returns.
 export default function DealsPage() {
-  const [kind, setKind] = useState("");
+  const [params, setParams] = useSearchParams();
+  const tab = TABS.some((t) => t.key === params.get("tab")) ? params.get("tab")! : "auctions";
+  const lang = (["en", "ja"].includes(params.get("lang") ?? "") ? params.get("lang") : "") as "" | "en" | "ja";
+  const set = (k: string, v: string) => {
+    const next = new URLSearchParams(params);
+    if (v) next.set(k, v);
+    else next.delete(k);
+    setParams(next, { replace: true });
+  };
+  return (
+    <div className="space-y-4">
+      <div>
+        <h1 className="text-xl font-semibold text-white">Deals</h1>
+      </div>
+      <div className="flex flex-wrap items-center gap-3 text-sm">
+        <div className="inline-flex rounded border border-gray-700 overflow-hidden">
+          {([["", "All languages"], ["en", "English"], ["ja", "Japanese"]] as const).map(([k, label]) => (
+            <button key={k} onClick={() => set("lang", k)}
+              className={`px-3 py-1 ${lang === k ? "bg-indigo-700 text-white" : "bg-gray-900 text-gray-400 hover:text-gray-200"}`}>
+              {label}
+            </button>
+          ))}
+        </div>
+      </div>
+      <nav className="flex flex-wrap gap-1 border-b border-gray-800 text-sm">
+        {TABS.map((t) => (
+          <button key={t.key} onClick={() => set("tab", t.key === "auctions" ? "" : t.key)}
+            className={`px-3 py-1.5 -mb-px border-b-2 ${tab === t.key ? "border-indigo-500 text-white" : "border-transparent text-gray-400 hover:text-gray-200"}`}>
+            {t.label}
+          </button>
+        ))}
+      </nav>
+      {tab === "auctions" ? <AuctionDealsTab lang={lang} /> : <OpportunitiesTab kind={tab} lang={lang} />}
+    </div>
+  );
+}
+
+// One kind of live buying opportunity, ranked. The same list the agent's
+// find_deals tool returns.
+function OpportunitiesTab({ kind, lang }: { kind: string; lang: "" | "en" | "ja" }) {
   const [afterHype, setAfterHype] = useState(false);
-  const [lang, setLang] = useState<"" | "en" | "ja">("");
   const [vetted, setVetted] = useState<Map<string, AgentFinding[]>>(new Map());
   useEffect(() => {
     fetchFindings({ kind: "agent_deal_vetting", limit: 500 })
@@ -50,7 +94,7 @@ export default function DealsPage() {
   useEffect(() => {
     setDeals(null);
     setError(null);
-    fetchDeals({ kind: kind || undefined, afterHype, lang: lang || undefined, targetMargin: target == null ? undefined : target / 100, limit: 200 })
+    fetchDeals({ kind, afterHype, lang: lang || undefined, targetMargin: target == null ? undefined : target / 100, limit: 200 })
       .then((r) => {
         setDeals(r.deals);
         if (target == null) setTarget(Math.round(r.settings.target_margin * 100));
@@ -60,30 +104,8 @@ export default function DealsPage() {
 
   return (
     <div className="space-y-4">
-      <div>
-        <h1 className="text-xl font-semibold text-white">Deals</h1>
-        <p className="text-sm text-gray-500">
-          Live opportunities across every tracked card: Fanatics auctions expected to close under your max bid, Buy Nows listed under it, raw cards worth
-          grading with PSA or with CGC (Pristine upside counted), and PSA 10s that cost less than grading for one. Margin is after the resale fee (grading: EV after fees).
-        </p>
-      </div>
+      <p className="text-sm text-gray-500">{TAB_BLURB[kind]} Margin is after the resale fee (grading: EV after fees).</p>
       <div className="flex flex-wrap items-center gap-3 text-sm">
-        <div className="inline-flex rounded border border-gray-700 overflow-hidden">
-          {([["", "All languages"], ["en", "English"], ["ja", "Japanese"]] as const).map(([k, label]) => (
-            <button key={k} onClick={() => setLang(k)}
-              className={`px-3 py-1 ${lang === k ? "bg-indigo-700 text-white" : "bg-gray-900 text-gray-400 hover:text-gray-200"}`}>
-              {label}
-            </button>
-          ))}
-        </div>
-        <div className="inline-flex rounded border border-gray-700 overflow-hidden">
-          {KINDS.map((k) => (
-            <button key={k.key} onClick={() => setKind(k.key)}
-              className={`px-3 py-1 ${kind === k.key ? "bg-indigo-700 text-white" : "bg-gray-900 text-gray-400 hover:text-gray-200"}`}>
-              {k.label}
-            </button>
-          ))}
-        </div>
         <label className="flex items-center gap-1.5 text-gray-400"
           title="Only cards at or past their typical post-release bottom (release curves; provisional until more sets are tracked)">
           <input type="checkbox" checked={afterHype} onChange={(e) => setAfterHype(e.target.checked)} className="accent-indigo-500" />
