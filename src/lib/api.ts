@@ -1246,6 +1246,7 @@ export interface AuctionDeal {
   live_auctions: number;
   next_week_auctions: number;
   usual_per_week: number;
+  usual_fanatics_auctions_per_week?: number;
   pressure?: number;
   listings?: AuctionListing[];
   value?: { cents: number; source: string; basis?: { method: string; sales_count: number; note: string } };

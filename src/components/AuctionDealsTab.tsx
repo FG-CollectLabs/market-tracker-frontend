@@ -79,7 +79,9 @@ function Detail({ d }: { d: AuctionDeal }) {
             ))}
           </tbody>
         </table>
-        <div className="mt-1 text-gray-500">Usually {d.usual_per_week.toFixed(1)} a week; {d.live_auctions} closing this week, {d.next_week_auctions} listed for next week.</div>
+        <div className="mt-1 text-gray-500">
+          Sells {d.usual_per_week.toFixed(1)} a week across channels ({(d.usual_fanatics_auctions_per_week ?? 0).toFixed(1)} Fanatics auctions); {d.live_auctions} closing this week, {d.next_week_auctions} listed for next week.
+        </div>
       </div>
       <div>
         <div className="text-gray-200 font-medium mb-1">Launch anchor</div>
@@ -166,8 +168,8 @@ export default function AuctionDealsTab({ lang }: { lang: "" | "en" | "ja" }) {
   return (
     <div className="space-y-3">
       <p className="text-sm text-gray-500">
-        Every slab with auctions closing in the next 7 days. <span className="text-gray-300">Pressure</span> is this week's auctions against how many usually close in a week:
-        3× and up is a dump. <span className="text-gray-300">Snipe</span> is the most to pay and still clear your {margin != null ? `${Math.round(margin * 100)}%` : "target"} margin
+        Every slab with auctions closing in the next 7 days. <span className="text-gray-300">Pressure</span> is this week's auctions against how many usually sell in a week
+        across every channel (what the market absorbs): 3× and up is a dump. <span className="text-gray-300">Snipe</span> is the most to pay and still clear your {margin != null ? `${Math.round(margin * 100)}%` : "target"} margin
         reselling at our value (the lower of the market value and the launch-anchored price), as a hammer bid with the all-in under it.
       </p>
       <div className="flex flex-wrap items-center gap-3 text-sm">
@@ -193,7 +195,7 @@ export default function AuctionDealsTab({ lang }: { lang: "" | "en" | "ja" }) {
               <tr>
                 <th className="text-left px-3 py-2 font-medium" colSpan={2}>Card</th>
                 <th className="text-left px-3 py-2 font-medium">Live this week</th>
-                <th className="text-right px-3 py-2 font-medium" title="Auctions closing this week vs the usual weekly closes (last 12 weeks)">Pressure</th>
+                <th className="text-right px-3 py-2 font-medium" title="Auctions closing this week vs sales a week across every channel (last 12 weeks)">Pressure</th>
                 <th className="px-3 py-2 font-medium" title="Fanatics auctions closed per week, last 12 weeks">12 weeks</th>
                 <th className="text-right px-3 py-2 font-medium" title="The lower of the market value and the launch-anchored price now; expected all-in close under it">Our value</th>
                 <th className="text-right px-3 py-2 font-medium" title="Max hammer bid that clears your target margin (all-in under it)">Snipe ≤</th>
@@ -235,7 +237,9 @@ export default function AuctionDealsTab({ lang }: { lang: "" | "en" | "ja" }) {
                       </td>
                       <td className={`px-3 py-2 text-right tabular-nums font-medium ${pressureStyle(d.pressure)}`}>
                         {d.pressure != null ? `${d.pressure.toFixed(1)}×` : "—"}
-                        <div className="text-[10px] font-normal text-gray-500">usual {d.usual_per_week.toFixed(1)}/wk</div>
+                        <div className="text-[10px] font-normal text-gray-500" title="Sales a week, all channels (Fanatics auctions alone in brackets)">
+                          sells {d.usual_per_week.toFixed(1)}/wk{d.usual_fanatics_auctions_per_week != null ? ` (${d.usual_fanatics_auctions_per_week.toFixed(1)})` : ""}
+                        </div>
                       </td>
                       <td className="px-3 py-2"><WeekBars d={d} /></td>
                       <td className="px-3 py-2 text-right tabular-nums text-gray-300">
