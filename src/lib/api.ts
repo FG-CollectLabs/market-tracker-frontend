@@ -767,6 +767,8 @@ export interface AnalysisSettings {
   min_profit_cents: number;
   buy_ten_below_ev: number;
   benchmark_rate: number;
+  miss_floor_cgc_cents: number;
+  miss_floor_psa_cents: number;
   ebay_ship_cents: number;
   vault_inbound_cents: number;
   vault_withdraw_cents: number;

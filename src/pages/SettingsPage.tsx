@@ -162,6 +162,12 @@ export default function SettingsPage() {
 
       <h2 className="text-xs font-semibold uppercase tracking-wide text-gray-500">Selling</h2>
       <section className="rounded-lg border border-gray-800 bg-gray-900 px-4 py-2 divide-y divide-gray-800">
+        <Field label="A CGC 9 is worth at least" hint="What a grading miss (a CGC 9) is worth when it has no market price, e.g. the lowest Fanatics auction. The cost to make a 10 counts every miss as a 9.">
+          <Money cents={s.miss_floor_cgc_cents} onChange={(c) => set({ miss_floor_cgc_cents: c })} />
+        </Field>
+        <Field label="A PSA 9 is worth at least" hint="Same for PSA: what a PSA 9 is worth when it has no market price.">
+          <Money cents={s.miss_floor_psa_cents} onChange={(c) => set({ miss_floor_psa_cents: c })} />
+        </Field>
         <Field label="Selling fee on slabs you graded" hint="Where you'd sell your own grades: Fanatics cash ~6%, FanCash 0%, eBay ~13.25%.">
           <Pct value={s.sell_fee_pct} onChange={(v) => set({ sell_fee_pct: v })} step={0.25} />
         </Field>
