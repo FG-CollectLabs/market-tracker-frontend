@@ -123,6 +123,18 @@ export const PHASES: Phase[] = [
 
 export const PATCH_NOTES: PatchNote[] = [
   {
+    date: "2026-10-13",
+    title: "Deals: this week's auctions",
+    items: [
+      "Deals is split into sub-tabs: This week's auctions (new, default), Buy Now, Grade raw (PSA / CGC) and Buy PSA 10s. The language filter applies to all of them.",
+      "This week's auctions: every slab with auctions closing in 7 days, by source, ranked by seller pressure (this week's auctions vs the usual weekly closes; 3x+ is a dump).",
+      "Per slab: the grading EV breakeven at the public gem rate, the first-10-sales launch price carried along the release curve (now and 3 / 6 / 9 / 12 months after the first sale), 12 weeks of Fanatics closes vs the breakeven, and a snipe line that clears your target margin.",
+      "Pricing API 1.2: value basis, recent sales and live listings behind every number, canonical search titles, the plan's formula, and a backtested 24-month price projection with hold / sell-now advice.",
+      "CGC pop reports now store 9 and 9.5 counts, so the grading EV stops counting CGC 9s as misses.",
+    ],
+    links: [{ label: "API #48", href: BE + "48" }, { label: "API #49", href: BE + "49" }],
+  },
+  {
     date: "2026-10-12",
     title: "Agent workers",
     items: [
