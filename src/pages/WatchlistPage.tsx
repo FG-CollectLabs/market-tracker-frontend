@@ -91,7 +91,14 @@ export default function WatchlistPage() {
                       <div className="text-gray-500">#{it.number}</div>
                       {it.note && <div className="text-gray-400 italic">{it.note}</div>}
                     </td>
-                    <td className="py-1.5 pr-2">{INTENT_LABEL[it.intent]}</td>
+                    <td className="py-1.5 pr-2">
+                      {INTENT_LABEL[it.intent]}
+                      {it.targets && it.targets.length > 0 && (
+                        <div className="text-[11px] text-yellow-300/90">
+                          buy as {it.targets.map((t) => ({ raw: "raw", "psa-10": "PSA 10", "cgc-10": "CGC 10" })[t]).join(", ")}
+                        </div>
+                      )}
+                    </td>
                     <td className="py-1.5 pr-2 max-w-xs">
                       {p && <span className={`px-1 rounded border text-[10px] mr-1 ${STANCE[p.stance].cls}`}>{STANCE[p.stance].label}</span>}
                       <span className="text-gray-400 print:text-black">{p?.headline}</span>

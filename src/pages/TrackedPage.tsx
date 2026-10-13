@@ -1,5 +1,10 @@
-import { Fragment, useEffect, useMemo, useState } from "react";
+import { Fragment, createContext, useContext, useEffect, useMemo, useState } from "react";
 import WatchButton from "../components/WatchButton";
+import { SetTimingSummary, TargetChips, tierOf } from "../components/BuyWindows";
+import { fetchSetWindows, setPrintStatus, type SetWindows } from "../lib/api";
+
+// Buy windows by set code, for the per-card target chips.
+const WindowsCtx = createContext<Map<string, SetWindows>>(new Map());
 import { STANCE } from "../components/BuyingGuide";
 import type { PlaySummary } from "../lib/api";
 import { cardThumb } from "../lib/thumb";
@@ -250,6 +255,7 @@ function MoneyInput({ label, cents, onChange, title }: { label: string; cents: n
 }
 
 function CardCell({ c }: { c: TrackedCard }) {
+  const windows = useContext(WindowsCtx);
   return (
     <td className="px-3 py-2">
       <div className="flex items-start gap-2 min-w-[18rem]">
@@ -273,6 +279,7 @@ function CardCell({ c }: { c: TrackedCard }) {
         )}
         <span className="text-gray-100">{c.name}</span>
         <WatchButton displayKey={c.display_key} compact />
+        <TargetChips displayKey={c.display_key} set={windows.get(c.set_code)} tier={tierOf(c.rarity, c.number, c.set_code)} />
         {c.finish === "rh" && (
           <span className="text-[10px] px-1 rounded bg-cyan-900/50 text-cyan-300">RH</span>
         )}
@@ -643,6 +650,17 @@ export default function TrackedPage() {
     if (code) fetchSet("pokemon", code).then((s) => setSetName(s.name)).catch(() => setSetName(code));
   }, [code]);
 
+  // Buy windows: this set's (or every set's, on /tracked).
+  const [windows, setWindows] = useState<Map<string, SetWindows>>(new Map());
+  const [winTick, setWinTick] = useState(0);
+  useEffect(() => {
+    const lang = code ? (code.startsWith("jp-") ? "ja" : "en") : undefined;
+    fetchSetWindows(lang)
+      .then((r) => setWindows(new Map(r.sets.map((x) => [x.code, x]))))
+      .catch(() => setWindows(new Map()));
+  }, [code, winTick]);
+  const setWin = code ? windows.get(code) : undefined;
+
   const gradedKeys = useMemo(() => (data?.grades ?? []).filter((g) => g !== "raw"), [data]);
 
   const math = useMemo(() => {
@@ -720,6 +738,7 @@ export default function TrackedPage() {
     : 1 + (data?.grades.length ?? 0) + 2 + SOLD_GROUPS.length + 1;
 
   return (
+    <WindowsCtx.Provider value={windows}>
     <div>
       <div className="flex flex-wrap items-baseline justify-between gap-3 mb-4">
         <div>
@@ -754,6 +773,12 @@ export default function TrackedPage() {
       </div>
 
       {data && <FreshnessStrip sources={data.sources} />}
+
+      {setWin && (
+        <div className="mb-4">
+          <SetTimingSummary set={setWin} onPrint={(v) => setPrintStatus(setWin.code, v).then(() => setWinTick((t) => t + 1))} />
+        </div>
+      )}
 
       <div className="flex flex-wrap items-center gap-3 mb-4 text-sm">
         <div className="inline-flex rounded border border-gray-700 overflow-hidden">
@@ -1032,5 +1057,6 @@ export default function TrackedPage() {
         (Fanatics hammer + buyer's premium; eBay price + shipping).
       </p>
     </div>
+    </WindowsCtx.Provider>
   );
 }

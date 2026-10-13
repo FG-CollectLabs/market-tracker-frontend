@@ -215,6 +215,11 @@ export default function SettingsPage() {
         <Field label="Buy the 10 instead at" hint="Grading EV at or below this (or a 10 cheaper than making one) says buy the slab.">
           <Pct value={s.buy_ten_below_ev} onChange={(v) => set({ buy_ten_below_ev: v })} step={5} />
         </Field>
+        <Field label="Sets go out of print after" hint="Months after release. Out-of-print sets never say buy raw to grade (copies left are unlikely to be pack fresh); mark a set in or out of print by hand on its page.">
+          <input type="number" min={0} max={240} value={s.out_of_print_months} className={`${inputCls} w-16`}
+            onChange={(e) => set({ out_of_print_months: Math.max(0, Math.round(Number(e.target.value) || 0)) })} />
+          <span className="text-gray-500"> months</span>
+        </Field>
         <Field label="Benchmark return" hint="What the money could earn in the S&P 500 (long-run ~10%/yr). The Timing page flags card categories that beat it after the selling fee.">
           <Pct value={s.benchmark_rate} onChange={(v) => set({ benchmark_rate: v })} step={0.5} />
           <span className="text-gray-500"> / yr</span>

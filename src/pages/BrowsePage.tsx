@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import { fetchSetWindows, fetchTrackedSets, type BrowseSet, type SetWindows } from "../lib/api";
-import BuyWindowsPanel, { TileBadges } from "../components/BuyWindows";
+import { TileTiming } from "../components/BuyWindows";
 import { Spinner, ErrorMsg } from "../components/Spinner";
 import { ago, isStale, shortDate } from "../lib/freshness";
 
@@ -87,7 +87,7 @@ function SetTile({ s, win }: { s: BrowseSet; win?: SetWindows }) {
           {s.release_date && <span>{s.release_date.slice(0, 4)}</span>}
           {stale && <span className="text-amber-500" title="Prices older than 8 days">• stale</span>}
         </div>
-        <TileBadges set={win} />
+        <TileTiming set={win} />
       </div>
     </Link>
   );
@@ -157,7 +157,6 @@ export default function BrowsePage() {
         ))}
       </div>
 
-      {windows && windows.length > 0 && <BuyWindowsPanel sets={windows} />}
       {error && <ErrorMsg msg={error} />}
       {!sets && !error && <Spinner />}
 

@@ -123,6 +123,16 @@ export const PHASES: Phase[] = [
 
 export const PATCH_NOTES: PatchNote[] = [
   {
+    date: "2026-10-14",
+    title: "Buy windows tab, set timing and per-card targets",
+    items: [
+      "Buy windows has its own tab; the Sets page is back to the tiles, each showing Raw / PSA 10 / CGC 10 as Prime, Early, Too early, Past window or Watch only.",
+      "Out-of-print sets (18 months after release by default, or marked by hand on the set page) never say buy raw to grade: raw is watch only, for the odd gradable copy.",
+      "Set pages open with the set's timing per grade and tier, and every card has Raw / PSA 10 / CGC 10 target chips coloured by its window. Targets are saved on the watchlist.",
+    ],
+    links: [{ label: "API #57", href: BE + "57" }],
+  },
+  {
     date: "2026-10-13",
     title: "Buy windows and after-hype returns",
     items: [
