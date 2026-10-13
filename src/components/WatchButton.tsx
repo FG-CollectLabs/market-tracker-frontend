@@ -1,24 +1,34 @@
 import { useEffect, useState } from "react";
-import { fetchWatchlist, unwatchCard, watchCard, type WatchIntent } from "../lib/api";
+import { fetchWatchlist, unwatchCard, watchCard, type BuyTarget, type WatchIntent } from "../lib/api";
 import { useSession } from "../lib/auth";
 
 const INTENTS: WatchIntent[] = ["grade", "invest", "flip", "watch"];
 
-// Watched cards, shared by every star on the page (one fetch).
-let cache: Promise<Map<string, WatchIntent>> | null = null;
+export interface Watched {
+  intent: WatchIntent;
+  targets: BuyTarget[];
+}
+
+// Watched cards, shared by every star and target chip on the page (one fetch).
+let cache: Promise<Map<string, Watched>> | null = null;
 const listeners = new Set<() => void>();
-export function watchedCards(force = false): Promise<Map<string, WatchIntent>> {
+export function watchedCards(force = false): Promise<Map<string, Watched>> {
   if (!cache || force) {
     cache = fetchWatchlist(true)
-      .then((r) => new Map(r.items.map((i) => [i.display_key, i.intent] as [string, WatchIntent])))
+      .then((r) => new Map(r.items.map((i) => [i.display_key, { intent: i.intent, targets: i.targets ?? [] }] as [string, Watched])))
       .catch(() => new Map());
   }
   return cache;
 }
-function changed() {
+export function onWatchChange(f: () => void): () => void {
+  listeners.add(f);
+  return () => listeners.delete(f);
+}
+export function watchChanged() {
   cache = null;
   listeners.forEach((f) => f());
 }
+const changed = watchChanged;
 
 // A star to put a card on the watchlist, with why (grade / invest / flip /
 // watch). Only shown when signed in: the watchlist is the buy list.
@@ -30,7 +40,7 @@ export default function WatchButton({ displayKey, compact }: { displayKey: strin
   useEffect(() => {
     if (!session) return;
     let live = true;
-    const load = () => watchedCards().then((m) => live && setIntent(m.get(displayKey) ?? null));
+    const load = () => watchedCards().then((m) => live && setIntent(m.get(displayKey)?.intent ?? null));
     load();
     listeners.add(load);
     return () => {

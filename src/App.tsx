@@ -6,6 +6,7 @@ import GradedCoveragePage from "./pages/GradedCoveragePage";
 import TrackedPage from "./pages/TrackedPage";
 import BrowsePage from "./pages/BrowsePage";
 import DealsPage from "./pages/DealsPage";
+import BuyWindowsPage from "./pages/BuyWindowsPage";
 import TimingPage from "./pages/TimingPage";
 import SettingsPage from "./pages/SettingsPage";
 import RoadmapPage from "./pages/RoadmapPage";
@@ -26,6 +27,9 @@ function Nav() {
       </NavLink>
       <NavLink to="/" end className={linkCls}>
         Sets
+      </NavLink>
+      <NavLink to="/windows" className={linkCls}>
+        Buy windows
       </NavLink>
       <NavLink to="/deals" className={linkCls}>
         Deals
@@ -60,6 +64,7 @@ export default function App() {
             <Route path="/" element={<BrowsePage />} />
             <Route path="/browse/:code" element={<TrackedPage />} />
             <Route path="/deals" element={<DealsPage />} />
+            <Route path="/windows" element={<BuyWindowsPage />} />
             <Route path="/timing" element={<TimingPage />} />
             <Route path="/settings" element={<SettingsPage />} />
             <Route path="/developer" element={<RoadmapPage />} />

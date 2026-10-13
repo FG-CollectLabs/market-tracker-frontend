@@ -769,6 +769,7 @@ export interface AnalysisSettings {
   benchmark_rate: number;
   miss_floor_cgc_cents: number;
   miss_floor_psa_cents: number;
+  out_of_print_months: number;
   ebay_ship_cents: number;
   vault_inbound_cents: number;
   vault_withdraw_cents: number;
@@ -1075,6 +1076,7 @@ export interface WatchItem {
   set_release_date?: string;
   image_url?: string;
   intent: WatchIntent;
+  targets?: BuyTarget[];
   note?: string;
   added_by?: string;
   created_at: string;
@@ -1293,6 +1295,7 @@ export interface SetWindow {
   to: number;
   bottom_month: number;
   status: "in_window" | "before" | "after" | "unknown";
+  action: "buy" | "watch_only" | "wait" | "past" | "unknown";
   months_to_window?: number;
   to_bottom: number;
   from_bottom: number;
@@ -1309,15 +1312,31 @@ export interface SetWindows {
   months_since_release: number;
   tracked: number;
   tiers: Record<string, number>;
+  in_print: boolean;
+  print_source: "override" | "age";
   windows: SetWindow[];
 }
 
-export function fetchSetWindows(lang?: "en" | "ja"): Promise<{ band: number; sets: SetWindows[] }> {
+export function fetchSetWindows(lang?: "en" | "ja"): Promise<{ band: number; out_of_print_months: number; sets: SetWindows[] }> {
   return get(`/v1/analysis/set-windows${lang ? `?lang=${lang}` : ""}`);
 }
 
-export function watchSetTier(setCode: string, tier: string, intent: WatchIntent, note?: string): Promise<{ watched: number }> {
+export type BuyTarget = "raw" | "psa-10" | "cgc-10";
+
+export function watchSetTier(setCode: string, tier: string, intent: WatchIntent, note?: string, target?: BuyTarget): Promise<{ watched: number }> {
   return adminFetch(`/v1/admin/watchlist/bulk`, {
-    method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ set_code: setCode, tier, intent, note }),
+    method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ set_code: setCode, tier, intent, note, target }),
+  });
+}
+
+export function setTargets(displayKey: string, intent: WatchIntent, targets: BuyTarget[]): Promise<unknown> {
+  return adminFetch(`/v1/admin/watchlist/${encodeURIComponent(displayKey)}`, {
+    method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ intent, targets }),
+  });
+}
+
+export function setPrintStatus(code: string, inPrint: boolean | null): Promise<unknown> {
+  return adminFetch(`/v1/admin/sets/${encodeURIComponent(code)}/print`, {
+    method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ in_print: inPrint }),
   });
 }
