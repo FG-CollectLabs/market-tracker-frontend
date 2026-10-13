@@ -12,6 +12,7 @@ import { Link, useParams } from "react-router-dom";
 import {
   fetchCardSales,
   fetchSet,
+  fetchSettings,
   fetchTracked,
   type CardSale,
   type CardSalesWeek,
@@ -29,8 +30,8 @@ import { Spinner, ErrorMsg } from "../components/Spinner";
 import { AsOf } from "../components/AsOf";
 import { FRESH_TEXT, OLD_DAYS, STALE_DAYS, ago, freshness, shortDate } from "../lib/freshness";
 import {
-  DEFAULT_GRADING, gradeScore, gradingMath, monthsSince,
-  type GradeScore, type GradingMath, type GradingSettings,
+  DEFAULT_GRADING, cgcMath, gradeScore, gradingMath, monthsSince,
+  type CgcMath, type GradeScore, type GradingMath, type GradingSettings,
 } from "../lib/grading";
 
 // Sources shown as column groups, in order. PriceCharting is a weekly index;
@@ -94,7 +95,7 @@ function groupScore(c: TrackedCard, g: GroupBy): number {
   if (g === "artist") return c.artist_rank?.score ?? -1;
   return 0;
 }
-type View = "market" | "grading";
+type View = "market" | "grading" | "grading-cgc";
 // Where the grading math takes PSA 9 / 10 prices from. Raw is always
 // PriceCharting's ungraded price.
 type PriceSource = "pricecharting" | "fanatics";
@@ -128,6 +129,39 @@ function cardMath(c: TrackedCard, gs: GradingSettings, src: PriceSource): CardGr
     score: gradeScore(m, {
       monthsSinceRelease: monthsSince(c.set_release_date),
       psa10Sold30d: c.sales_groups?.fanatics?.["psa-10"]?.sold_window ?? 0,
+      pokemonScore: c.pokemon?.score ?? null,
+      artistScore: c.artist_rank?.score ?? null,
+    }),
+  };
+}
+
+// CGC prices: recent Fanatics, then eBay, sales (all-in), else PriceCharting.
+function cgcPrice(c: TrackedCard, key: string): number | null {
+  return c.sales_groups?.fanatics?.[key]?.median_all_in_cents ?? c.sales?.fanatics?.[key]?.median_all_in_cents
+    ?? c.sales_groups?.ebay?.[key]?.median_all_in_cents ?? c.sales?.ebay?.[key]?.median_all_in_cents
+    ?? c.pricecharting[key]?.cents ?? null;
+}
+
+function cardMathCgc(c: TrackedCard, gs: GradingSettings, nineFloorCents: number): CardGrading | null {
+  const pop = c.pop?.cgc;
+  if (!pop) return null;
+  const nineMarket = c.sales?.fanatics?.["cgc-9"]?.median_all_in_cents ?? c.sales?.ebay?.["cgc-9"]?.median_all_in_cents ?? null;
+  const m = cgcMath({
+    rawCents: c.pricecharting.raw?.cents ?? null,
+    tenCents: cgcPrice(c, "cgc-10"),
+    pristineCents: cgcPrice(c, "cgc-10-pristine"),
+    nineCents: nineMarket ?? nineFloorCents,
+    nineFromFloor: nineMarket == null,
+    gem: pop.gem,
+    pristine: pop.pristine ?? null,
+    nine: pop.nine != null ? pop.nine + (pop.nine_five ?? 0) : null,
+    total: pop.total,
+  }, gs);
+  return {
+    m,
+    score: gradeScore(m, {
+      monthsSinceRelease: monthsSince(c.set_release_date),
+      psa10Sold30d: c.sales_groups?.fanatics?.["cgc-10"]?.sold_window ?? 0,
       pokemonScore: c.pokemon?.score ?? null,
       artistScore: c.artist_rank?.score ?? null,
     }),
@@ -439,6 +473,89 @@ function GradingHead() {
   );
 }
 
+function CgcGradingHead() {
+  const th = "px-2 pb-2 text-right font-normal";
+  return (
+    <>
+      <tr>
+        <th rowSpan={2} className="text-left px-3 py-2 font-medium align-bottom">Card</th>
+        <th colSpan={4} className="px-2 pt-2 font-medium text-purple-300 border-l border-gray-800">Prices</th>
+        <th colSpan={3} className="px-2 pt-2 font-medium text-emerald-300 border-l border-gray-800" title="CGC population odds">CGC odds</th>
+        <th colSpan={2} className="px-2 pt-2 font-medium text-sky-300 border-l border-gray-800" title="Graded price minus raw + fee + shipping">Premium over cost</th>
+        <th colSpan={3} className="px-2 pt-2 font-medium text-sky-300 border-l border-gray-800">Grading one raw copy</th>
+        <th rowSpan={2} className="px-2 py-2 font-medium align-bottom border-l border-gray-800" title="Buy-raw-to-grade score 0-100 on the CGC numbers">Score</th>
+        <th rowSpan={2} className="px-2 py-2 font-medium align-bottom">Signal</th>
+      </tr>
+      <tr>
+        <th className={`${th} border-l border-gray-800`}>Raw</th>
+        <th className={th} title="CGC 9 sales median, or the 9 floor (grey) when it has none">CGC 9</th>
+        <th className={th}>CGC 10</th>
+        <th className={th}>Pristine</th>
+        <th className={`${th} border-l border-gray-800`}>Pristine</th>
+        <th className={th} title="Any 10, Pristine included">10</th>
+        <th className={th} title="9s and 9.5s">9</th>
+        <th className={`${th} border-l border-gray-800`}>If 9</th>
+        <th className={th}>If 10</th>
+        <th className={`${th} border-l border-gray-800`} title="Expected return after grading fee, shipping and selling fee">EV after fees</th>
+        <th className={th} title="Expected spend to end up with one CGC 10 (any)">Cost per 10</th>
+        <th className={th} title="Every miss counted as a 9: what a CGC 10 must sell for so an average submission nets zero">Breakeven 10</th>
+      </tr>
+    </>
+  );
+}
+
+function CgcGradingCells({ c, g }: { c: TrackedCard; g: CardGrading | null }) {
+  const m = (g?.m ?? null) as CgcMath | null;
+  const pop = c.pop?.cgc;
+  const td = "px-2 py-2 text-right";
+  const pctCell = (v: number | null | undefined, label: string) =>
+    v != null && pop ? (
+      <AsOf at={pop.captured_at} label={label}><span className="tabular-nums font-mono text-gray-300">{(v * 100).toFixed(1)}%</span></AsOf>
+    ) : <span className="text-gray-700">—</span>;
+  const ten = cgcPrice(c, "cgc-10");
+  return (
+    <>
+      <td className={`${td} border-l border-gray-800/70`}><PcCell price={c.pricecharting.raw} /></td>
+      <td className={td}>
+        {m ? <span className={`tabular-nums font-mono ${m.nineFromFloor ? "text-gray-500" : "text-gray-200"}`}
+          title={m.nineFromFloor ? "No CGC 9 sales: the 9 floor from Settings" : "CGC 9 sales median, all-in"}>{formatCents(m.nineCents)}</span>
+          : <span className="text-gray-700">—</span>}
+      </td>
+      <td className={td}>{ten != null ? <span className="tabular-nums font-mono text-gray-200">{formatCents(ten)}</span> : <span className="text-gray-700">—</span>}</td>
+      <td className={td}>{cgcPrice(c, "cgc-10-pristine") != null ? <span className="tabular-nums font-mono text-gray-200">{formatCents(cgcPrice(c, "cgc-10-pristine"))}</span> : <span className="text-gray-700" title="No Pristine sales: valued as a 10">—</span>}</td>
+      <td className={`${td} border-l border-gray-800/70`}>{pctCell(m?.pPristine, `CGC ${pop?.pristine ?? "?"} Pristine of ${pop?.total.toLocaleString()} graded`)}</td>
+      <td className={td}>{pctCell(m?.pGem, `CGC ${pop?.gem.toLocaleString()} 10s of ${pop?.total.toLocaleString()} graded`)}</td>
+      <td className={td}>{pctCell(m?.p9, `CGC ${pop?.nine ?? "?"} 9s + ${pop?.nine_five ?? 0} 9.5s of ${pop?.total.toLocaleString()} graded`)}</td>
+      <td className={`${td} border-l border-gray-800/70`} title={m?.costCents != null ? `Cost to grade one copy: ${formatCents(m.costCents)}` : undefined}>
+        <Money cents={m?.prem9Cents ?? null} signed />
+      </td>
+      <td className={td} title={m?.costCents != null ? `Cost to grade one copy: ${formatCents(m.costCents)}` : undefined}>
+        <Money cents={m?.prem10Cents ?? null} signed />
+      </td>
+      <td className={`${td} border-l border-gray-800/70`} title={m?.roi != null ? `Expected value of grading one raw copy after every fee: ${formatCents(m.evCents)} on ${formatCents(m.costCents)}` : undefined}>
+        <Pct v={m?.roi ?? null} signed />
+        <div className="text-[10px]"><Money cents={m?.evCents ?? null} signed /></div>
+      </td>
+      <td className={td}>
+        <Money cents={m?.costPer10Cents ?? null} />
+        {m?.tenValue != null && (
+          <div className={`text-[10px] tabular-nums ${m.tenValue < 1 ? "text-amber-300" : "text-gray-500"}`}>10 sells {m.tenValue.toFixed(1)}× cost</div>
+        )}
+      </td>
+      <td className={td} title={m?.lossPerMissCents != null ? `Each 9 ${m.lossPerMissCents >= 0 ? `loses ${formatCents(m.lossPerMissCents)}` : `makes ${formatCents(-m.lossPerMissCents)}`}` : undefined}>
+        <Money cents={m?.breakEven10Cents ?? null} />
+        {m?.breakEven10Cents != null && ten != null && (
+          <div className={`text-[10px] tabular-nums ${ten >= m.breakEven10Cents ? "text-green-400" : "text-red-400"}`}>
+            {ten >= m.breakEven10Cents ? "+" : ""}{Math.round((ten / m.breakEven10Cents - 1) * 100)}% now
+          </div>
+        )}
+      </td>
+      <td className="px-2 py-2 text-center border-l border-gray-800/70"><ScoreBadge s={g?.score ?? null} /></td>
+      <td className="px-2 py-2"><SignalBadge m={m} /></td>
+    </>
+  );
+}
+
 function GemCell({ pop, grader }: { pop: PopSummary | undefined; grader: string }) {
   if (!pop || pop.total <= 0) return <span className="text-gray-700">—</span>;
   return (
@@ -633,7 +750,25 @@ export default function TrackedPage() {
   const [sort, setSort] = useState<SortKey>("number");
   const [open, setOpen] = useState<string | null>(null);
   const [view, setView] = useState<View>("market");
-  const [gs, setGs] = useState<GradingSettings>(DEFAULT_GRADING);
+  const [gsPsa, setGsPsa] = useState<GradingSettings>(DEFAULT_GRADING);
+  const [gsCgc, setGsCgc] = useState<GradingSettings>({ ...DEFAULT_GRADING, feeCents: 11_00, extraCents: 50, sellFeePct: 0 });
+  const [nineFloor, setNineFloor] = useState(6_00);
+  // Start from the Settings page: cheapest tier per grader, shipping, selling fee, 9 floor.
+  useEffect(() => {
+    fetchSettings()
+      .then(({ settings: st }) => {
+        const tier = (g: string) => Math.min(...(st.graders?.[g]?.tiers ?? []).map((t) => t.fee_cents));
+        const ship = (g: string) => st.graders?.[g]?.ship_cents;
+        setGsPsa((x) => ({ ...x, feeCents: Number.isFinite(tier("psa")) ? tier("psa") : x.feeCents, extraCents: ship("psa") ?? x.extraCents, sellFeePct: st.sell_fee_pct }));
+        setGsCgc((x) => ({ ...x, feeCents: Number.isFinite(tier("cgc")) ? tier("cgc") : x.feeCents, extraCents: ship("cgc") ?? x.extraCents, sellFeePct: st.sell_fee_pct }));
+        if (st.miss_floor_cgc_cents != null) setNineFloor(st.miss_floor_cgc_cents);
+      })
+      .catch(() => undefined);
+  }, []);
+  const isCgc = view === "grading-cgc";
+  const isGrading = view !== "market";
+  const gs = isCgc ? gsCgc : gsPsa;
+  const setGs = isCgc ? setGsCgc : setGsPsa;
   const [priceSrc, setPriceSrc] = useState<PriceSource>("pricecharting");
   const [signalFilter, setSignalFilter] = useState<"" | "grade" | "buy10">("");
   const [groupBy, setGroupBy] = useState<GroupBy>("");
@@ -665,9 +800,9 @@ export default function TrackedPage() {
 
   const math = useMemo(() => {
     const m = new Map<string, CardGrading | null>();
-    for (const c of data?.cards ?? []) m.set(c.card_id, cardMath(c, gs, priceSrc));
+    for (const c of data?.cards ?? []) m.set(c.card_id, isCgc ? cardMathCgc(c, gs, nineFloor) : cardMath(c, gs, priceSrc));
     return m;
-  }, [data, gs, priceSrc]);
+  }, [data, gs, priceSrc, isCgc, nineFloor]);
 
   const rows = useMemo(() => {
     if (!data) return [];
@@ -733,7 +868,9 @@ export default function TrackedPage() {
     [data],
   );
 
-  const colCount = view === "grading"
+  const colCount = isCgc
+    ? 1 + 4 + 3 + 2 + 3 + 2
+    : view === "grading"
     ? 1 + 3 + 2 + 2 + 2 + 2
     : 1 + (data?.grades.length ?? 0) + 2 + SOLD_GROUPS.length + 1;
 
@@ -782,22 +919,22 @@ export default function TrackedPage() {
 
       <div className="flex flex-wrap items-center gap-3 mb-4 text-sm">
         <div className="inline-flex rounded border border-gray-700 overflow-hidden">
-          {(["market", "grading"] as const).map((v) => (
+          {(["market", "grading", "grading-cgc"] as const).map((v) => (
             <button
               key={v}
               onClick={() => {
                 setView(v);
-                if (v === "grading" && sort === "number") setSort("grade-score");
+                if (v !== "market" && sort === "number") setSort("grade-score");
               }}
               className={`px-3 py-1 ${view === v ? "bg-indigo-700 text-white" : "bg-gray-900 text-gray-400 hover:text-gray-200"}`}
             >
-              {v === "market" ? "Market" : "Grading (PSA)"}
+              {v === "market" ? "Market" : v === "grading" ? "Grading (PSA)" : "Grading (CGC)"}
             </button>
           ))}
         </div>
-        {view === "grading" && (
+        {isGrading && (
           <>
-            <MoneyInput label="Fee" cents={gs.feeCents} onChange={(v) => setGs({ ...gs, feeCents: v })} title="PSA grading fee per card" />
+            <MoneyInput label="Fee" cents={gs.feeCents} onChange={(v) => setGs({ ...gs, feeCents: v })} title={`${isCgc ? "CGC" : "PSA"} grading fee per card`} />
             <MoneyInput label="Ship/handling" cents={gs.extraCents} onChange={(v) => setGs({ ...gs, extraCents: v })} title="Per-card shipping, insurance and handling" />
             <label className="flex items-center gap-1.5 text-gray-400" title="Selling fee on every sale: ~6% Fanatics cash payout, 0% FanCash, ~13% eBay">
               Sell fee
@@ -816,7 +953,11 @@ export default function TrackedPage() {
               />%
             </label>
             <MoneyInput label="Min profit" cents={gs.minProfitCents} onChange={(v) => setGs({ ...gs, minProfitCents: v })} title="Show 'Grade raw' only when expected profit is at least this" />
-            <select
+            {isCgc && (
+              <MoneyInput label="CGC 9 floor" cents={nineFloor} onChange={setNineFloor}
+                title="What a CGC 9 is worth when it has no sales of its own (Settings: A CGC 9 is worth at least)" />
+            )}
+            {!isCgc && <select
               value={priceSrc}
               onChange={(e) => setPriceSrc(e.target.value as PriceSource)}
               className="bg-gray-900 border border-gray-700 rounded px-2 py-1 text-gray-200"
@@ -824,7 +965,7 @@ export default function TrackedPage() {
             >
               <option value="pricecharting">Prices: PriceCharting</option>
               <option value="fanatics">Prices: Fanatics median, else PriceCharting</option>
-            </select>
+            </select>}
             <select
               value={signalFilter}
               onChange={(e) => setSignalFilter(e.target.value as "" | "grade" | "buy10")}
@@ -933,7 +1074,7 @@ export default function TrackedPage() {
         <div className="overflow-x-auto rounded-lg border border-gray-800">
           <table className="w-full text-sm">
             <thead className="bg-gray-900/60 text-gray-400 text-xs">
-              {view === "grading" ? <GradingHead /> : (
+              {isCgc ? <CgcGradingHead /> : view === "grading" ? <GradingHead /> : (
                 <>
               <tr>
                 <th rowSpan={2} className="text-left px-3 py-2 font-medium align-bottom">
@@ -997,7 +1138,7 @@ export default function TrackedPage() {
                       onClick={() => setOpen(open === c.card_id ? null : c.card_id)}
                     >
                       <CardCell c={c} />
-                      {view === "grading" ? <GradingCells c={c} g={math.get(c.card_id) ?? null} src={priceSrc} /> : (
+                      {isCgc ? <CgcGradingCells c={c} g={math.get(c.card_id) ?? null} /> : view === "grading" ? <GradingCells c={c} g={math.get(c.card_id) ?? null} src={priceSrc} /> : (
                         <>
                       {data.grades.map((g, i) => (
                         <td key={g} className={`px-2 py-2 text-right ${i === 0 ? "border-l border-gray-800/70" : ""}`}>
@@ -1047,6 +1188,13 @@ export default function TrackedPage() {
       )}
       <p className="text-[11px] text-gray-600 mt-3">
         Hover any value for its date. • = missed a weekly update (over {STALE_DAYS} days); red = over {OLD_DAYS} days old.
+        {isCgc && (
+          <>
+            {" "}CGC grading math uses the CGC population: Pristine 10s sell at the Pristine price, Gem Mint 10s at the CGC 10 price, 9s and 9.5s
+            at the CGC 9 price (or the 9 floor when it has no sales), lower at raw. "Breakeven 10" counts every miss as a 9: what a CGC 10 must sell
+            for so an average submission nets zero. CGC prices are Fanatics then eBay sales medians.
+          </>
+        )}
         {view === "grading" && (
           <>
             {" "}Grading math uses the PSA population: a 9 sells at the PSA 9 price, 8 and lower at raw. "Grade raw" means
