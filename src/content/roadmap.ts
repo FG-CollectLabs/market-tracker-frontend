@@ -124,6 +124,16 @@ export const PHASES: Phase[] = [
 export const PATCH_NOTES: PatchNote[] = [
   {
     date: "2026-10-14",
+    title: "Buying prep: floors and singles",
+    items: [
+      "Fanatics auctions in Buying prep add your floor (the price you'd take every copy at; prefilled with the suggested max), the cheapest auction close in 6 months (linked), the Fanatics Buy Now ask and sold median, and the cost to make one by grading.",
+      "Singles / card show tab: market prices by grade, the projected floor, PSA and CGC grading (return, what a 10 costs to make, raw breakeven, most to pay raw to grade) and a buy range per card, with your max, status and notes; printable.",
+      "Card pages: check prices for any grade on Fanatics (auctions, Buy Now, sold), eBay (listings, sold) and PriceCharting, the pages to screenshot for the import, and add the card to singles prep.",
+    ],
+    links: [{ label: "API #64", href: BE + "64" }],
+  },
+  {
+    date: "2026-10-14",
     title: "Buying prep and validation links",
     items: [
       "Buying prep tab: the Fanatics weekly auctions you've picked for a Sunday, each with last week's average winning bid, how many are up this week (linked), the suggested max, your max (whole dollars, all-in shown), status and notes; totals if every max hits; printable.",
