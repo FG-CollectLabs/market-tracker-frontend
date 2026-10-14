@@ -124,6 +124,16 @@ export const PHASES: Phase[] = [
 export const PATCH_NOTES: PatchNote[] = [
   {
     date: "2026-10-14",
+    title: "Scores and live listings",
+    items: [
+      "Set pages get a Scores view: five 0-100 scores per card (keep raw, grade with PSA, grade with CGC, crack a PSA 9 to CGC, crack a CGC 10 to PSA), sortable, with each score's breakdown on hover and in the card panel.",
+      "Card panels list what's listed right now (Fanatics and eBay Buy Nows and auctions) with links, next to the sold history, to check prices by eye.",
+      "Settings: crossover rates for the crack scores (30% PSA 9 to CGC 10, 45% CGC 10 to PSA 10 to start).",
+    ],
+    links: [{ label: "API #60", href: BE + "60" }],
+  },
+  {
+    date: "2026-10-14",
     title: "Buy windows tab, set timing and per-card targets",
     items: [
       "Buy windows has its own tab; the Sets page is back to the tiles, each showing Raw / PSA 10 / CGC 10 as Prime, Early, Too early, Past window or Watch only.",

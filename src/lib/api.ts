@@ -772,6 +772,8 @@ export interface AnalysisSettings {
   miss_floor_cgc_cents: number;
   miss_floor_psa_cents: number;
   out_of_print_months: number;
+  crack_psa9_to_cgc10_rate: number;
+  crack_cgc10_to_psa10_rate: number;
   ebay_ship_cents: number;
   vault_inbound_cents: number;
   vault_withdraw_cents: number;
@@ -1346,4 +1348,59 @@ export function setPrintStatus(code: string, inPrint: boolean | null): Promise<u
   return adminFetch(`/v1/admin/sets/${encodeURIComponent(code)}/print`, {
     method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ in_print: inPrint }),
   });
+}
+
+// ---- Card scores and live listings ----------------------------------------------
+
+export type ScoreKind = "keep_raw" | "grade_psa" | "grade_cgc" | "psa9_to_cgc" | "cgc10_to_psa";
+export const SCORE_KINDS: { key: ScoreKind; label: string; hint: string }[] = [
+  { key: "keep_raw", label: "Keep raw", hint: "Buy raw to hold: how low today's raw price sits in the card's own history, and where the set is on its release curve" },
+  { key: "grade_psa", label: "Grade PSA", hint: "Buy raw to grade with PSA: expected return after fees at the public gem rate" },
+  { key: "grade_cgc", label: "Grade CGC", hint: "Buy raw to grade with CGC: expected return after fees, Pristine counted" },
+  { key: "psa9_to_cgc", label: "PSA 9 → CGC", hint: "Buy a PSA 9, crack it, send it to CGC (crossover rate from Settings)" },
+  { key: "cgc10_to_psa", label: "CGC 10 → PSA", hint: "Buy a CGC 10, crack it, send it to PSA (crossover rate from Settings)" },
+];
+
+export interface CardScore {
+  score: number;
+  roi?: number;
+  ev_cents?: number;
+  cost_cents?: number;
+  parts: { label: string; points: number; why: string }[];
+  note?: string;
+}
+
+export interface ScoredCard {
+  display_key: string;
+  name: string;
+  set_code: string;
+  image_url?: string;
+  in_print: boolean;
+  months_since_release?: number;
+  scores: Partial<Record<ScoreKind, CardScore>>;
+}
+
+export function fetchScores(o?: { set?: string; kind?: ScoreKind; min?: number }): Promise<{ count: number; cards: ScoredCard[] }> {
+  const q = new URLSearchParams();
+  if (o?.set) q.set("set", o.set);
+  if (o?.kind) q.set("kind", o.kind);
+  if (o?.min) q.set("min", String(o.min));
+  return get(`/v1/analysis/scores?${q}`);
+}
+
+export interface CardListing {
+  source: string;
+  grade_key: string;
+  kind: "buy_now" | "auction";
+  price_cents: number;
+  bids?: number;
+  title: string;
+  url?: string;
+  ends_at?: string;
+  last_seen_at: string;
+}
+
+// Live Buy Nows and auctions (Fanatics, eBay) with links, every grade.
+export function fetchLiveListings(displayKey: string): Promise<{ count: number; listings: CardListing[] }> {
+  return get(`/v1/cards/${encodeURIComponent(displayKey)}/live-listings`);
 }
