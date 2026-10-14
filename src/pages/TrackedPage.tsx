@@ -1,7 +1,7 @@
 import { Fragment, createContext, useContext, useEffect, useMemo, useState } from "react";
 import WatchButton from "../components/WatchButton";
 import { SetTimingSummary, TargetChips, tierOf } from "../components/BuyWindows";
-import { fetchSetWindows, setPrintStatus, type SetWindows } from "../lib/api";
+import { SCORE_KINDS, fetchLiveListings, fetchScores, fetchSetWindows, setPrintStatus, type CardListing, type CardScore, type ScoreKind, type SetWindows } from "../lib/api";
 
 // Buy windows by set code, for the per-card target chips.
 const WindowsCtx = createContext<Map<string, SetWindows>>(new Map());
@@ -95,7 +95,7 @@ function groupScore(c: TrackedCard, g: GroupBy): number {
   if (g === "artist") return c.artist_rank?.score ?? -1;
   return 0;
 }
-type View = "market" | "grading" | "grading-cgc";
+type View = "market" | "scores" | "grading" | "grading-cgc";
 // Where the grading math takes PSA 9 / 10 prices from. Raw is always
 // PriceCharting's ungraded price.
 type PriceSource = "pricecharting" | "fanatics";
@@ -612,6 +612,112 @@ function WeeklyBars({ weekly, source, grade }: { weekly: CardSalesWeek[]; source
   );
 }
 
+// ---- scores ---------------------------------------------------------------------
+
+function scoreColor(n: number): string {
+  return n >= 70 ? "bg-green-900/60 text-green-300" : n >= 55 ? "bg-amber-900/50 text-amber-300" : "bg-gray-800 text-gray-400";
+}
+
+function scoreTitle(k: ScoreKind, sc: CardScore): string {
+  const head = `${SCORE_KINDS.find((x) => x.key === k)?.label}: ${sc.score}/100`;
+  const money = sc.roi != null ? `\nExpected ${Math.round(sc.roi * 100)}% after fees (${formatCents(sc.ev_cents ?? null)} on ${formatCents(sc.cost_cents ?? null)})` : "";
+  const parts = sc.parts.map((p) => `${p.points >= 0 ? "+" : ""}${Math.round(p.points)}  ${p.label}: ${p.why}`).join("\n");
+  return `${head}${money}\n${parts}${sc.note ? `\n(${sc.note})` : ""}`;
+}
+
+function ScoresHead({ kind, onKind }: { kind: ScoreKind; onKind: (k: ScoreKind) => void }) {
+  return (
+    <tr>
+      <th className="text-left px-3 py-2 font-medium">Card</th>
+      {SCORE_KINDS.map((k, i) => (
+        <th key={k.key} title={`${k.hint}. Click to sort.`} onClick={() => onKind(k.key)}
+          className={`px-2 py-2 font-medium text-center cursor-pointer select-none ${i === 0 ? "border-l border-gray-800" : ""} ${kind === k.key ? "text-white" : "hover:text-gray-200"}`}>
+          {k.label}{kind === k.key ? " ↓" : ""}
+        </th>
+      ))}
+    </tr>
+  );
+}
+
+function ScoresCells({ scores }: { scores: Partial<Record<ScoreKind, CardScore>> | undefined }) {
+  return (
+    <>
+      {SCORE_KINDS.map((k, i) => {
+        const sc = scores?.[k.key];
+        return (
+          <td key={k.key} className={`px-2 py-2 text-center ${i === 0 ? "border-l border-gray-800/70" : ""}`}>
+            {sc ? (
+              <span title={scoreTitle(k.key, sc)} className={`inline-block min-w-[2.25rem] px-1.5 py-0.5 rounded font-mono text-xs font-semibold ${scoreColor(sc.score)}`}>
+                {sc.score}
+              </span>
+            ) : <span className="text-gray-700" title="Not enough prices or population data for this play">—</span>}
+            {sc?.roi != null && <div className={`text-[10px] tabular-nums ${sc.roi >= 0 ? "text-green-400/80" : "text-red-400/80"}`}>{sc.roi >= 0 ? "+" : ""}{Math.round(sc.roi * 100)}%</div>}
+          </td>
+        );
+      })}
+    </>
+  );
+}
+
+function ScoreBreakdown({ scores }: { scores: Partial<Record<ScoreKind, CardScore>> | undefined }) {
+  if (!scores) return null;
+  return (
+    <div className="grid gap-3 md:grid-cols-5 px-4 pt-4 text-xs">
+      {SCORE_KINDS.map((k) => {
+        const sc = scores[k.key];
+        return (
+          <div key={k.key} className="rounded border border-gray-800 p-2 space-y-1">
+            <div className="flex items-center justify-between">
+              <span className="text-gray-200 font-medium" title={k.hint}>{k.label}</span>
+              {sc ? <span className={`px-1.5 rounded font-mono font-semibold ${scoreColor(sc.score)}`}>{sc.score}</span> : <span className="text-gray-600">—</span>}
+            </div>
+            {sc?.roi != null && (
+              <div className="text-gray-400">{Math.round(sc.roi * 100)}% after fees: {formatCents(sc.ev_cents ?? null)} on {formatCents(sc.cost_cents ?? null)}</div>
+            )}
+            {sc?.parts.map((p) => (
+              <div key={p.label} className="text-gray-500">
+                <span className={p.points >= 0 ? "text-green-400/80" : "text-red-400/80"}>{p.points >= 0 ? "+" : ""}{Math.round(p.points)}</span> {p.label}: {p.why}
+              </div>
+            ))}
+            {sc?.note && <div className="text-amber-300/80">{sc.note}</div>}
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+// Live Buy Nows and auctions, every grade, with links to check prices by eye.
+function LiveListings({ displayKey }: { displayKey: string }) {
+  const [rows, setRows] = useState<CardListing[] | null>(null);
+  useEffect(() => {
+    fetchLiveListings(displayKey).then((r) => setRows(r.listings)).catch(() => setRows([]));
+  }, [displayKey]);
+  if (!rows) return null;
+  return (
+    <div>
+      <h3 className="text-xs font-semibold text-gray-300 mb-1">Listed now <span className="text-gray-600 font-normal">({rows.length}, cheapest first per grade)</span></h3>
+      {rows.length === 0 ? <p className="text-xs text-gray-500">No live Buy Nows or auctions tracked.</p> : (
+        <table className="w-full text-xs tabular-nums">
+          <tbody className="divide-y divide-gray-800/60">
+            {rows.slice(0, 25).map((l, i) => (
+              <tr key={i}>
+                <td className="py-1 pr-2 text-gray-400 whitespace-nowrap">{l.grade_key}</td>
+                <td className="py-1 pr-2 text-gray-500 whitespace-nowrap">{l.source} · {l.kind === "buy_now" ? "Buy Now" : `auction${l.bids != null ? ` · ${l.bids} bids` : ""}`}</td>
+                <td className="py-1 pr-2 text-right text-gray-200">{formatCents(l.price_cents)}</td>
+                <td className="py-1 pr-2 text-gray-500 whitespace-nowrap">{l.ends_at ? `ends ${new Date(l.ends_at).toLocaleDateString()}` : ""}</td>
+                <td className="py-1 text-gray-300 truncate max-w-md">
+                  {l.url ? <a href={l.url} target="_blank" rel="noreferrer" className="hover:text-indigo-300">{l.title}</a> : l.title}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      )}
+    </div>
+  );
+}
+
 function CardPanel({ card, grade }: { card: TrackedCard; grade: string }) {
   const [data, setData] = useState<{
     sales: CardSale[];
@@ -638,6 +744,7 @@ function CardPanel({ card, grade }: { card: TrackedCard; grade: string }) {
         <img src={card.image_url} alt={card.name} className="w-40 rounded-lg hidden md:block" loading="lazy" />
       )}
       <div className="space-y-5 min-w-0">
+        <LiveListings displayKey={card.display_key} />
         <Link
           to={`/cards/${encodeURIComponent(card.display_key)}`}
           className="inline-block text-xs text-indigo-400 hover:text-indigo-300"
@@ -766,7 +873,17 @@ export default function TrackedPage() {
       .catch(() => undefined);
   }, []);
   const isCgc = view === "grading-cgc";
-  const isGrading = view !== "market";
+  const isGrading = view === "grading" || view === "grading-cgc";
+  const isScores = view === "scores";
+  const [scoreKind, setScoreKind] = useState<ScoreKind>("grade_cgc");
+  const [scores, setScores] = useState<Map<string, Partial<Record<ScoreKind, CardScore>>> | null>(null);
+  useEffect(() => {
+    if (!isScores || scores) return;
+    fetchScores({ set: code })
+      .then((r) => setScores(new Map(r.cards.map((x) => [x.display_key, x.scores]))))
+      .catch(() => setScores(new Map()));
+  }, [isScores, code, scores]);
+  useEffect(() => setScores(null), [code]);
   const gs = isCgc ? gsCgc : gsPsa;
   const setGs = isCgc ? setGsCgc : setGsPsa;
   const [priceSrc, setPriceSrc] = useState<PriceSource>("pricecharting");
@@ -844,7 +961,8 @@ export default function TrackedPage() {
       "pokemon-rank": (a, b) => (b.pokemon?.score ?? -1) - (a.pokemon?.score ?? -1),
       "artist-rank": (a, b) => (b.artist_rank?.score ?? -1) - (a.artist_rank?.score ?? -1),
     };
-    const sorted = [...out].sort(by[sort]);
+    const sk = (c: TrackedCard) => scores?.get(c.display_key)?.[scoreKind]?.score ?? -1;
+    const sorted = isScores ? [...out].sort((a, b) => sk(b) - sk(a)) : [...out].sort(by[sort]);
     if (!groupBy) return sorted;
     // Keep the chosen sort inside each group; order groups by rank, then name.
     return sorted
@@ -854,7 +972,7 @@ export default function TrackedPage() {
         return gx || x.k.localeCompare(y.k) || x.i - y.i;
       })
       .map((x) => x.c);
-  }, [data, reason, query, sort, grade, setFilter, signalFilter, math, groupBy]);
+  }, [data, reason, query, sort, grade, setFilter, signalFilter, math, groupBy, isScores, scores, scoreKind]);
 
   // Cards per group, for the group header rows.
   const groupCounts = useMemo(() => {
@@ -868,7 +986,9 @@ export default function TrackedPage() {
     [data],
   );
 
-  const colCount = isCgc
+  const colCount = isScores
+    ? 1 + 5
+    : isCgc
     ? 1 + 4 + 3 + 2 + 3 + 2
     : view === "grading"
     ? 1 + 3 + 2 + 2 + 2 + 2
@@ -919,16 +1039,16 @@ export default function TrackedPage() {
 
       <div className="flex flex-wrap items-center gap-3 mb-4 text-sm">
         <div className="inline-flex rounded border border-gray-700 overflow-hidden">
-          {(["market", "grading", "grading-cgc"] as const).map((v) => (
+          {(["market", "scores", "grading", "grading-cgc"] as const).map((v) => (
             <button
               key={v}
               onClick={() => {
                 setView(v);
-                if (v !== "market" && sort === "number") setSort("grade-score");
+                if ((v === "grading" || v === "grading-cgc") && sort === "number") setSort("grade-score");
               }}
               className={`px-3 py-1 ${view === v ? "bg-indigo-700 text-white" : "bg-gray-900 text-gray-400 hover:text-gray-200"}`}
             >
-              {v === "market" ? "Market" : v === "grading" ? "Grading (PSA)" : "Grading (CGC)"}
+              {v === "market" ? "Market" : v === "scores" ? "Scores" : v === "grading" ? "Grading (PSA)" : "Grading (CGC)"}
             </button>
           ))}
         </div>
@@ -1074,7 +1194,7 @@ export default function TrackedPage() {
         <div className="overflow-x-auto rounded-lg border border-gray-800">
           <table className="w-full text-sm">
             <thead className="bg-gray-900/60 text-gray-400 text-xs">
-              {isCgc ? <CgcGradingHead /> : view === "grading" ? <GradingHead /> : (
+              {isScores ? <ScoresHead kind={scoreKind} onKind={setScoreKind} /> : isCgc ? <CgcGradingHead /> : view === "grading" ? <GradingHead /> : (
                 <>
               <tr>
                 <th rowSpan={2} className="text-left px-3 py-2 font-medium align-bottom">
@@ -1138,7 +1258,7 @@ export default function TrackedPage() {
                       onClick={() => setOpen(open === c.card_id ? null : c.card_id)}
                     >
                       <CardCell c={c} />
-                      {isCgc ? <CgcGradingCells c={c} g={math.get(c.card_id) ?? null} /> : view === "grading" ? <GradingCells c={c} g={math.get(c.card_id) ?? null} src={priceSrc} /> : (
+                      {isScores ? <ScoresCells scores={scores?.get(c.display_key)} /> : isCgc ? <CgcGradingCells c={c} g={math.get(c.card_id) ?? null} /> : view === "grading" ? <GradingCells c={c} g={math.get(c.card_id) ?? null} src={priceSrc} /> : (
                         <>
                       {data.grades.map((g, i) => (
                         <td key={g} className={`px-2 py-2 text-right ${i === 0 ? "border-l border-gray-800/70" : ""}`}>
@@ -1174,6 +1294,7 @@ export default function TrackedPage() {
                     {open === c.card_id && (
                       <tr className="bg-gray-900/30">
                         <td colSpan={colCount}>
+                          {isScores && <ScoreBreakdown scores={scores?.get(c.display_key)} />}
                           <CardPanel card={c} grade={grade} />
                         </td>
                       </tr>
@@ -1188,6 +1309,14 @@ export default function TrackedPage() {
       )}
       <p className="text-[11px] text-gray-600 mt-3">
         Hover any value for its date. • = missed a weekly update (over {STALE_DAYS} days); red = over {OLD_DAYS} days old.
+        {isScores && (
+          <>
+            {" "}{scores ? "" : "Scoring the set… "}Scores are 0-100 per play (green 70+, amber 55+): money plays start from expected return after fees
+            (break-even = 40, +100% = 80), adjusted for release age, how fast the slab sells, profit size and collectibility; out-of-print sets lose 15 on
+            grading raw. Keep raw is how low today's raw price sits in the card's own history, plus the release curve. Crossover rates (PSA 9 → CGC 10,
+            CGC 10 → PSA 10) are on the Settings page. Hover a score or open a card for its breakdown and live listings.
+          </>
+        )}
         {isCgc && (
           <>
             {" "}CGC grading math uses the CGC population: Pristine 10s sell at the Pristine price, Gem Mint 10s at the CGC 10 price, 9s and 9.5s
