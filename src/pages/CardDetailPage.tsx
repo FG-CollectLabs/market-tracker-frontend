@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import WatchButton from "../components/WatchButton";
 import GradedMarket from "../components/GradedMarket";
+import CardBuyPanel from "../components/CardBuyPanel";
 import { useParams, useSearchParams } from "react-router-dom";
 import {
   fetchCard,
@@ -436,6 +437,8 @@ export default function CardDetailPage() {
           <h1 className="text-xl font-semibold text-white mt-1">{displayKey}</h1>
         )}
       </div>
+
+      <div className="mb-5"><CardBuyPanel displayKey={displayKey} /></div>
 
       {/* Sub-tabs */}
       <div className="flex gap-1 border-b border-gray-800 mb-6">

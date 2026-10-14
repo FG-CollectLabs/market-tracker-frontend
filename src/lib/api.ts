@@ -1303,6 +1303,11 @@ export interface AuctionDeal {
   edge?: number;
   edge_calc?: EdgeCalc;
   links?: MarketLinks;
+  auction_low?: { hammer_cents: number; all_in_cents: number; sold_at: string; url?: string; auctions: number };
+  fanatics_bin_low_cents?: number;
+  fanatics_bin_listings: number;
+  fanatics_bin_sold_median_cents?: number;
+  fanatics_bin_sold_n: number;
   advice?: { signal: "sell_now" | "hold"; hold_months: number; reason: string };
   projection_confidence?: "low" | "medium" | "high";
   flags: string[];
@@ -1449,6 +1454,7 @@ export interface MarketLinks {
   fanatics_sold: string;
   ebay_listings: string;
   ebay_sold: string;
+  pricecharting?: string; // the card's PriceCharting page (chart + eBay solds), when known
 }
 
 export function fetchCardLinks(displayKey: string, grade: string): Promise<MarketLinks> {
@@ -1457,8 +1463,44 @@ export function fetchCardLinks(displayKey: string, grade: string): Promise<Marke
 
 export type BidStatus = "planned" | "bid" | "won" | "lost" | "skipped";
 
+export interface GraderPrep {
+  grader: "psa" | "cgc";
+  tier?: string;
+  roi?: number;
+  ev_cents?: number;
+  cost_cents?: number;
+  breakeven_10_cents?: number;
+  breakeven_raw_cents?: number;
+  max_raw_cents?: number;
+  p10?: number;
+}
+
+export interface SinglePrep {
+  name: string;
+  set_code: string;
+  image_url?: string;
+  grade: string;
+  markets: Record<string, number>;
+  sources: Record<string, string>;
+  floor_cents?: number;
+  floor_month?: number;
+  floor_note: string;
+  grading: GraderPrep[];
+  buy_low_cents?: number;
+  buy_high_cents?: number;
+  buy_note: string;
+  in_print: boolean;
+  scores?: Partial<Record<ScoreKind, CardScore>>;
+  links?: MarketLinks;
+}
+
+export type PlanKind = "auction" | "single";
+
 export interface BidPlan {
   id: string;
+  kind: PlanKind;
+  floor_bid_cents?: number;
+  single?: SinglePrep;
   display_key: string;
   grade: string;
   auction_date: string;
@@ -1473,18 +1515,22 @@ export interface BidPlan {
   deal?: AuctionDeal;
 }
 
-export function fetchBidPlans(date?: string): Promise<{
+export function fetchBidPlans(date?: string, kind: PlanKind = "auction"): Promise<{
+  kind: PlanKind;
   auction_date: string;
   next_auction_date: string;
   plans: BidPlan[];
   totals: { max_bids_cents: number; max_all_in_cents: number };
   buyers_premium_pct: number;
 }> {
-  return adminFetch(`/v1/admin/bid-plans${date ? `?date=${date}` : ""}`);
+  const q = new URLSearchParams({ kind });
+  if (date) q.set("date", date);
+  return adminFetch(`/v1/admin/bid-plans?${q}`);
 }
 
 export function saveBidPlan(p: {
-  display_key: string; grade: string; auction_date?: string; max_bid_cents?: number; status?: BidStatus; won_cents?: number; note?: string;
+  display_key: string; grade: string; auction_date?: string; max_bid_cents?: number; floor_bid_cents?: number; status?: BidStatus;
+  won_cents?: number; note?: string; kind?: PlanKind;
 }): Promise<{ id: string; auction_date: string; max_bid_cents?: number }> {
   return adminFetch(`/v1/admin/bid-plans`, { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify(p) });
 }

@@ -11,6 +11,7 @@ export function MarketLinkRow({ links, compact }: { links?: MarketLinks | null; 
     ["Fanatics sold", links.fanatics_sold],
     ["eBay listings", links.ebay_listings],
     ["eBay sold", links.ebay_sold],
+    ...(links.pricecharting ? ([["PriceCharting", links.pricecharting]] as [string, string][]) : []),
   ];
   return (
     <div className={`flex flex-wrap items-center gap-x-3 gap-y-1 ${compact ? "text-[11px]" : "text-xs"}`}>
