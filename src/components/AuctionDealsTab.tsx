@@ -1,6 +1,8 @@
 import { Fragment, useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
-import { fetchAuctionDeals, type AuctionDeal, type EdgeCalc } from "../lib/api";
+import { fetchAuctionDeals, saveBidPlan, type AuctionDeal, type EdgeCalc } from "../lib/api";
+import { useSession } from "../lib/auth";
+import { MarketLinkRow } from "./MarketLinks";
 import { formatCents } from "../lib/roi";
 import { cardThumb } from "../lib/thumb";
 import { Spinner, ErrorMsg } from "./Spinner";
@@ -89,10 +91,69 @@ function EdgeWorking({ e }: { e: EdgeCalc }) {
   );
 }
 
+// How "Resale (net)" was arrived at: each channel's sold median and fees.
+function ResaleWorking({ e }: { e: EdgeCalc }) {
+  const r = e.resale;
+  return (
+    <div>
+      <div className="text-gray-200 font-medium mb-1">Resale (net): {formatCents(r.net_cents)} via {CHANNEL[r.channel]}</div>
+      <table className="tabular-nums">
+        <tbody>
+          <tr><td className="pr-3">Fanatics Buy Now sold median</td><td className="text-right text-gray-200">{r.fanatics_buy_now_median_cents != null ? `${formatCents(r.fanatics_buy_now_median_cents)} (${r.fanatics_buy_now_sales} sales)` : "fewer than 3 sales"}</td></tr>
+          <tr><td className="pr-3">eBay sold median</td><td className="text-right text-gray-200">{r.ebay_median_cents != null ? `${formatCents(r.ebay_median_cents)} (${r.ebay_sales} sales)` : "fewer than 3 sales"}</td></tr>
+          <tr><td className="pr-3">Used: {CHANNEL[r.channel]}</td><td className="text-right text-gray-200">{formatCents(r.gross_cents)}</td></tr>
+          <tr><td className="pr-3">Fees, shipping, vault withdrawal</td><td className="text-right text-gray-200">−{formatCents(r.fees_cents)}</td></tr>
+          {r.trend_pct != null && <tr><td className="pr-3">Falling price path</td><td className="text-right text-gray-200">{Math.round(r.trend_pct * 100)}%</td></tr>}
+          <tr><td className="pr-3 text-gray-200">Net</td><td className="text-right text-gray-100 font-medium">{formatCents(r.net_cents)}</td></tr>
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
+// Put this auction on the bid list for the coming Sunday, max bid prefilled
+// with the suggestion (whole dollars: Fanatics bids in $1 steps).
+function AddToBidList({ d }: { d: AuctionDeal }) {
+  const session = useSession();
+  const [max, setMax] = useState(d.snipe_hammer_cents != null ? Math.floor(d.snipe_hammer_cents / 100) : 0);
+  const [note, setNote] = useState("");
+  const [state, setState] = useState<"idle" | "busy" | "done" | "error">("idle");
+  const [msg, setMsg] = useState("");
+  if (!session) return <div className="text-gray-500">Sign in to add it to your bid list.</div>;
+  return (
+    <form className="flex flex-wrap items-center gap-2" onSubmit={(ev) => {
+      ev.preventDefault();
+      setState("busy");
+      saveBidPlan({ display_key: d.display_key, grade: d.grade, max_bid_cents: max * 100, note: note || undefined })
+        .then((r) => { setState("done"); setMsg(`on the ${r.auction_date} list`); })
+        .catch((e: Error) => { setState("error"); setMsg(e.message); });
+    }}>
+      <span className="text-gray-200 font-medium">Bid list</span>
+      <label className="flex items-center gap-1">max bid $
+        <input type="number" min={0} step={1} value={max} onChange={(e) => setMax(Math.max(0, Math.floor(Number(e.target.value) || 0)))}
+          className="w-20 bg-gray-900 border border-gray-700 rounded px-1.5 py-0.5 text-gray-200 font-mono" />
+      </label>
+      <input placeholder="note (optional)" value={note} onChange={(e) => setNote(e.target.value)}
+        className="w-48 bg-gray-900 border border-gray-700 rounded px-1.5 py-0.5 text-gray-200" />
+      <button type="submit" disabled={state === "busy"} className="px-2 py-0.5 rounded bg-indigo-600 text-white hover:bg-indigo-500 disabled:opacity-60">
+        {state === "done" ? "Update" : "Add to Sunday's bids"}
+      </button>
+      {state === "done" && <span className="text-green-400">✓ {msg}</span>}
+      {state === "error" && <span className="text-red-400">{msg}</span>}
+      <span className="text-gray-500">suggested {formatCents(d.snipe_hammer_cents)} (clears your margin on the resale)</span>
+    </form>
+  );
+}
+
 function Detail({ d }: { d: AuctionDeal }) {
   return (
     <div className="grid gap-4 md:grid-cols-3 text-xs text-gray-400 p-3 bg-gray-950/60">
-      {d.edge_calc && <div className="md:col-span-3"><EdgeWorking e={d.edge_calc} /></div>}
+      <div className="md:col-span-3 space-y-2">
+        <MarketLinkRow links={d.links} />
+        <AddToBidList d={d} />
+      </div>
+      {d.edge_calc && <div className="md:col-span-2"><EdgeWorking e={d.edge_calc} /></div>}
+      {d.edge_calc && <ResaleWorking e={d.edge_calc} />}
       <div>
         <div className="text-gray-200 font-medium mb-1">Fanatics auctions by week</div>
         <table className="w-full tabular-nums">

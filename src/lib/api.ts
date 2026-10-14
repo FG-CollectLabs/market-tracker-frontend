@@ -1302,6 +1302,7 @@ export interface AuctionDeal {
   snipe_hammer_cents?: number;
   edge?: number;
   edge_calc?: EdgeCalc;
+  links?: MarketLinks;
   advice?: { signal: "sell_now" | "hold"; hold_months: number; reason: string };
   projection_confidence?: "low" | "medium" | "high";
   flags: string[];
@@ -1437,4 +1438,58 @@ export interface CardListing {
 // Live Buy Nows and auctions (Fanatics, eBay) with links, every grade.
 export function fetchLiveListings(displayKey: string): Promise<{ count: number; listings: CardListing[] }> {
   return get(`/v1/cards/${encodeURIComponent(displayKey)}/live-listings`);
+}
+
+// ---- Marketplace links and buying prep -------------------------------------------
+
+export interface MarketLinks {
+  title: string;
+  fanatics_buy_now: string;
+  fanatics_auctions: string;
+  fanatics_sold: string;
+  ebay_listings: string;
+  ebay_sold: string;
+}
+
+export function fetchCardLinks(displayKey: string, grade: string): Promise<MarketLinks> {
+  return get(`/v1/cards/${encodeURIComponent(displayKey)}/links?grade=${encodeURIComponent(grade)}`);
+}
+
+export type BidStatus = "planned" | "bid" | "won" | "lost" | "skipped";
+
+export interface BidPlan {
+  id: string;
+  display_key: string;
+  grade: string;
+  auction_date: string;
+  max_bid_cents?: number;
+  max_all_in_cents?: number;
+  status: BidStatus;
+  won_cents?: number;
+  note?: string;
+  added_by?: string;
+  updated_at: string;
+  last_week?: { week: string; closed: number; avg_all_in_cents: number; avg_hammer_cents: number };
+  deal?: AuctionDeal;
+}
+
+export function fetchBidPlans(date?: string): Promise<{
+  auction_date: string;
+  next_auction_date: string;
+  plans: BidPlan[];
+  totals: { max_bids_cents: number; max_all_in_cents: number };
+  buyers_premium_pct: number;
+}> {
+  return adminFetch(`/v1/admin/bid-plans${date ? `?date=${date}` : ""}`);
+}
+
+export function saveBidPlan(p: {
+  display_key: string; grade: string; auction_date?: string; max_bid_cents?: number; status?: BidStatus; won_cents?: number; note?: string;
+}): Promise<{ id: string; auction_date: string; max_bid_cents?: number }> {
+  return adminFetch(`/v1/admin/bid-plans`, { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify(p) });
+}
+
+export async function deleteBidPlan(id: string): Promise<void> {
+  const res = await fetch(`${BASE}/v1/admin/bid-plans/${encodeURIComponent(id)}`, { method: "DELETE", headers: await authHeaders() });
+  if (!res.ok && res.status !== 204) throw new Error(`${res.status}`);
 }
