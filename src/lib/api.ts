@@ -1246,6 +1246,7 @@ export interface LaunchAnchor {
 
 export interface EdgeCalc {
   edge_pct?: number;
+  adjusted_pct?: number; // edge x confidence weight: what "Biggest edge" sorts by
   steal_pct?: number;
   projected_all_in_cents: number;
   projected_hammer_cents: number;
@@ -1382,13 +1383,16 @@ export function setPrintStatus(code: string, inPrint: boolean | null): Promise<u
 
 // ---- Card scores and live listings ----------------------------------------------
 
-export type ScoreKind = "keep_raw" | "grade_psa" | "grade_cgc" | "psa9_to_cgc" | "cgc10_to_psa";
+export type ScoreKind = "keep_raw" | "grade_psa" | "grade_cgc" | "psa9_to_cgc" | "cgc10_to_psa" | "buy_psa10" | "buy_cgc10" | "buy_pristine";
 export const SCORE_KINDS: { key: ScoreKind; label: string; hint: string }[] = [
   { key: "keep_raw", label: "Keep raw", hint: "Buy raw to hold: how low today's raw price sits in the card's own history, and where the set is on its release curve" },
   { key: "grade_psa", label: "Grade PSA", hint: "Buy raw to grade with PSA: expected return after fees at the public gem rate" },
   { key: "grade_cgc", label: "Grade CGC", hint: "Buy raw to grade with CGC: expected return after fees, Pristine counted" },
   { key: "psa9_to_cgc", label: "PSA 9 → CGC", hint: "Buy a PSA 9, crack it, send it to CGC (crossover rate from Settings)" },
   { key: "cgc10_to_psa", label: "CGC 10 → PSA", hint: "Buy a CGC 10, crack it, send it to PSA (crossover rate from Settings)" },
+  { key: "buy_psa10", label: "Buy PSA 10", hint: "Buy the PSA 10 to hold: price vs its own history, its release curve, vs what a 10 costs to make by grading, liquidity" },
+  { key: "buy_cgc10", label: "Buy CGC 10", hint: "Buy the CGC 10 to hold: price vs its own history, its release curve, vs what a 10 costs to make, liquidity" },
+  { key: "buy_pristine", label: "Buy Pristine", hint: "Buy the CGC Pristine 10 to hold: price vs its own history, its release curve, liquidity" },
 ];
 
 export interface CardScore {

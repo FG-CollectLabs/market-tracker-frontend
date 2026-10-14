@@ -129,6 +129,8 @@ export const PATCH_NOTES: PatchNote[] = [
       "Set pages get a Scores view: five 0-100 scores per card (keep raw, grade with PSA, grade with CGC, crack a PSA 9 to CGC, crack a CGC 10 to PSA), sortable, with each score's breakdown on hover and in the card panel.",
       "Card panels list what's listed right now (Fanatics and eBay Buy Nows and auctions) with links, next to the sold history, to check prices by eye.",
       "Settings: crossover rates for the crack scores (30% PSA 9 to CGC 10, 45% CGC 10 to PSA 10 to start).",
+      "Scores to buy a PSA 10, CGC 10 or CGC Pristine 10 to hold: price vs that grade's own history, its release curve, vs what a 10 costs to make, liquidity.",
+      "Deals auctions: a new edge built from each card's own auction history, this week's supply and the better of eBay or Fanatics Buy Now resale after fees; hover it for the working. Biggest edge sorts by edge weighted by confidence.",
     ],
     links: [{ label: "API #60", href: BE + "60" }],
   },
