@@ -7,6 +7,7 @@ import TrackedPage from "./pages/TrackedPage";
 import BrowsePage from "./pages/BrowsePage";
 import DealsPage from "./pages/DealsPage";
 import BuyWindowsPage from "./pages/BuyWindowsPage";
+import BuyingPrepPage from "./pages/BuyingPrepPage";
 import TimingPage from "./pages/TimingPage";
 import SettingsPage from "./pages/SettingsPage";
 import RoadmapPage from "./pages/RoadmapPage";
@@ -36,6 +37,9 @@ function Nav() {
       </NavLink>
       <NavLink to="/timing" className={linkCls}>
         Timing
+      </NavLink>
+      <NavLink to="/prep" className={linkCls}>
+        Buying prep
       </NavLink>
       <NavLink to="/watchlist" className={linkCls}>
         Watchlist
@@ -70,6 +74,7 @@ export default function App() {
             <Route path="/developer" element={<RoadmapPage />} />
             <Route path="/roadmap" element={<RoadmapPage />} />
             <Route path="/watchlist" element={<WatchlistPage />} />
+            <Route path="/prep" element={<BuyingPrepPage />} />
             <Route path="/automation" element={<AutomationPage />} />
             {/* Old catalog list; the home page's "Show untracked sets" replaces it. */}
             <Route path="/sets" element={<SetsPage />} />

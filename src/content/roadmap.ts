@@ -124,6 +124,17 @@ export const PHASES: Phase[] = [
 export const PATCH_NOTES: PatchNote[] = [
   {
     date: "2026-10-14",
+    title: "Buying prep and validation links",
+    items: [
+      "Buying prep tab: the Fanatics weekly auctions you've picked for a Sunday, each with last week's average winning bid, how many are up this week (linked), the suggested max, your max (whole dollars, all-in shown), status and notes; totals if every max hits; printable.",
+      "Deals → This week's auctions: open a row to add it to Sunday's bids (max prefilled with the suggestion), see how Resale (net) was worked out channel by channel, and jump to Fanatics auctions / Buy Now / sold and eBay listings / sold.",
+      "Set pages: the same marketplace links in every card panel, for the grade shown.",
+      "Suggested max bids round down to whole dollars (Fanatics bids go in $1 steps).",
+    ],
+    links: [{ label: "API #63", href: BE + "63" }],
+  },
+  {
+    date: "2026-10-14",
     title: "Scores and live listings",
     items: [
       "Set pages get a Scores view: five 0-100 scores per card (keep raw, grade with PSA, grade with CGC, crack a PSA 9 to CGC, crack a CGC 10 to PSA), sortable, with each score's breakdown on hover and in the card panel.",

@@ -1,5 +1,6 @@
 import { Fragment, createContext, useContext, useEffect, useMemo, useState } from "react";
 import WatchButton from "../components/WatchButton";
+import { CardMarketLinks } from "../components/MarketLinks";
 import { SetTimingSummary, TargetChips, tierOf } from "../components/BuyWindows";
 import { SCORE_KINDS, fetchLiveListings, fetchScores, fetchSetWindows, setPrintStatus, type CardListing, type CardScore, type ScoreKind, type SetWindows } from "../lib/api";
 
@@ -744,6 +745,7 @@ function CardPanel({ card, grade }: { card: TrackedCard; grade: string }) {
         <img src={card.image_url} alt={card.name} className="w-40 rounded-lg hidden md:block" loading="lazy" />
       )}
       <div className="space-y-5 min-w-0">
+        <CardMarketLinks displayKey={card.display_key} grade={grade} />
         <LiveListings displayKey={card.display_key} />
         <Link
           to={`/cards/${encodeURIComponent(card.display_key)}`}
