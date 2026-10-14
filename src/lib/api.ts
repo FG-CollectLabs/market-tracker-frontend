@@ -1244,6 +1244,35 @@ export interface LaunchAnchor {
   note?: string;
 }
 
+export interface EdgeCalc {
+  edge_pct?: number;
+  steal_pct?: number;
+  projected_all_in_cents: number;
+  projected_hammer_cents: number;
+  usual_close_cents: number;
+  usual_weeks: number;
+  method: "card_history" | "grade_model";
+  supply_bucket: string;
+  supply_adj_pct: number;
+  supply_source: "card" | "grade" | "none";
+  live_this_week: number;
+  fanatics_closes_per_week: number;
+  buy_now_listings: number;
+  sales_per_week: number;
+  resale: {
+    channel: "ebay" | "fanatics_buy_now" | "market";
+    gross_cents: number; fees_cents: number; net_cents: number;
+    ebay_median_cents?: number; ebay_sales: number;
+    fanatics_buy_now_median_cents?: number; fanatics_buy_now_sales: number;
+    trend_pct?: number;
+  };
+  breakeven_cents?: number;
+  vs_breakeven_pct?: number;
+  weeks_to_sell?: number;
+  confidence: "low" | "medium" | "high";
+  why: string[];
+}
+
 export interface AuctionDeal {
   display_key: string;
   name: string;
@@ -1271,6 +1300,7 @@ export interface AuctionDeal {
   snipe_all_in_cents?: number;
   snipe_hammer_cents?: number;
   edge?: number;
+  edge_calc?: EdgeCalc;
   advice?: { signal: "sell_now" | "hold"; hold_months: number; reason: string };
   projection_confidence?: "low" | "medium" | "high";
   flags: string[];

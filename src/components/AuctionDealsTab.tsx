@@ -1,6 +1,6 @@
 import { Fragment, useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
-import { fetchAuctionDeals, type AuctionDeal } from "../lib/api";
+import { fetchAuctionDeals, type AuctionDeal, type EdgeCalc } from "../lib/api";
 import { formatCents } from "../lib/roi";
 import { cardThumb } from "../lib/thumb";
 import { Spinner, ErrorMsg } from "./Spinner";
@@ -59,9 +59,40 @@ function WeekBars({ d }: { d: AuctionDeal }) {
   );
 }
 
+const CHANNEL: Record<string, string> = { ebay: "eBay", fanatics_buy_now: "Fanatics Buy Now", market: "market value" };
+
+// The edge in one number, with every input on hover.
+function EdgeCell({ e }: { e?: EdgeCalc }) {
+  if (!e || e.edge_pct == null) return <span className="text-gray-700" title="Not enough auction or resale data">—</span>;
+  const v = e.edge_pct;
+  const color = v >= 0.3 ? "text-green-400" : v >= 0.1 ? "text-green-300/80" : v >= 0 ? "text-gray-300" : "text-red-400";
+  const conf = e.confidence === "high" ? "" : e.confidence === "medium" ? " ·" : " ··";
+  return (
+    <span title={e.why.join("\n")} className="cursor-help">
+      <span className={`font-semibold tabular-nums ${color}`}>{v >= 0 ? "+" : ""}{Math.round(v * 100)}%</span>
+      <span className="text-gray-500" title={`${e.confidence} confidence`}>{conf}</span>
+      {e.steal_pct != null && (
+        <div className={`text-[10px] tabular-nums ${e.steal_pct > 0.05 ? "text-amber-300" : "text-gray-500"}`}>
+          steal {Math.round(e.steal_pct * 100)}%{e.method === "grade_model" ? " (grade)" : ""}
+        </div>
+      )}
+    </span>
+  );
+}
+
+function EdgeWorking({ e }: { e: EdgeCalc }) {
+  return (
+    <div>
+      <div className="text-gray-200 font-medium mb-1">How the edge was worked out <span className="text-gray-500 font-normal">({e.confidence} confidence)</span></div>
+      <ol className="list-decimal ml-4 space-y-0.5">{e.why.map((w, i) => <li key={i}>{w}</li>)}</ol>
+    </div>
+  );
+}
+
 function Detail({ d }: { d: AuctionDeal }) {
   return (
     <div className="grid gap-4 md:grid-cols-3 text-xs text-gray-400 p-3 bg-gray-950/60">
+      {d.edge_calc && <div className="md:col-span-3"><EdgeWorking e={d.edge_calc} /></div>}
       <div>
         <div className="text-gray-200 font-medium mb-1">Fanatics auctions by week</div>
         <table className="w-full tabular-nums">
@@ -169,8 +200,10 @@ export default function AuctionDealsTab({ lang }: { lang: "" | "en" | "ja" }) {
     <div className="space-y-3">
       <p className="text-sm text-gray-500">
         Every slab with auctions closing in the next 7 days. <span className="text-gray-300">Pressure</span> is this week's auctions against how many usually sell in a week
-        across every channel (what the market absorbs): 3× and up is a dump. <span className="text-gray-300">Snipe</span> is the most to pay and still clear your {margin != null ? `${Math.round(margin * 100)}%` : "target"} margin
-        reselling at our value (the lower of the market value and the launch-anchored price), as a hammer bid with the all-in under it.
+        across every channel (what the market absorbs): 3× and up is a dump. <span className="text-gray-300">Edge</span> is the expected profit buying at this week's
+        projected close (the card's usual auction price, adjusted for this week's supply by its own past heavy weeks) and reselling through the better of eBay or
+        Fanatics Buy Now after fees; <span className="text-gray-300">steal</span> is how far under its usual close that projection sits. Hover an edge for every
+        input; dots mean lower confidence. <span className="text-gray-300">Snipe</span> is the most to pay and still clear your {margin != null ? `${Math.round(margin * 100)}%` : "target"} margin on that resale.
       </p>
       <div className="flex flex-wrap items-center gap-3 text-sm">
         <div className="inline-flex rounded border border-gray-700 overflow-hidden">
@@ -197,7 +230,8 @@ export default function AuctionDealsTab({ lang }: { lang: "" | "en" | "ja" }) {
                 <th className="text-left px-3 py-2 font-medium">Live this week</th>
                 <th className="text-right px-3 py-2 font-medium" title="Auctions closing this week vs sales a week across every channel (last 12 weeks)">Pressure</th>
                 <th className="px-3 py-2 font-medium" title="Fanatics auctions closed per week, last 12 weeks">12 weeks</th>
-                <th className="text-right px-3 py-2 font-medium" title="The lower of the market value and the launch-anchored price now; expected all-in close under it">Our value</th>
+                <th className="text-right px-3 py-2 font-medium" title="Expected profit buying at the projected close and reselling at the best channel after fees; steal = how far under its usual close. Hover a value for the working.">Edge</th>
+                <th className="text-right px-3 py-2 font-medium" title="What you'd net reselling through the better of eBay and Fanatics Buy Now; projected close under it">Resale (net)</th>
                 <th className="text-right px-3 py-2 font-medium" title="Max hammer bid that clears your target margin (all-in under it)">Snipe ≤</th>
                 <th className="text-right px-3 py-2 font-medium" title="Grading EV: what this grade must sell for to cover making it at the public gem rate">Breakeven</th>
                 <th className="text-right px-3 py-2 font-medium" title="First 10 sales' average, carried along the release curve to today">Launch → now</th>
@@ -243,9 +277,13 @@ export default function AuctionDealsTab({ lang }: { lang: "" | "en" | "ja" }) {
                       </td>
                       <td className="px-3 py-2"><WeekBars d={d} /></td>
                       <td className="px-3 py-2 text-right tabular-nums text-gray-300">
+                        <EdgeCell e={d.edge_calc} />
+                      </td>
+                      <td className="px-3 py-2 text-right tabular-nums text-gray-300">
                         {formatCents(d.our_value_cents)}
+                        {d.edge_calc && <div className="text-[10px] text-gray-500">{CHANNEL[d.edge_calc.resale.channel]}</div>}
                         {d.expected_all_in_cents != null && (
-                          <div className="text-[10px] text-gray-500">expect {formatCents(d.expected_all_in_cents)} ({pct(d.edge != null ? -d.edge : undefined)})</div>
+                          <div className="text-[10px] text-gray-500">close ~{formatCents(d.expected_all_in_cents)}</div>
                         )}
                       </td>
                       <td className="px-3 py-2 text-right tabular-nums text-green-400 font-medium">
@@ -267,7 +305,7 @@ export default function AuctionDealsTab({ lang }: { lang: "" | "en" | "ja" }) {
                     </tr>
                     {open === id && (
                       <tr>
-                        <td colSpan={9} className="p-0"><Detail d={d} /></td>
+                        <td colSpan={10} className="p-0"><Detail d={d} /></td>
                       </tr>
                     )}
                   </Fragment>
