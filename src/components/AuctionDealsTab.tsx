@@ -192,7 +192,7 @@ export default function AuctionDealsTab({ lang }: { lang: "" | "en" | "ja" }) {
   const shown = useMemo(() => {
     if (!rows) return [];
     const xs = rows.filter((d) => !dumpsOnly || (d.pressure ?? 0) >= 2);
-    const key = (d: AuctionDeal) => (sort === "pressure" ? d.pressure ?? 0 : sort === "edge" ? d.edge ?? -9 : d.live_auctions);
+    const key = (d: AuctionDeal) => (sort === "pressure" ? d.pressure ?? 0 : sort === "edge" ? d.edge_calc?.adjusted_pct ?? -9 : d.live_auctions);
     return [...xs].sort((a, b) => key(b) - key(a));
   }, [rows, sort, dumpsOnly]);
 
@@ -203,7 +203,7 @@ export default function AuctionDealsTab({ lang }: { lang: "" | "en" | "ja" }) {
         across every channel (what the market absorbs): 3× and up is a dump. <span className="text-gray-300">Edge</span> is the expected profit buying at this week's
         projected close (the card's usual auction price, adjusted for this week's supply by its own past heavy weeks) and reselling through the better of eBay or
         Fanatics Buy Now after fees; <span className="text-gray-300">steal</span> is how far under its usual close that projection sits. Hover an edge for every
-        input; dots mean lower confidence. <span className="text-gray-300">Snipe</span> is the most to pay and still clear your {margin != null ? `${Math.round(margin * 100)}%` : "target"} margin on that resale.
+        input; dots mean lower confidence ("Biggest edge" sorts by the edge weighted by confidence, so thin data can't top the list). <span className="text-gray-300">Snipe</span> is the most to pay and still clear your {margin != null ? `${Math.round(margin * 100)}%` : "target"} margin on that resale.
       </p>
       <div className="flex flex-wrap items-center gap-3 text-sm">
         <div className="inline-flex rounded border border-gray-700 overflow-hidden">

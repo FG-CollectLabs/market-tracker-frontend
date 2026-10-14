@@ -662,7 +662,7 @@ function ScoresCells({ scores }: { scores: Partial<Record<ScoreKind, CardScore>>
 function ScoreBreakdown({ scores }: { scores: Partial<Record<ScoreKind, CardScore>> | undefined }) {
   if (!scores) return null;
   return (
-    <div className="grid gap-3 md:grid-cols-5 px-4 pt-4 text-xs">
+    <div className="grid gap-3 md:grid-cols-4 px-4 pt-4 text-xs">
       {SCORE_KINDS.map((k) => {
         const sc = scores[k.key];
         return (
@@ -987,7 +987,7 @@ export default function TrackedPage() {
   );
 
   const colCount = isScores
-    ? 1 + 5
+    ? 1 + SCORE_KINDS.length
     : isCgc
     ? 1 + 4 + 3 + 2 + 3 + 2
     : view === "grading"
