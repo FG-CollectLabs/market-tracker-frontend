@@ -63,7 +63,7 @@ export default function App() {
     <HashRouter>
       <div className="min-h-screen flex flex-col bg-gray-950 print:bg-white">
         <Nav />
-        <main className="flex-1 p-6 max-w-7xl mx-auto w-full">
+        <main className="flex-1 p-4 lg:p-6 w-full min-w-0">
           <Routes>
             <Route path="/" element={<BrowsePage />} />
             <Route path="/browse/:code" element={<TrackedPage />} />

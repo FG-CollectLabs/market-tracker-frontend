@@ -14,7 +14,7 @@ export const TIER_LABEL: Record<string, string> = {
 export const WGRADE_LABEL: Record<string, string> = { raw: "Raw", "psa-10": "PSA 10", "cgc-10": "CGC 10" };
 const GRADES: BuyTarget[] = ["raw", "psa-10", "cgc-10"];
 // Targets without a buy window of their own, behind the chips' "+" menu.
-const MORE: BuyTarget[] = ["psa-9", "cgc-10-pristine", "cgc-9"];
+const MORE: BuyTarget[] = ["psa-9", "psa-low", "cgc-10-pristine", "cgc-9", "cgc-low"];
 const TARGET_LABEL = Object.fromEntries(BUY_TARGETS.map((t) => [t.key, t.label])) as Record<BuyTarget, string>;
 
 const pct = (v: number) => `${v > 0 ? "+" : ""}${Math.round(v * 100)}%`;
@@ -139,7 +139,7 @@ export function TargetChips({ displayKey, set, tier }: { displayKey: string; set
         </button>
       ))}
       <span className="relative">
-        <button onClick={() => setMore((v) => !v)} title="More buy targets: PSA 9, CGC Pristine 10, CGC 9"
+        <button onClick={() => setMore((v) => !v)} title="More buy targets: PSA 9, PSA 8 & below, CGC Pristine 10, CGC 9, CGC 8.5 & below. Set prices on the Watchlist page."
           className="px-1 rounded border border-gray-700/50 text-[10px] leading-4 text-gray-500 hover:text-gray-200">+</button>
         {more && (
           <span className="absolute z-30 left-0 top-5 flex flex-col gap-0.5 rounded border border-gray-700 bg-gray-950 p-1 shadow-xl">
