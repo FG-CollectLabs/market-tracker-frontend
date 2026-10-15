@@ -780,6 +780,7 @@ export interface AnalysisSettings {
   benchmark_rate: number;
   miss_floor_cgc_cents: number;
   miss_floor_psa_cents: number;
+  auto_prep?: AutoPrepRules;
   out_of_print_months: number;
   crack_psa9_to_cgc10_rate: number;
   crack_cgc10_to_psa10_rate: number;
@@ -1338,6 +1339,7 @@ export interface AuctionDeal {
   fanatics_bin_sold_n: number;
   advice?: { signal: "sell_now" | "hold"; hold_months: number; reason: string };
   projection_confidence?: "low" | "medium" | "high";
+  auction_discount?: AuctionDiscount;
   flags: string[];
 }
 
@@ -1607,7 +1609,57 @@ export interface SinglePrep {
   links?: MarketLinks;
 }
 
-export type PlanKind = "auction" | "min_bid" | "single";
+export type PlanKind = "auction" | "min_bid" | "lowball" | "single";
+
+// This card's own auction closes vs what it sells for on eBay / Fanatics
+// Buy Now (the lower of the two, 3+ sales): pct = 1 - auction / ref.
+export interface AuctionDiscount {
+  pct: number;
+  auction_cents: number;
+  auction_weeks: number;
+  ref_cents: number;
+  ref_channel: "ebay" | "fanatics_buy_now";
+  ebay_cents?: number;
+  ebay_sales: number;
+  fanatics_buy_now_cents?: number;
+  fanatics_buy_now_sales: number;
+}
+
+// Min-bid / lowball: a low-grade slab priced against the raw card.
+export interface LowPrep {
+  raw_cents?: number;
+  raw_source?: string;
+  max_pct_of_raw?: number;
+  copies: { price_cents: number; title: string; url?: string; kind: string; ends_at?: string }[];
+  links?: MarketLinks;
+}
+
+export interface AutoPrepRules {
+  pressure_min: number;
+  edge_min: number;
+  auction_discount_min: number;
+  require_window: boolean;
+  nm_min_grade: number;
+  min_bid_raw_min_cents: number;
+  min_bid_raw_max_cents: number;
+  min_bid_pct: number;
+  lowball_raw_min_cents: number;
+  lowball_raw_max_cents: number;
+  lowball_pct: number;
+}
+
+export interface AutoPrepResult {
+  auction_date: string;
+  dry_run: boolean;
+  rules: AutoPrepRules;
+  picks: { display_key: string; name: string; grade: string; kind: PlanKind; reasons: string[]; notes?: string[]; suggested_max_cents?: number }[];
+  skipped: { display_key: string; name: string; grade: string; kind: PlanKind; reasons?: string[]; why: string }[];
+  counts: Record<string, Record<string, number>>;
+}
+
+export function runAutoPrep(dryRun: boolean): Promise<AutoPrepResult> {
+  return adminFetch(`/v1/admin/bid-plans/auto-prep`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ dry_run: dryRun }) });
+}
 
 export interface BidPlan {
   id: string;
@@ -1626,6 +1678,11 @@ export interface BidPlan {
   updated_at: string;
   last_week?: { week: string; closed: number; avg_all_in_cents: number; avg_hammer_cents: number };
   deal?: AuctionDeal;
+  origin?: "manual" | "auto";
+  auto_reasons?: string[];
+  auto_notes?: string[];
+  suggested_max_cents?: number;
+  low?: LowPrep;
 }
 
 export function fetchBidPlans(date?: string, kind: PlanKind = "auction"): Promise<{

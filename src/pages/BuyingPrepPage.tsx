@@ -1,6 +1,6 @@
 import { Fragment, useEffect, useState } from "react";
 import { Link } from "react-router-dom";
-import { deleteBidPlan, fetchBidPlans, saveBidPlan, type BidPlan, type BidStatus, type MakeTen, type PlanKind, type SinglePrep } from "../lib/api";
+import { deleteBidPlan, fetchBidPlans, runAutoPrep, saveBidPlan, type AutoPrepResult, type BidPlan, type BidStatus, type MakeTen, type PlanKind, type SinglePrep } from "../lib/api";
 import { useSession } from "../lib/auth";
 import { formatCents } from "../lib/roi";
 import { cardThumb } from "../lib/thumb";
@@ -12,6 +12,186 @@ import { Spinner, ErrorMsg } from "../components/Spinner";
 // Deals → This week's auctions.
 
 const GRADE: Record<string, string> = { "psa-10": "PSA 10", "psa-9": "PSA 9", "cgc-10": "CGC 10", "cgc-10-pristine": "CGC Pristine", raw: "Raw" };
+const gradeLabel = (g: string) => GRADE[g] ?? g.replace(/^(psa|cgc)-/, (_, x: string) => `${x.toUpperCase()} `);
+type AuctionKind = "auction" | "min_bid" | "lowball";
+const KIND_LABEL: Record<AuctionKind, string> = { auction: "Fanatics weekly auctions", min_bid: "Min-bid (bid early)", lowball: "Lowball (bid late)" };
+
+// Why auto-prep added a row, and what to check.
+function AutoReasons({ p }: { p: BidPlan }) {
+  if (!p.auto_reasons?.length && !p.auto_notes?.length) return null;
+  return (
+    <div className="mt-1 max-w-xs space-y-0.5 text-[11px]">
+      {p.origin === "auto" && <span className="px-1 rounded bg-indigo-900/60 text-indigo-200 text-[10px]">auto</span>}
+      {p.auto_reasons?.map((r) => <div key={r} className="text-gray-400">• {r}</div>)}
+      {p.auto_notes?.map((r) => <div key={r} className="text-amber-300/80">! {r}</div>)}
+    </div>
+  );
+}
+
+// Run the auto-prep rules: preview (nothing saved) or fill this Sunday's lists.
+function AutoPrepBar({ onApplied }: { onApplied: () => void }) {
+  const [res, setRes] = useState<AutoPrepResult | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+  const [showSkipped, setShowSkipped] = useState(false);
+  const run = async (dry: boolean) => {
+    setBusy(true);
+    setErr(null);
+    try {
+      const r = await runAutoPrep(dry);
+      setRes(r);
+      if (!dry) onApplied();
+    } catch (e) {
+      setErr((e as Error).message);
+    } finally {
+      setBusy(false);
+    }
+  };
+  const r = res?.rules;
+  return (
+    <section className="rounded-lg border border-indigo-900/60 bg-gray-900/40 p-3 text-sm space-y-2 print:hidden">
+      <div className="flex flex-wrap items-center gap-2">
+        <span className="font-semibold text-gray-100">Auto-prep</span>
+        <span className="text-xs text-gray-500">Fills this Sunday's lists from live auctions by your rules; you set floors and max bids after.</span>
+        <span className="flex-1" />
+        <button disabled={busy} onClick={() => run(true)} className="px-3 py-1 rounded border border-gray-700 text-gray-200 hover:text-white disabled:opacity-50">Preview</button>
+        <button disabled={busy} onClick={() => run(false)} className="px-3 py-1 rounded bg-indigo-600 text-white hover:bg-indigo-500 disabled:opacity-50">{busy ? "Running…" : "Run auto-prep"}</button>
+      </div>
+      {err && <ErrorMsg msg={err} />}
+      {res && (
+        <div className="space-y-1 text-xs">
+          <div className="text-gray-300">
+            {res.dry_run ? "Preview" : "Done"} for Sunday {res.auction_date}:{" "}
+            {(["auction", "min_bid", "lowball"] as AuctionKind[]).map((k) => {
+              const c = res.counts[k] ?? {};
+              return (
+                <span key={k} className="mr-3">
+                  <span className="text-gray-100">{KIND_LABEL[k]}</span> {c.picked ?? 0} picked
+                  {!res.dry_run && <span className="text-gray-500"> ({c.added ?? 0} new, {c.updated ?? 0} refreshed{c.removed ? `, ${c.removed} dropped` : ""})</span>}
+                </span>
+              );
+            })}
+          </div>
+          {r && (
+            <div className="text-gray-500">
+              Rules: weekly = pressure ≥ {r.pressure_min}× or weighted edge ≥ {Math.round(r.edge_min * 100)}% or auctions ≥ {Math.round(r.auction_discount_min * 100)}% under eBay / Buy Now sold
+              {r.require_window ? ", grade in its buy window" : ""}. Min-bid = {r.nm_min_grade}+ grades of {formatCents(r.min_bid_raw_min_cents)}–{formatCents(r.min_bid_raw_max_cents)} raw cards at ≤ {Math.round(r.min_bid_pct * 100)}% of raw all-in.
+              Lowball = the same for {formatCents(r.lowball_raw_min_cents)}–{formatCents(r.lowball_raw_max_cents)} at ≤ {Math.round(r.lowball_pct * 100)}%{r.require_window ? "; both in the raw window (post hype)" : ""}. Change them on the Settings page.
+            </div>
+          )}
+          {res.skipped.length > 0 && (
+            <div>
+              <button onClick={() => setShowSkipped((v) => !v)} className="text-indigo-300 hover:underline">
+                {showSkipped ? "Hide" : "Show"} {res.skipped.length} that matched a rule but were left out
+              </button>
+              {showSkipped && (
+                <table className="mt-1 w-full">
+                  <tbody className="divide-y divide-gray-800/70">
+                    {res.skipped.map((x, i) => (
+                      <tr key={i} className="align-top">
+                        <td className="py-1 pr-2 whitespace-nowrap"><Link to={`/cards/${encodeURIComponent(x.display_key)}`} className="text-gray-200 hover:text-indigo-300">{x.name}</Link> <span className="text-gray-500">{gradeLabel(x.grade)}</span></td>
+                        <td className="py-1 pr-2 text-gray-500 whitespace-nowrap">{KIND_LABEL[x.kind as AuctionKind] ?? x.kind}</td>
+                        <td className="py-1 pr-2 text-amber-300/80">{x.why}</td>
+                        <td className="py-1 text-gray-500">{x.reasons?.join(" · ")}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              )}
+            </div>
+          )}
+        </div>
+      )}
+    </section>
+  );
+}
+
+// Min-bid / lowball row: a low-grade slab against the raw card.
+function LowRow({ p, premium, kind, onChange, onRemove }: { p: BidPlan; premium: number; kind: AuctionKind; onChange: () => void; onRemove: () => void }) {
+  const lp = p.low;
+  const [max, setMax] = useState(dollars(p.max_bid_cents));
+  const [note, setNote] = useState(p.note ?? "");
+  const [won, setWon] = useState(dollars(p.won_cents));
+  const save = (patch: Parameters<typeof saveBidPlan>[0]) => saveBidPlan(patch).then(onChange).catch(() => undefined);
+  const base = { display_key: p.display_key, grade: p.grade, auction_date: p.auction_date, kind };
+  const maxNum = Math.floor(Number(max) || 0);
+  const raw = lp?.raw_cents;
+  const sug = p.suggested_max_cents;
+  const ofRaw = (hammer: number) => (raw ? `${Math.round((hammer * (1 + premium)) / raw * 100)}% of raw` : "");
+  return (
+    <tr className="align-top">
+      <td className="py-2 pr-2 w-12">
+        {p.deal?.image_url ? <img src={cardThumb(p.deal.image_url)} alt="" className="w-10 h-14 object-cover rounded-sm bg-gray-800" /> : <span className="block w-10 h-14 rounded-sm bg-gray-800/60" />}
+      </td>
+      <td className="py-2 pr-3">
+        <Link to={`/cards/${encodeURIComponent(p.display_key)}`} className="text-gray-100 hover:text-indigo-300">{p.deal?.name ?? p.display_key}</Link>
+        <div className="text-[11px] text-gray-500">
+          <span className="font-mono">{(p.deal?.set_code ?? "").replace(/^jp-/, "JP ").toUpperCase()}</span>
+          <span className="ml-1.5 px-1 rounded bg-gray-800 text-gray-300">{gradeLabel(p.grade)}</span>
+        </div>
+        <AutoReasons p={p} />
+      </td>
+      <td className="py-2 pr-3 text-xs tabular-nums whitespace-nowrap">
+        <div className="text-gray-100">{formatCents(raw ?? null)}</div>
+        <div className="text-gray-500">{lp?.raw_source ?? "no raw price"}</div>
+        {lp?.links && (
+          <div className="space-x-2">
+            <a href={lp.links.ebay_sold} target="_blank" rel="noreferrer" className="text-indigo-300 hover:underline">eBay sold ↗</a>
+            <a href={lp.links.fanatics_sold} target="_blank" rel="noreferrer" className="text-indigo-300 hover:underline">Fanatics sold ↗</a>
+          </div>
+        )}
+      </td>
+      <td className="py-2 pr-3 text-xs tabular-nums">
+        {(lp?.copies ?? []).length === 0 ? <span className="text-gray-600">none up this week</span> : (
+          <div className="space-y-0.5">
+            {lp!.copies.slice(0, 5).map((c, i) => (
+              <div key={i} className="whitespace-nowrap">
+                <span className="text-gray-200">{formatCents(c.price_cents)}</span>{" "}
+                {c.url ? <a href={c.url} target="_blank" rel="noreferrer" className="text-gray-500 hover:text-indigo-300">{c.title.match(/\(\d+ bids?\)$/)?.[0] ?? "0 bids"} ↗</a> : null}
+              </div>
+            ))}
+            {lp!.copies.length > 5 && <div className="text-gray-600">+{lp!.copies.length - 5} more</div>}
+          </div>
+        )}
+        {lp?.links && <a href={lp.links.fanatics_auctions} target="_blank" rel="noreferrer" className="text-indigo-300 hover:underline">this week's auction ↗</a>}
+      </td>
+      <td className="py-2 pr-3 text-xs tabular-nums whitespace-nowrap" title="The rule's max: the bid whose all-in (with buyer's premium) stays at the rule's share of raw">
+        {sug != null ? (
+          <>
+            <div className="text-green-400 font-medium">{formatCents(sug)}</div>
+            <div className="text-gray-500">{formatCents(Math.round(sug * (1 + premium)))} all-in · {ofRaw(sug)}</div>
+          </>
+        ) : <span className="text-gray-600">—</span>}
+      </td>
+      <td className="py-2 pr-3 text-xs">
+        <label className="flex items-center gap-1 text-gray-400">$
+          <input type="number" min={0} step={1} value={max} onChange={(e) => setMax(e.target.value)}
+            onBlur={() => maxNum * 100 !== (p.max_bid_cents ?? -1) && save({ ...base, max_bid_cents: maxNum * 100 })}
+            className="w-16 bg-gray-900 border border-gray-700 rounded px-1.5 py-0.5 text-gray-100 font-mono print:border-0" />
+        </label>
+        {maxNum > 0 && <div className="text-gray-500 tabular-nums mt-0.5">{formatCents(Math.round(maxNum * 100 * (1 + premium)))} all-in · {ofRaw(maxNum * 100)}</div>}
+      </td>
+      <td className="py-2 pr-3 text-xs">
+        <select value={p.status} onChange={(e) => save({ ...base, status: e.target.value as BidStatus })}
+          className={`bg-gray-900 border border-gray-700 rounded px-1 py-0.5 ${STATUS_STYLE[p.status]}`}>
+          {STATUSES.map((s) => <option key={s} value={s}>{s}</option>)}
+        </select>
+        {p.status === "won" && (
+          <label className="flex items-center gap-1 mt-1 text-gray-400">won at $
+            <input type="number" min={0} step={1} value={won} onChange={(e) => setWon(e.target.value)}
+              onBlur={() => save({ ...base, won_cents: Math.floor(Number(won) || 0) * 100 })}
+              className="w-16 bg-gray-900 border border-gray-700 rounded px-1 py-0.5 text-gray-100 font-mono" />
+          </label>
+        )}
+      </td>
+      <td className="py-2 pr-2 text-xs">
+        <input value={note} placeholder="note" onChange={(e) => setNote(e.target.value)} onBlur={() => note !== (p.note ?? "") && save({ ...base, note })}
+          className="w-40 bg-gray-900 border border-gray-700 rounded px-1.5 py-0.5 text-gray-200 print:border-0" />
+        <button onClick={onRemove} className="ml-2 text-gray-500 hover:text-red-400 print:hidden" title="Remove from this Sunday">✕</button>
+      </td>
+    </tr>
+  );
+}
 const STATUSES: BidStatus[] = ["planned", "bid", "won", "lost", "skipped"];
 const STATUS_STYLE: Record<BidStatus, string> = {
   planned: "text-gray-200", bid: "text-sky-300", won: "text-green-400", lost: "text-red-400", skipped: "text-gray-500",
@@ -99,6 +279,7 @@ function PlanRow({ p, premium, kind, onChange, onRemove }: { p: BidPlan; premium
             <span className="ml-1.5 px-1 rounded bg-gray-800 text-gray-300">{GRADE[p.grade] ?? p.grade}</span>
           </div>
           <button onClick={() => setOpen((v) => !v)} className="text-[11px] text-indigo-300 hover:underline print:hidden">{open ? "hide" : "history & links"}</button>
+          <AutoReasons p={p} />
         </td>
         <td className="py-2 pr-3 text-xs tabular-nums whitespace-nowrap" title="The most recent week it closed on Fanatics">
           {p.last_week ? (
@@ -223,8 +404,9 @@ function PlanRow({ p, premium, kind, onChange, onRemove }: { p: BidPlan; premium
   );
 }
 
-function AuctionsPrep({ kind }: { kind: "auction" | "min_bid" }) {
+function AuctionsPrep({ kind, tick: outer }: { kind: AuctionKind; tick: number }) {
   const minBid = kind === "min_bid";
+  const low = kind !== "auction";
   const session = useSession();
   const [date, setDate] = useState<string | undefined>(undefined);
   const [data, setData] = useState<Awaited<ReturnType<typeof fetchBidPlans>> | null>(null);
@@ -233,7 +415,7 @@ function AuctionsPrep({ kind }: { kind: "auction" | "min_bid" }) {
   useEffect(() => {
     if (!session) return;
     fetchBidPlans(date, kind).then((r) => { setData(r); setError(null); }).catch((e: Error) => setError(e.message));
-  }, [session, date, tick]);
+  }, [session, date, tick, outer, kind]);
   if (!session) return <p className="text-sm text-gray-400">Sign in with Google to see your buying prep.</p>;
   if (error) return <ErrorMsg msg={error} />;
   if (!data) return <Spinner />;
@@ -245,7 +427,9 @@ function AuctionsPrep({ kind }: { kind: "auction" | "min_bid" }) {
         <div>
           <p className="text-sm text-gray-500 max-w-3xl">
             {minBid
-              ? <>Min-bid auctions closing Sunday {day}: cheap cards worth bidding on early at a small max ($5–6), hoping nobody wants to pay more. Add them from Deals → This week's auctions (open a row, "Min-bid (bid early)").</>
+              ? <>Min-bid auctions closing Sunday {day}: near-mint low grades of cheap cards, bid early at a small max ($5–6) because $1 can decide them. Priced against the raw card.</>
+              : kind === "lowball"
+              ? <>Lowball auctions closing Sunday {day}: near-mint low grades bid late at a discount to raw (a PSA 8 of a $15 card for $10–11 all-in), to resell around raw or crack.</>
               : <>Fanatics weekly auctions you've decided to bid on, closing Sunday {day}, with a floor you'll bid near the close. Add cards from Deals → This week's auctions (open a row, "Add to Sunday's bids").</>}
             Max bids are whole dollars: Fanatics bids go in $1 steps. Suggested max clears your target margin on the resale; hover it for the working.
           </p>
@@ -260,14 +444,36 @@ function AuctionsPrep({ kind }: { kind: "auction" | "min_bid" }) {
       </div>
       <section className="rounded-lg border border-gray-800 bg-gray-900/40 p-3">
         <div className="flex flex-wrap items-baseline justify-between gap-2 mb-2">
-          <h2 className="text-sm font-semibold text-gray-100">{minBid ? "Min-bid auctions" : "Fanatics weekly auctions"} · {data.plans.length} card{data.plans.length === 1 ? "" : "s"}</h2>
+          <h2 className="text-sm font-semibold text-gray-100">{KIND_LABEL[kind]} · {data.plans.length} card{data.plans.length === 1 ? "" : "s"}</h2>
           <div className="text-xs text-gray-400 tabular-nums">
             If every max hits: <span className="text-gray-100">{formatCents(data.totals.max_bids_cents)}</span> in bids,{" "}
             <span className="text-gray-100">{formatCents(data.totals.max_all_in_cents)}</span> all-in ({Math.round(data.buyers_premium_pct * 100)}% buyer's premium)
           </div>
         </div>
         {data.plans.length === 0 ? (
-          <p className="text-sm text-gray-500">Nothing on this Sunday's {minBid ? "min-bid " : ""}list yet.</p>
+          <p className="text-sm text-gray-500">Nothing on this Sunday's {kind === "auction" ? "" : KIND_LABEL[kind] + " "}list yet. Run auto-prep above, or add cards from Deals → This week's auctions.</p>
+        ) : low ? (
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead className="text-xs text-gray-500">
+                <tr>
+                  <th className="text-left font-medium py-1" colSpan={2}>Card</th>
+                  <th className="text-left font-medium py-1 pr-3">Raw price</th>
+                  <th className="text-left font-medium py-1 pr-3" title="This week's Fanatics auctions of this grade: current bid, bids">Up this week</th>
+                  <th className="text-left font-medium py-1 pr-3" title="The rule's max bid">Rule max</th>
+                  <th className="text-left font-medium py-1 pr-3">Your max</th>
+                  <th className="text-left font-medium py-1 pr-3">Status</th>
+                  <th className="text-left font-medium py-1">Note</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-gray-800/70">
+                {data.plans.map((p) => (
+                  <LowRow key={p.id + p.updated_at} p={p} premium={data.buyers_premium_pct} kind={kind} onChange={refresh}
+                    onRemove={() => deleteBidPlan(p.id).then(refresh).catch(() => undefined)} />
+                ))}
+              </tbody>
+            </table>
+          </div>
         ) : (
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
@@ -432,17 +638,19 @@ function SinglesPrep() {
 export default function BuyingPrepPage() {
   const session = useSession();
   const [tab, setTab] = useState<PlanKind>("auction");
+  const [tick, setTick] = useState(0);
   if (!session) return <p className="text-sm text-gray-400">Sign in with Google to see your buying prep.</p>;
   return (
     <div className="space-y-4">
       <h1 className="text-xl font-semibold text-white">Buying prep</h1>
+      <AutoPrepBar onApplied={() => setTick((t) => t + 1)} />
       <nav className="flex gap-1 border-b border-gray-800 text-sm print:hidden">
-        {([["auction", "Fanatics auctions"], ["min_bid", "Fanatics min-bid"], ["single", "Singles / card show"]] as const).map(([k, label]) => (
+        {([["auction", "Fanatics auctions"], ["min_bid", "Min-bid (bid early)"], ["lowball", "Lowball (bid late)"], ["single", "Singles / card show"]] as const).map(([k, label]) => (
           <button key={k} onClick={() => setTab(k)}
             className={`px-3 py-1.5 -mb-px border-b-2 ${tab === k ? "border-indigo-500 text-white" : "border-transparent text-gray-400 hover:text-gray-200"}`}>{label}</button>
         ))}
       </nav>
-      {tab === "single" ? <SinglesPrep /> : <AuctionsPrep key={tab} kind={tab} />}
+      {tab === "single" ? <SinglesPrep /> : <AuctionsPrep key={tab} kind={tab} tick={tick} />}
     </div>
   );
 }

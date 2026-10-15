@@ -179,6 +179,48 @@ export default function SettingsPage() {
         </Field>
       </section>
 
+      {s.auto_prep && (() => {
+        const a = s.auto_prep;
+        const ap = (patch: Partial<typeof a>) => set({ auto_prep: { ...a, ...patch } });
+        const num = (v: number, on: (n: number) => void, step = 0.1) => (
+          <input type="number" step={step} value={v} className={`${inputCls} w-20`} onChange={(e) => on(Number(e.target.value) || 0)} />
+        );
+        return (
+          <>
+            <h2 className="text-xs font-semibold uppercase tracking-wide text-gray-500">Auto-prep (Buying prep rules)</h2>
+            <section className="rounded-lg border border-gray-800 bg-gray-900 px-4 py-2 divide-y divide-gray-800">
+              <Field label="Weekly: pressure at least" hint="Add an auction when this many times its usual weekly sales (all channels) are up this week.">
+                {num(a.pressure_min, (v) => ap({ pressure_min: v }))}<span className="text-gray-500">×</span>
+              </Field>
+              <Field label="Weekly: edge at least" hint="Confidence-weighted edge (what Deals sorts by).">
+                <Pct value={a.edge_min} onChange={(v) => ap({ edge_min: v })} />
+              </Field>
+              <Field label="Weekly: auctions under BIN / eBay by" hint="Its own auction closes at least this far under its eBay or Fanatics Buy Now sold median.">
+                <Pct value={a.auction_discount_min} onChange={(v) => ap({ auction_discount_min: v })} />
+              </Field>
+              <Field label="Only cards in their buy window" hint="Weekly: the grade's window (PSA 10 / CGC 10). Min-bid and lowball: the raw window (post hype).">
+                <input type="checkbox" checked={a.require_window} onChange={(e) => ap({ require_window: e.target.checked })} className="accent-indigo-500" />
+              </Field>
+              <Field label="Near mint from grade" hint="Lowest grade the min-bid and lowball lists take (up to PSA 8 / CGC 8.5).">
+                {num(a.nm_min_grade, (v) => ap({ nm_min_grade: v }), 0.5)}
+              </Field>
+              <Field label="Min-bid: raw price from / to" hint="Cards whose raw price is in this range.">
+                <Money cents={a.min_bid_raw_min_cents} onChange={(c) => ap({ min_bid_raw_min_cents: c })} /> – <Money cents={a.min_bid_raw_max_cents} onChange={(c) => ap({ min_bid_raw_max_cents: c })} />
+              </Field>
+              <Field label="Min-bid: pay at most" hint="All-in (with buyer's premium), as a share of the raw price.">
+                <Pct value={a.min_bid_pct} onChange={(v) => ap({ min_bid_pct: v })} /><span className="text-gray-500"> of raw</span>
+              </Field>
+              <Field label="Lowball: raw price from / to" hint="Above the min-bid range.">
+                <Money cents={a.lowball_raw_min_cents} onChange={(c) => ap({ lowball_raw_min_cents: c })} /> – <Money cents={a.lowball_raw_max_cents} onChange={(c) => ap({ lowball_raw_max_cents: c })} />
+              </Field>
+              <Field label="Lowball: pay at most" hint="All-in, as a share of the raw price.">
+                <Pct value={a.lowball_pct} onChange={(v) => ap({ lowball_pct: v })} /><span className="text-gray-500"> of raw</span>
+              </Field>
+            </section>
+          </>
+        );
+      })()}
+
       <h2 className="text-xs font-semibold uppercase tracking-wide text-gray-500">Selling what you own (pricing API)</h2>
       <section className="rounded-lg border border-gray-800 bg-gray-900 px-4 py-2 divide-y divide-gray-800">
         <Field label="eBay shipping per sale" hint="Label and supplies when you offer free shipping. The eBay fee is the resale fee above.">

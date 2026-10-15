@@ -61,6 +61,26 @@ function WeekBars({ d }: { d: AuctionDeal }) {
   );
 }
 
+// Auction closes vs the price it sells for elsewhere.
+function DiscountCell({ d }: { d: AuctionDeal }) {
+  const x = d.auction_discount;
+  if (!x) return <span className="text-gray-700" title="Needs 2+ weeks of its own auction closes and 3+ eBay or Buy Now sales">—</span>;
+  const ch = x.ref_channel === "ebay" ? "eBay" : "Buy Now";
+  const color = x.pct >= 0.25 ? "text-green-400" : x.pct >= 0.1 ? "text-green-300/80" : x.pct >= 0 ? "text-gray-300" : "text-amber-300";
+  const title = [
+    `Usual auction close ${formatCents(x.auction_cents)} all-in (${x.auction_weeks} weeks of closes)`,
+    x.ebay_cents != null ? `eBay sold median ${formatCents(x.ebay_cents)} (${x.ebay_sales})` : "eBay: no sales",
+    x.fanatics_buy_now_cents != null ? `Fanatics Buy Now sold median ${formatCents(x.fanatics_buy_now_cents)} (${x.fanatics_buy_now_sales})` : "Buy Now: no sales",
+    `${Math.round(x.pct * 100)}% = 1 - ${formatCents(x.auction_cents)} / ${formatCents(x.ref_cents)} (${ch}, the lower one with 3+ sales)`,
+  ].join("\n");
+  return (
+    <span title={title} className="cursor-help">
+      <span className={`font-semibold ${color}`}>{x.pct >= 0 ? "−" : "+"}{Math.abs(Math.round(x.pct * 100))}%</span>
+      <div className="text-[10px] text-gray-500">{formatCents(x.auction_cents)} vs {formatCents(x.ref_cents)} {ch}</div>
+    </span>
+  );
+}
+
 const CHANNEL: Record<string, string> = { ebay: "eBay", fanatics_buy_now: "Fanatics Buy Now", market: "market value" };
 
 // The edge in one number, with every input on hover.
@@ -299,6 +319,7 @@ export default function AuctionDealsTab({ lang }: { lang: "" | "en" | "ja" }) {
                 <th className="text-right px-3 py-2 font-medium" title="Auctions closing this week vs sales a week across every channel (last 12 weeks)">Pressure</th>
                 <th className="px-3 py-2 font-medium" title="Fanatics auctions closed per week, last 12 weeks">12 weeks</th>
                 <th className="text-right px-3 py-2 font-medium" title="Expected profit buying at the projected close and reselling at the best channel after fees; steal = how far under its usual close. Hover a value for the working.">Edge</th>
+                <th className="text-right px-3 py-2 font-medium" title="How far this card's own auction closes (usual weekly close, all-in) run under what it sells for on eBay or Fanatics Buy Now (the lower of the two). Needs 2+ weeks of its own closes.">Auction vs BIN/eBay</th>
                 <th className="text-right px-3 py-2 font-medium" title="What you'd net reselling through the better of eBay and Fanatics Buy Now; projected close under it">Resale (net)</th>
                 <th className="text-right px-3 py-2 font-medium" title="Max hammer bid that clears your target margin (all-in under it)">Snipe ≤</th>
                 <th className="text-right px-3 py-2 font-medium" title="Grading EV: what this grade must sell for to cover making it at the public gem rate">Breakeven</th>
@@ -347,6 +368,9 @@ export default function AuctionDealsTab({ lang }: { lang: "" | "en" | "ja" }) {
                       <td className="px-3 py-2 text-right tabular-nums text-gray-300">
                         <EdgeCell e={d.edge_calc} />
                       </td>
+                      <td className="px-3 py-2 text-right tabular-nums">
+                        <DiscountCell d={d} />
+                      </td>
                       <td className="px-3 py-2 text-right tabular-nums text-gray-300">
                         {formatCents(d.our_value_cents)}
                         {d.edge_calc && <div className="text-[10px] text-gray-500">{CHANNEL[d.edge_calc.resale.channel]}</div>}
@@ -373,7 +397,7 @@ export default function AuctionDealsTab({ lang }: { lang: "" | "en" | "ja" }) {
                     </tr>
                     {open === id && (
                       <tr>
-                        <td colSpan={10} className="p-0"><Detail d={d} /></td>
+                        <td colSpan={11} className="p-0"><Detail d={d} /></td>
                       </tr>
                     )}
                   </Fragment>
