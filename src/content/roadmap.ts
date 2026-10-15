@@ -123,6 +123,16 @@ export const PHASES: Phase[] = [
 
 export const PATCH_NOTES: PatchNote[] = [
   {
+    date: "2026-10-15",
+    title: "Cost to grade, worked out; min-bid auctions",
+    items: [
+      "Buying prep: cost to grade shows its gem rate and raw price, with the cost to make a 10 at the release raw price, now and at the projected low; history & links opens the full breakdown (raw, fee, shipping, gem rate and source, what a miss is worth, the formula).",
+      "One link to this week's Fanatics auction filtered to the card, instead of one per listing; the BIN column adds the market value and PriceCharting.",
+      "Fanatics min-bid tab: cheap cards bid on early at a small max, kept apart from the floors bid near the close; choose either when adding from Deals.",
+    ],
+    links: [{ label: "API #65", href: BE + "65" }],
+  },
+  {
     date: "2026-10-14",
     title: "Buying prep: floors and singles",
     items: [

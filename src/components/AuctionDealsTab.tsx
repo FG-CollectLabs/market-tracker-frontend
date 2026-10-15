@@ -117,6 +117,7 @@ function AddToBidList({ d }: { d: AuctionDeal }) {
   const session = useSession();
   const [max, setMax] = useState(d.snipe_hammer_cents != null ? Math.floor(d.snipe_hammer_cents / 100) : 0);
   const [note, setNote] = useState("");
+  const [kind, setKind] = useState<"auction" | "min_bid">("auction");
   const [state, setState] = useState<"idle" | "busy" | "done" | "error">("idle");
   const [msg, setMsg] = useState("");
   if (!session) return <div className="text-gray-500">Sign in to add it to your bid list.</div>;
@@ -124,11 +125,17 @@ function AddToBidList({ d }: { d: AuctionDeal }) {
     <form className="flex flex-wrap items-center gap-2" onSubmit={(ev) => {
       ev.preventDefault();
       setState("busy");
-      saveBidPlan({ display_key: d.display_key, grade: d.grade, max_bid_cents: max * 100, note: note || undefined })
-        .then((r) => { setState("done"); setMsg(`on the ${r.auction_date} list`); })
+      saveBidPlan({ display_key: d.display_key, grade: d.grade, max_bid_cents: max * 100, note: note || undefined, kind })
+        .then((r) => { setState("done"); setMsg(`on the ${r.auction_date} ${kind === "min_bid" ? "min-bid " : ""}list`); })
         .catch((e: Error) => { setState("error"); setMsg(e.message); });
     }}>
       <span className="text-gray-200 font-medium">Bid list</span>
+      <select value={kind} onChange={(e) => { const k = e.target.value as "auction" | "min_bid"; setKind(k); if (k === "min_bid") setMax(Math.min(max, 6)); }}
+        className="bg-gray-900 border border-gray-700 rounded px-1 py-0.5 text-gray-200"
+        title="Sunday's bids: set a floor and bid near the close. Min-bid: cheap cards bid early at a small max, hoping nobody pays more.">
+        <option value="auction">Sunday's bids (bid late)</option>
+        <option value="min_bid">Min-bid (bid early)</option>
+      </select>
       <label className="flex items-center gap-1">max bid $
         <input type="number" min={0} step={1} value={max} onChange={(e) => setMax(Math.max(0, Math.floor(Number(e.target.value) || 0)))}
           className="w-20 bg-gray-900 border border-gray-700 rounded px-1.5 py-0.5 text-gray-200 font-mono" />
@@ -136,7 +143,7 @@ function AddToBidList({ d }: { d: AuctionDeal }) {
       <input placeholder="note (optional)" value={note} onChange={(e) => setNote(e.target.value)}
         className="w-48 bg-gray-900 border border-gray-700 rounded px-1.5 py-0.5 text-gray-200" />
       <button type="submit" disabled={state === "busy"} className="px-2 py-0.5 rounded bg-indigo-600 text-white hover:bg-indigo-500 disabled:opacity-60">
-        {state === "done" ? "Update" : "Add to Sunday's bids"}
+        {state === "done" ? "Update" : "Add"}
       </button>
       {state === "done" && <span className="text-green-400">✓ {msg}</span>}
       {state === "error" && <span className="text-red-400">{msg}</span>}

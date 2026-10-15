@@ -1289,12 +1289,13 @@ export interface AuctionDeal {
   usual_fanatics_auctions_per_week?: number;
   pressure?: number;
   listings?: AuctionListing[];
-  value?: { cents: number; source: string; basis?: { method: string; sales_count: number; note: string } };
+  value?: { cents: number; source: string; basis?: { method: string; sales_count: number; note: string; pricecharting_cents?: number } };
   expected_hammer_cents?: number;
   expected_all_in_cents?: number;
   breakeven_cents?: number;
   cost_to_make_cents?: number;
   gem_rate_source?: string;
+  make_ten?: MakeTen;
   launch?: LaunchAnchor;
   weeks: { week: string; closed: number; avg_cents?: number; vs_breakeven?: number }[];
   our_value_cents?: number;
@@ -1455,6 +1456,30 @@ export interface MarketLinks {
   ebay_listings: string;
   ebay_sold: string;
   pricecharting?: string; // the card's PriceCharting page (chart + eBay solds), when known
+  weekly_auction_id?: string; // set when fanatics_auctions opens this week's auction
+}
+
+export interface MakeTen {
+  submission_cents: number;
+  p10: number;
+  p_miss: number;
+  miss_grade: string;
+  miss_value_cents: number;
+  miss_value_source: string;
+  loss_per_miss_cents: number;
+  sell_fee_pct: number;
+  cost_per_10_cents: number;
+  breakeven_10_cents: number;
+  current_10_cents: number;
+  margin_pct?: number;
+  reason: string;
+  raw_cents: number;
+  grading_fee_cents: number;
+  shipping_cents: number;
+  route: string;
+  gem_source: string;
+  gem_scope: string;
+  scenarios: { label: "release" | "now" | "projected_low"; raw_cents: number; submission_cents: number; breakeven_10_cents: number; note?: string }[];
 }
 
 export function fetchCardLinks(displayKey: string, grade: string): Promise<MarketLinks> {
@@ -1494,7 +1519,7 @@ export interface SinglePrep {
   links?: MarketLinks;
 }
 
-export type PlanKind = "auction" | "single";
+export type PlanKind = "auction" | "min_bid" | "single";
 
 export interface BidPlan {
   id: string;
