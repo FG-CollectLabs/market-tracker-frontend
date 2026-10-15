@@ -690,8 +690,17 @@ export function fetchHistoryImports(displayKey: string): Promise<{ imports: Hist
 
 export interface MarketValue {
   cents: number;
-  source: "pricecharting" | "ebay_sold_90d" | "fanatics_bin" | string;
+  source: "pricecharting" | "ebay_sold_90d" | "sold_90d" | string;
   as_of?: string;
+  basis?: {
+    method: string; // pricecharting, median_sold, median_sold_ebay
+    window_days: number;
+    sales_count: number;
+    median_cents?: number;
+    pricecharting_cents?: number;
+    overrode_pricecharting: boolean;
+    note: string;
+  };
 }
 
 export interface GradeAnalysis {
@@ -806,6 +815,22 @@ export interface GradingEV {
   ten_value?: number;
   max_raw_cents?: number;
   break_even_raw_cents?: number;
+  nine_cents?: number;
+  nine_source?: string;
+  working?: EVWorking;
+}
+
+// One copy's grading math, line by line: cost lines add up to cost_cents,
+// outcomes (share x price) to gross_cents; net - cost = profit.
+export interface EVLine { label: string; share?: number; unit_cents?: number; cents: number; note?: string }
+export interface EVWorking {
+  cost: EVLine[];
+  outcomes: EVLine[];
+  gross_cents: number;
+  sell_fee_cents: number;
+  net_cents: number;
+  cost_cents: number;
+  profit_cents: number;
 }
 
 export interface FairValue {
