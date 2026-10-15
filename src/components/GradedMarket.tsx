@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
+import { CardGlance, WeeklyVsPc } from "./CardGlance";
 import AuctionWeeksPanel from "./AuctionWeeksPanel";
 import { fetchCardHistory, type CardHistory, type FanaticsHistoryWeek, type LiveGroup, type PcHistoryWeek, type PopHistoryWeek } from "../lib/api";
 import { formatCents } from "../lib/roi";
@@ -334,6 +335,9 @@ export default function GradedMarket({ displayKey }: { displayKey: string }) {
   return (
     <div className="space-y-5">
       <BuyingGuide displayKey={displayKey} />
+      <Section title="At a glance" sub="Each grade's price and where it comes from, gem rates, and the grading math line by line.">
+        <CardGlance displayKey={displayKey} />
+      </Section>
       <AuctionWeeksPanel displayKey={displayKey} />
 
       <Section title="Gem rates" sub="Share of graded copies at each grade (GemRate). Hover a value for when it was updated.">
@@ -396,6 +400,10 @@ export default function GradedMarket({ displayKey }: { displayKey: string }) {
           ))}
         </div>
         <LineChart weeks={axis} series={gapSeries} fmt={pct} />
+      </Section>
+
+      <Section title="Fanatics vs PriceCharting, week by week" sub="Copies sold on Fanatics each week, their average all-in price, and PriceCharting's price that week.">
+        <WeeklyVsPc displayKey={displayKey} weeks={weeks} />
       </Section>
 
       <Section

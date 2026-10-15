@@ -3,6 +3,7 @@ import WatchButton from "../components/WatchButton";
 import { CardMarketLinks } from "../components/MarketLinks";
 import { SetTimingSummary, TargetChips, tierOf } from "../components/BuyWindows";
 import { PresetBar } from "../components/WatchTargets";
+import { CardGlance, WeeklyVsPc } from "../components/CardGlance";
 import { useSession } from "../lib/auth";
 import { SCORE_KINDS, fetchLiveListings, fetchScores, fetchSetWindows, setPrintStatus, type CardListing, type CardScore, type ScoreKind, type SetWindows } from "../lib/api";
 
@@ -141,6 +142,22 @@ function cardMath(c: TrackedCard, gs: GradingSettings, src: PriceSource): CardGr
 }
 
 // CGC prices: recent Fanatics, then eBay, sales (all-in), else PriceCharting.
+// Where cgcPrice's number comes from, for the tag next to it.
+function cgcPriceSrc(c: TrackedCard, key: string): { tag: string; title: string } | null {
+  const n = (x?: { sold_window?: number }) => (x?.sold_window != null ? `, ${x.sold_window} sold in the window` : "");
+  if (c.sales_groups?.fanatics?.[key]?.median_all_in_cents != null || c.sales?.fanatics?.[key]?.median_all_in_cents != null)
+    return { tag: "F", title: `Fanatics sales median, all-in${n(c.sales_groups?.fanatics?.[key] ?? c.sales?.fanatics?.[key])}` };
+  if (c.sales_groups?.ebay?.[key]?.median_all_in_cents != null || c.sales?.ebay?.[key]?.median_all_in_cents != null)
+    return { tag: "E", title: `eBay sales median${n(c.sales_groups?.ebay?.[key] ?? c.sales?.ebay?.[key])}` };
+  if (c.pricecharting[key]?.cents != null) return { tag: "PC", title: "PriceCharting (no Fanatics or eBay sales in the window)" };
+  return null;
+}
+
+function SrcTag({ c, k }: { c: TrackedCard; k: string }) {
+  const s = cgcPriceSrc(c, k);
+  return s ? <sup className="ml-0.5 text-[9px] text-gray-500" title={s.title}>{s.tag}</sup> : null;
+}
+
 function cgcPrice(c: TrackedCard, key: string): number | null {
   return c.sales_groups?.fanatics?.[key]?.median_all_in_cents ?? c.sales?.fanatics?.[key]?.median_all_in_cents
     ?? c.sales_groups?.ebay?.[key]?.median_all_in_cents ?? c.sales?.ebay?.[key]?.median_all_in_cents
@@ -498,10 +515,10 @@ function CgcGradingHead() {
         <th rowSpan={2} className="px-2 py-2 font-medium align-bottom">Signal</th>
       </tr>
       <tr>
-        <th className={`${th} border-l border-gray-800`}>Raw</th>
-        <th className={th} title="CGC 9 sales median, or the 9 floor (grey) when it has none">CGC 9</th>
-        <th className={th}>CGC 10</th>
-        <th className={th}>Pristine</th>
+        <th className={`${th} border-l border-gray-800`} title="PriceCharting ungraded">Raw</th>
+        <th className={th} title="CGC 9 sales median (Fanatics, else eBay), or the 9 floor (grey) when it has none">CGC 9</th>
+        <th className={th} title="Fanatics sales median (F), else eBay (E), else PriceCharting (PC). Hover the tag.">CGC 10</th>
+        <th className={th} title="Fanatics sales median (F), else eBay (E), else PriceCharting (PC). Hover the tag.">Pristine</th>
         <th className={`${th} border-l border-gray-800`}>Pristine</th>
         <th className={th} title="Any 10, Pristine included">10</th>
         <th className={th} title="9s and 9.5s">9</th>
@@ -532,8 +549,8 @@ function CgcGradingCells({ c, g }: { c: TrackedCard; g: CardGrading | null }) {
           title={m.nineFromFloor ? "No CGC 9 sales: the 9 floor from Settings" : "CGC 9 sales median, all-in"}>{formatCents(m.nineCents)}</span>
           : <span className="text-gray-700">—</span>}
       </td>
-      <td className={td}>{ten != null ? <span className="tabular-nums font-mono text-gray-200">{formatCents(ten)}</span> : <span className="text-gray-700">—</span>}</td>
-      <td className={td}>{cgcPrice(c, "cgc-10-pristine") != null ? <span className="tabular-nums font-mono text-gray-200">{formatCents(cgcPrice(c, "cgc-10-pristine"))}</span> : <span className="text-gray-700" title="No Pristine sales: valued as a 10">—</span>}</td>
+      <td className={td}>{ten != null ? <span className="tabular-nums font-mono text-gray-200">{formatCents(ten)}<SrcTag c={c} k="cgc-10" /></span> : <span className="text-gray-700">—</span>}</td>
+      <td className={td}>{cgcPrice(c, "cgc-10-pristine") != null ? <span className="tabular-nums font-mono text-gray-200">{formatCents(cgcPrice(c, "cgc-10-pristine"))}<SrcTag c={c} k="cgc-10-pristine" /></span> : <span className="text-gray-700" title="No Pristine sales: valued as a 10">—</span>}</td>
       <td className={`${td} border-l border-gray-800/70`}>{pctCell(m?.pPristine, `CGC ${pop?.pristine ?? "?"} Pristine of ${pop?.total.toLocaleString()} graded`)}</td>
       <td className={td}>{pctCell(m?.pGem, `CGC ${pop?.gem.toLocaleString()} 10s of ${pop?.total.toLocaleString()} graded`)}</td>
       <td className={td}>{pctCell(m?.p9, `CGC ${pop?.nine ?? "?"} 9s + ${pop?.nine_five ?? 0} 9.5s of ${pop?.total.toLocaleString()} graded`)}</td>
@@ -755,6 +772,8 @@ function CardPanel({ card, grade }: { card: TrackedCard; grade: string }) {
         <img src={card.image_url} alt={card.name} className="w-40 rounded-lg hidden md:block" loading="lazy" />
       )}
       <div className="space-y-5 min-w-0">
+        <CardGlance displayKey={card.display_key} />
+        <WeeklyVsPc displayKey={card.display_key} initial={grade} />
         <CardMarketLinks displayKey={card.display_key} grade={grade} />
         <LiveListings displayKey={card.display_key} />
         <Link
