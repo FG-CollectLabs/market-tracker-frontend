@@ -1086,6 +1086,8 @@ export interface WatchItem {
   created_at: string;
   psa10_cents?: number;
   play?: PlaySummary;
+  targets_detail?: WatchTarget[];
+  hits?: number;
 }
 
 export function fetchWatchlist(keysOnly = false): Promise<{ count: number; items: WatchItem[] }> {
@@ -1364,11 +1366,72 @@ export function fetchSetWindows(lang?: "en" | "ja"): Promise<{ band: number; out
 }
 
 // Watchlist buy categories: raw (to grade) or the slab to buy.
-export type BuyTarget = "raw" | "psa-10" | "psa-9" | "cgc-10" | "cgc-10-pristine" | "cgc-9";
+export type BuyTarget = "raw" | "psa-10" | "psa-9" | "psa-low" | "cgc-10" | "cgc-10-pristine" | "cgc-9" | "cgc-low";
 export const BUY_TARGETS: { key: BuyTarget; label: string }[] = [
   { key: "raw", label: "Raw to grade" }, { key: "psa-10", label: "PSA 10" }, { key: "psa-9", label: "PSA 9" },
-  { key: "cgc-10", label: "CGC 10" }, { key: "cgc-10-pristine", label: "CGC Pristine 10" }, { key: "cgc-9", label: "CGC 9" },
+  { key: "psa-low", label: "PSA 8 & below" }, { key: "cgc-10", label: "CGC 10" }, { key: "cgc-10-pristine", label: "CGC Pristine 10" },
+  { key: "cgc-9", label: "CGC 9 / 9.5" }, { key: "cgc-low", label: "CGC 8.5 & below" },
 ];
+
+// Buy targets with a price rule (see watch_targets on the backend).
+export type RuleKind = "pct_market" | "cost_to_make" | "max_raw" | "fixed";
+export const RULE_KINDS: { key: RuleKind; label: string; hint: string }[] = [
+  { key: "pct_market", label: "% of market", hint: "A share of that grade's market price (8 & below: of the raw price)" },
+  { key: "cost_to_make", label: "≤ cost to make a 10", hint: "At or under what a 10 costs to make by grading raw copies (PSA 10, CGC 10)" },
+  { key: "max_raw", label: "≤ max raw to grade", hint: "Raw at or under the most you can pay and still clear your grading return bar" },
+  { key: "fixed", label: "Fixed $", hint: "A price you set" },
+];
+export type Channels = "any" | "auction" | "buy_now";
+
+export interface TargetHit {
+  source: string;
+  grade_key: string;
+  kind: "buy_now" | "auction";
+  price_cents: number;
+  all_in_cents: number;
+  title: string;
+  url?: string;
+  ends_at?: string;
+}
+
+export interface WatchTarget {
+  id?: string;
+  target: BuyTarget;
+  rule_kind?: RuleKind | null;
+  rule_value?: number | null; // pct_market: share (0.8); fixed: cents
+  buy_all: boolean;
+  channels: Channels;
+  preset?: string | null;
+  note?: string | null;
+  reference_cents?: number;
+  max_cents?: number;
+  rule_text?: string;
+  hits?: TargetHit[];
+}
+
+export interface WatchPreset {
+  key: string;
+  label: string;
+  description: string;
+  targets: { target: BuyTarget; rule_kind: RuleKind; rule_value?: number; buy_all: boolean; channels: Channels }[];
+}
+
+export function fetchWatchPresets(): Promise<{ presets: WatchPreset[] }> {
+  return adminFetch(`/v1/admin/watch-presets`);
+}
+
+export function putTargets(displayKey: string, targets: WatchTarget[]): Promise<unknown> {
+  const body = targets.map(({ target, rule_kind, rule_value, buy_all, channels, preset, note }) => ({ target, rule_kind: rule_kind || null, rule_value: rule_value ?? null, buy_all, channels, preset: preset ?? null, note: note ?? null }));
+  return adminFetch(`/v1/admin/watchlist/${encodeURIComponent(displayKey)}/targets`, {
+    method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ targets: body }),
+  });
+}
+
+export function applyPreset(displayKeys: string[], preset: string): Promise<{ cards: number; newly_watched: number }> {
+  return adminFetch(`/v1/admin/watchlist/apply-preset`, {
+    method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ display_keys: displayKeys, preset }),
+  });
+}
 
 export function watchSetTier(setCode: string, tier: string, intent: WatchIntent, note?: string, target?: BuyTarget): Promise<{ watched: number }> {
   return adminFetch(`/v1/admin/watchlist/bulk`, {

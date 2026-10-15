@@ -2,10 +2,14 @@ import { Fragment, createContext, useContext, useEffect, useMemo, useState } fro
 import WatchButton from "../components/WatchButton";
 import { CardMarketLinks } from "../components/MarketLinks";
 import { SetTimingSummary, TargetChips, tierOf } from "../components/BuyWindows";
+import { PresetBar } from "../components/WatchTargets";
+import { useSession } from "../lib/auth";
 import { SCORE_KINDS, fetchLiveListings, fetchScores, fetchSetWindows, setPrintStatus, type CardListing, type CardScore, type ScoreKind, type SetWindows } from "../lib/api";
 
 // Buy windows by set code, for the per-card target chips.
 const WindowsCtx = createContext<Map<string, SetWindows>>(new Map());
+// Cards ticked to apply a watchlist strategy to (signed in only).
+const PickCtx = createContext<{ on: boolean; picked: Set<string>; toggle: (keys: string[], on: boolean) => void }>({ on: false, picked: new Set(), toggle: () => {} });
 import { STANCE } from "../components/BuyingGuide";
 import type { PlaySummary } from "../lib/api";
 import { cardThumb } from "../lib/thumb";
@@ -291,9 +295,15 @@ function MoneyInput({ label, cents, onChange, title }: { label: string; cents: n
 
 function CardCell({ c }: { c: TrackedCard }) {
   const windows = useContext(WindowsCtx);
+  const pick = useContext(PickCtx);
   return (
     <td className="px-3 py-2">
       <div className="flex items-start gap-2 min-w-[18rem]">
+        {pick.on && (
+          <input type="checkbox" className="accent-indigo-500 mt-1 shrink-0" title="Select to apply a watchlist strategy"
+            checked={pick.picked.has(c.display_key)} onClick={(e) => e.stopPropagation()}
+            onChange={(e) => pick.toggle([c.display_key], e.target.checked)} />
+        )}
         {c.image_url ? (
           <img
             src={cardThumb(c.image_url)}
@@ -906,6 +916,16 @@ export default function TrackedPage() {
 
   // Buy windows: this set's (or every set's, on /tracked).
   const [windows, setWindows] = useState<Map<string, SetWindows>>(new Map());
+  const session = useSession();
+  const [picked, setPicked] = useState<Set<string>>(new Set());
+  const pick = useMemo(() => ({
+    on: !!session, picked,
+    toggle: (keys: string[], on: boolean) => setPicked((s) => {
+      const n = new Set(s);
+      keys.forEach((k) => (on ? n.add(k) : n.delete(k)));
+      return n;
+    }),
+  }), [session, picked]);
   const [winTick, setWinTick] = useState(0);
   useEffect(() => {
     const lang = code ? (code.startsWith("jp-") ? "ja" : "en") : undefined;
@@ -998,6 +1018,7 @@ export default function TrackedPage() {
 
   return (
     <WindowsCtx.Provider value={windows}>
+    <PickCtx.Provider value={pick}>
     <div>
       <div className="flex flex-wrap items-baseline justify-between gap-3 mb-4">
         <div>
@@ -1192,6 +1213,15 @@ export default function TrackedPage() {
       {error && <ErrorMsg msg={error} />}
       {!data && !error && <Spinner />}
 
+      {data && pick.on && (
+        <div className="mb-2">
+          <PresetBar keys={[...picked]} onClear={() => setPicked(new Set())}
+            extra={<button onClick={() => pick.toggle(rows.map((c) => c.display_key), true)} className="text-xs text-gray-400 hover:text-gray-200">Select all {rows.length} shown</button>} />
+          {picked.size === 0 && (
+            <p className="text-[11px] text-gray-600">Tick cards (or a whole group) to watch them with a strategy, e.g. an artist's commons as slabs only.</p>
+          )}
+        </div>
+      )}
       {data && (
         <div className="overflow-x-auto rounded-lg border border-gray-800">
           <table className="w-full text-sm">
@@ -1248,6 +1278,13 @@ export default function TrackedPage() {
                     {newGroup && (
                       <tr className="bg-gray-900/80">
                         <td colSpan={colCount} className="px-3 py-1.5 text-xs font-semibold text-gray-300">
+                          {pick.on && (() => {
+                            const keys = rows.filter((x) => groupKey(x, groupBy) === gk).map((x) => x.display_key);
+                            return (
+                              <input type="checkbox" className="accent-indigo-500 mr-2 align-middle" title="Select this group"
+                                checked={keys.every((k) => picked.has(k))} onChange={(e) => pick.toggle(keys, e.target.checked)} />
+                            );
+                          })()}
                           {gk}
                           {groupBy === "pokemon" && <RankBadge r={c.pokemon} what={gk} />}
                           {groupBy === "artist" && <RankBadge r={c.artist_rank} what={gk} />}
@@ -1336,6 +1373,7 @@ export default function TrackedPage() {
         (Fanatics hammer + buyer's premium; eBay price + shipping).
       </p>
     </div>
+    </PickCtx.Provider>
     </WindowsCtx.Provider>
   );
 }
