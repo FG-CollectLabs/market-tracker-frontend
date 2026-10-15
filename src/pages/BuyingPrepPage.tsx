@@ -1,6 +1,6 @@
 import { Fragment, useEffect, useState } from "react";
 import { Link } from "react-router-dom";
-import { deleteBidPlan, fetchBidPlans, saveBidPlan, type BidPlan, type BidStatus, type SinglePrep } from "../lib/api";
+import { deleteBidPlan, fetchBidPlans, saveBidPlan, type BidPlan, type BidStatus, type MakeTen, type PlanKind, type SinglePrep } from "../lib/api";
 import { useSession } from "../lib/auth";
 import { formatCents } from "../lib/roi";
 import { cardThumb } from "../lib/thumb";
@@ -25,7 +25,55 @@ function shiftDate(d: string, days: number): string {
 
 const dollars = (c?: number) => (c == null ? "" : String(Math.floor(c / 100)));
 
-function PlanRow({ p, premium, onChange, onRemove }: { p: BidPlan; premium: number; onChange: () => void; onRemove: () => void }) {
+const SCENARIO_LABEL: Record<string, string> = { release: "At release", now: "Now", projected_low: "Projected low" };
+
+// How the cost to make a 10 was worked out, and how it moves with the raw price.
+function CostBreakdown({ m }: { m: MakeTen }) {
+  const keep = 1 - m.sell_fee_pct;
+  return (
+    <div className="grid gap-4 md:grid-cols-2">
+      <div>
+        <div className="text-gray-200 font-medium mb-1">Cost to make a 10: {formatCents(m.breakeven_10_cents)}</div>
+        <table className="tabular-nums">
+          <tbody>
+            <tr><td className="pr-4">Raw (ungraded) price</td><td className="text-right text-gray-200">{formatCents(m.raw_cents)}</td></tr>
+            <tr><td className="pr-4">Grading fee ({m.route})</td><td className="text-right text-gray-200">{formatCents(m.grading_fee_cents)}</td></tr>
+            <tr><td className="pr-4">Shipping and insurance</td><td className="text-right text-gray-200">{formatCents(m.shipping_cents)}</td></tr>
+            <tr><td className="pr-4 text-gray-200">One submission</td><td className="text-right text-gray-100">{formatCents(m.submission_cents)}</td></tr>
+            <tr><td className="pr-4" title={m.gem_scope}>Gem rate (10 or better, {m.gem_source} pop)</td><td className="text-right text-gray-200">{Math.round(m.p10 * 100)}%</td></tr>
+            <tr><td className="pr-4">A miss ({m.miss_grade}) is worth</td><td className="text-right text-gray-200">{formatCents(m.miss_value_cents)} <span className="text-gray-500">({m.miss_value_source})</span></td></tr>
+            <tr><td className="pr-4">Lost on each miss</td><td className="text-right text-gray-200">{formatCents(m.loss_per_miss_cents)}</td></tr>
+            {m.sell_fee_pct > 0 && <tr><td className="pr-4">Selling fee</td><td className="text-right text-gray-200">{Math.round(m.sell_fee_pct * 100)}%</td></tr>}
+          </tbody>
+        </table>
+        <div className="text-gray-500 mt-1">
+          = ({formatCents(m.submission_cents)} − {Math.round(m.p_miss * 100)}% × {formatCents(Math.round(m.miss_value_cents * keep))}) ÷ {Math.round(m.p10 * 100)}%{m.sell_fee_pct > 0 ? ` ÷ ${keep.toFixed(2)}` : ""}
+        </div>
+      </div>
+      {m.scenarios.length > 0 && (
+        <div>
+          <div className="text-gray-200 font-medium mb-1">As the raw price moves</div>
+          <table className="tabular-nums">
+            <thead className="text-gray-500"><tr><th className="text-left font-normal pr-4" /><th className="text-right font-normal pr-4">Raw</th><th className="text-right font-normal pr-4">Submission</th><th className="text-right font-normal">Cost to make a 10</th></tr></thead>
+            <tbody>
+              {m.scenarios.map((sc) => (
+                <tr key={sc.label} title={sc.note}>
+                  <td className="pr-4">{SCENARIO_LABEL[sc.label] ?? sc.label}</td>
+                  <td className="text-right pr-4">{formatCents(sc.raw_cents)}</td>
+                  <td className="text-right pr-4">{formatCents(sc.submission_cents)}</td>
+                  <td className="text-right text-gray-100">{formatCents(sc.breakeven_10_cents)}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+          <div className="text-gray-500 mt-1">Same gem rate, fee and miss value; only the raw price changes. Release = its first two months; projected low = the release curve's bottom.</div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function PlanRow({ p, premium, kind, onChange, onRemove }: { p: BidPlan; premium: number; kind: PlanKind; onChange: () => void; onRemove: () => void }) {
   const d = p.deal;
   const [max, setMax] = useState(dollars(p.max_bid_cents));
   // Floor: prefilled with the suggested max until you set your own.
@@ -34,7 +82,8 @@ function PlanRow({ p, premium, onChange, onRemove }: { p: BidPlan; premium: numb
   const [won, setWon] = useState(dollars(p.won_cents));
   const [open, setOpen] = useState(false);
   const save = (patch: Parameters<typeof saveBidPlan>[0]) => saveBidPlan(patch).then(onChange).catch(() => undefined);
-  const base = { display_key: p.display_key, grade: p.grade, auction_date: p.auction_date };
+  const base = { display_key: p.display_key, grade: p.grade, auction_date: p.auction_date, kind };
+  const minBid = kind === "min_bid";
   const maxNum = Math.floor(Number(max) || 0);
   const closes = (d?.weeks ?? []).filter((w) => w.closed > 0);
   return (
@@ -62,21 +111,26 @@ function PlanRow({ p, premium, onChange, onRemove }: { p: BidPlan; premium: numb
         </td>
         <td className="py-2 pr-3 text-xs whitespace-nowrap">
           <div className="text-gray-200 tabular-nums">{d?.live_auctions ?? 0} closing <span className="text-gray-500">({d?.usual_fanatics_auctions_per_week?.toFixed(1) ?? "0"}/wk usual)</span></div>
-          {(d?.listings ?? []).map((l, i) => (
-            <div key={i}>
-              {l.url ? <a href={l.url} target="_blank" rel="noreferrer" className="text-indigo-300 hover:underline">auction {i + 1} ↗</a> : `auction ${i + 1}`}
-              <span className="text-gray-500"> bid {formatCents(l.price_cents)}</span>
+          {(d?.listings ?? []).length > 0 && (
+            <div className="text-gray-500 tabular-nums">
+              bids {formatCents(Math.min(...d!.listings!.map((l) => l.price_cents)))}–{formatCents(Math.max(...d!.listings!.map((l) => l.price_cents)))}
             </div>
-          ))}
+          )}
+          {d?.links && (
+            <a href={d.links.fanatics_auctions} target="_blank" rel="noreferrer" className="text-indigo-300 hover:underline"
+              title={d.links.weekly_auction_id ? "This week's Fanatics weekly auction, filtered to this card" : "Fanatics weekly auctions, searched for this card"}>
+              {d.links.weekly_auction_id ? "this week's auction ↗" : "weekly auctions ↗"}
+            </a>
+          )}
         </td>
-        <td className="py-2 pr-3 text-xs">
+        {!minBid && <td className="py-2 pr-3 text-xs">
           <label className="flex items-center gap-1 text-gray-400" title="The price you'd take every copy at if nobody else bids (prefilled with the suggested max)">$
             <input type="number" min={0} step={1} value={floor} onChange={(e) => setFloor(e.target.value)}
               onBlur={() => { const v = Math.floor(Number(floor) || 0) * 100; if (v !== (p.floor_bid_cents ?? -1)) save({ ...base, floor_bid_cents: v }); }}
               className={`w-16 bg-gray-900 border border-gray-700 rounded px-1.5 py-0.5 font-mono print:border-0 ${p.floor_bid_cents == null ? "text-gray-500" : "text-gray-100"}`} />
           </label>
           {p.floor_bid_cents == null && <div className="text-[10px] text-gray-600 mt-0.5">suggested</div>}
-        </td>
+        </td>}
         <td className="py-2 pr-3 text-xs tabular-nums whitespace-nowrap" title={d?.auction_low ? `Cheapest of ${d.auction_low.auctions} Fanatics auction closes in 180 days` : undefined}>
           {d?.auction_low ? (
             <>
@@ -89,10 +143,25 @@ function PlanRow({ p, premium, onChange, onRemove }: { p: BidPlan; premium: numb
         <td className="py-2 pr-3 text-xs tabular-nums whitespace-nowrap">
           <div className="text-gray-200" title="Cheapest live Fanatics Buy Now">{d?.fanatics_bin_low_cents != null ? `${formatCents(d.fanatics_bin_low_cents)} ask` : <span className="text-gray-600">none listed</span>}</div>
           {d?.fanatics_bin_sold_median_cents != null && <div className="text-gray-500">{formatCents(d.fanatics_bin_sold_median_cents)} sold ({d.fanatics_bin_sold_n})</div>}
+          {d?.value && (
+            <div className="text-gray-400 mt-0.5" title={d.value.basis?.note}>
+              market {formatCents(d.value.cents)} <span className="text-gray-600">({d.value.source})</span>
+            </div>
+          )}
+          <div className="text-gray-500" title={p.grade.startsWith("cgc") ? "PriceCharting doesn't price CGC slabs separately" : undefined}>
+            PC {d?.value?.basis?.pricecharting_cents != null ? formatCents(d.value.basis.pricecharting_cents) : p.grade.startsWith("cgc") ? "n/a for CGC" : "—"}
+          </div>
         </td>
         <td className="py-2 pr-3 text-xs tabular-nums whitespace-nowrap" title="What it costs to make one by grading (for 10s: every miss counted as a 9)">
           {d?.breakeven_cents != null ? <span className="text-gray-200">{formatCents(d.breakeven_cents)}</span> : <span className="text-gray-600">—</span>}
-          {d?.gem_rate_source && <div className="text-gray-500">{d.gem_rate_source} pop</div>}
+          {d?.make_ten ? (
+            <>
+              <div className="text-gray-500">{Math.round(d.make_ten.p10 * 100)}% gem · raw {formatCents(d.make_ten.raw_cents)}</div>
+              {d.make_ten.scenarios.length > 1 && (
+                <div className="text-gray-500">{d.make_ten.scenarios.map((sc) => formatCents(sc.breakeven_10_cents)).join(" → ")}</div>
+              )}
+            </>
+          ) : d?.gem_rate_source && <div className="text-gray-500">{d.gem_rate_source} pop</div>}
         </td>
         <td className="py-2 pr-3 text-xs tabular-nums whitespace-nowrap" title={d?.edge_calc?.why.join("\n")}>
           <div className="text-green-400 font-medium">{formatCents(d?.snipe_hammer_cents)}</div>
@@ -129,8 +198,9 @@ function PlanRow({ p, premium, onChange, onRemove }: { p: BidPlan; premium: numb
       {open && (
         <tr>
           <td />
-          <td colSpan={11} className="pb-3 text-xs text-gray-400 space-y-2">
+          <td colSpan={minBid ? 10 : 11} className="pb-3 text-xs text-gray-400 space-y-2">
             <MarketLinkRow links={d?.links} />
+            {d?.make_ten && <CostBreakdown m={d.make_ten} />}
             {closes.length > 0 ? (
               <table className="tabular-nums">
                 <thead className="text-gray-500"><tr><th className="text-left font-normal pr-4">Week of</th><th className="text-right font-normal pr-4">Closed</th><th className="text-right font-normal pr-4">Avg bid</th><th className="text-right font-normal">Avg all-in</th></tr></thead>
@@ -153,7 +223,8 @@ function PlanRow({ p, premium, onChange, onRemove }: { p: BidPlan; premium: numb
   );
 }
 
-function AuctionsPrep() {
+function AuctionsPrep({ kind }: { kind: "auction" | "min_bid" }) {
+  const minBid = kind === "min_bid";
   const session = useSession();
   const [date, setDate] = useState<string | undefined>(undefined);
   const [data, setData] = useState<Awaited<ReturnType<typeof fetchBidPlans>> | null>(null);
@@ -161,7 +232,7 @@ function AuctionsPrep() {
   const [tick, setTick] = useState(0);
   useEffect(() => {
     if (!session) return;
-    fetchBidPlans(date).then((r) => { setData(r); setError(null); }).catch((e: Error) => setError(e.message));
+    fetchBidPlans(date, kind).then((r) => { setData(r); setError(null); }).catch((e: Error) => setError(e.message));
   }, [session, date, tick]);
   if (!session) return <p className="text-sm text-gray-400">Sign in with Google to see your buying prep.</p>;
   if (error) return <ErrorMsg msg={error} />;
@@ -173,7 +244,9 @@ function AuctionsPrep() {
       <div className="flex flex-wrap items-end justify-between gap-3">
         <div>
           <p className="text-sm text-gray-500 max-w-3xl">
-            Fanatics weekly auctions you've decided to bid on, closing Sunday {day}. Add cards from Deals → This week's auctions (open a row, "Add to Sunday's bids").
+            {minBid
+              ? <>Min-bid auctions closing Sunday {day}: cheap cards worth bidding on early at a small max ($5–6), hoping nobody wants to pay more. Add them from Deals → This week's auctions (open a row, "Min-bid (bid early)").</>
+              : <>Fanatics weekly auctions you've decided to bid on, closing Sunday {day}, with a floor you'll bid near the close. Add cards from Deals → This week's auctions (open a row, "Add to Sunday's bids").</>}
             Max bids are whole dollars: Fanatics bids go in $1 steps. Suggested max clears your target margin on the resale; hover it for the working.
           </p>
         </div>
@@ -187,14 +260,14 @@ function AuctionsPrep() {
       </div>
       <section className="rounded-lg border border-gray-800 bg-gray-900/40 p-3">
         <div className="flex flex-wrap items-baseline justify-between gap-2 mb-2">
-          <h2 className="text-sm font-semibold text-gray-100">Fanatics weekly auctions · {data.plans.length} card{data.plans.length === 1 ? "" : "s"}</h2>
+          <h2 className="text-sm font-semibold text-gray-100">{minBid ? "Min-bid auctions" : "Fanatics weekly auctions"} · {data.plans.length} card{data.plans.length === 1 ? "" : "s"}</h2>
           <div className="text-xs text-gray-400 tabular-nums">
             If every max hits: <span className="text-gray-100">{formatCents(data.totals.max_bids_cents)}</span> in bids,{" "}
             <span className="text-gray-100">{formatCents(data.totals.max_all_in_cents)}</span> all-in ({Math.round(data.buyers_premium_pct * 100)}% buyer's premium)
           </div>
         </div>
         {data.plans.length === 0 ? (
-          <p className="text-sm text-gray-500">Nothing on this Sunday's list yet.</p>
+          <p className="text-sm text-gray-500">Nothing on this Sunday's {minBid ? "min-bid " : ""}list yet.</p>
         ) : (
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
@@ -203,7 +276,7 @@ function AuctionsPrep() {
                   <th className="text-left font-medium py-1" colSpan={2}>Card</th>
                   <th className="text-left font-medium py-1 pr-3" title="The most recent week it closed: average winning bid, copies, all-in">Last week</th>
                   <th className="text-left font-medium py-1 pr-3">Up this week</th>
-                  <th className="text-left font-medium py-1 pr-3" title="The price you'd take every copy at if nobody else bids">Floor</th>
+                  {!minBid && <th className="text-left font-medium py-1 pr-3" title="The price you'd take every copy at if nobody else bids">Floor</th>}
                   <th className="text-left font-medium py-1 pr-3" title="Cheapest Fanatics auction close, 180 days">Auction low</th>
                   <th className="text-left font-medium py-1 pr-3" title="Cheapest live Fanatics Buy Now, and the Buy Now sold median">Fanatics BIN</th>
                   <th className="text-left font-medium py-1 pr-3" title="Cost to obtain one by grading it yourself">Cost to grade</th>
@@ -215,7 +288,7 @@ function AuctionsPrep() {
               </thead>
               <tbody className="divide-y divide-gray-800/70">
                 {data.plans.map((p) => (
-                  <PlanRow key={p.id + p.updated_at} p={p} premium={data.buyers_premium_pct} onChange={refresh}
+                  <PlanRow key={p.id + p.updated_at} p={p} premium={data.buyers_premium_pct} kind={kind} onChange={refresh}
                     onRemove={() => deleteBidPlan(p.id).then(refresh).catch(() => undefined)} />
                 ))}
               </tbody>
@@ -358,18 +431,18 @@ function SinglesPrep() {
 
 export default function BuyingPrepPage() {
   const session = useSession();
-  const [tab, setTab] = useState<"auction" | "single">("auction");
+  const [tab, setTab] = useState<PlanKind>("auction");
   if (!session) return <p className="text-sm text-gray-400">Sign in with Google to see your buying prep.</p>;
   return (
     <div className="space-y-4">
       <h1 className="text-xl font-semibold text-white">Buying prep</h1>
       <nav className="flex gap-1 border-b border-gray-800 text-sm print:hidden">
-        {([["auction", "Fanatics auctions"], ["single", "Singles / card show"]] as const).map(([k, label]) => (
+        {([["auction", "Fanatics auctions"], ["min_bid", "Fanatics min-bid"], ["single", "Singles / card show"]] as const).map(([k, label]) => (
           <button key={k} onClick={() => setTab(k)}
             className={`px-3 py-1.5 -mb-px border-b-2 ${tab === k ? "border-indigo-500 text-white" : "border-transparent text-gray-400 hover:text-gray-200"}`}>{label}</button>
         ))}
       </nav>
-      {tab === "auction" ? <AuctionsPrep /> : <SinglesPrep />}
+      {tab === "single" ? <SinglesPrep /> : <AuctionsPrep key={tab} kind={tab} />}
     </div>
   );
 }
