@@ -1,6 +1,7 @@
 import { Fragment, useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
-import { fetchAuctionDeals, saveBidPlan, type AuctionDeal, type EdgeCalc } from "../lib/api";
+import { fetchAuctionDeals, fetchBidPlans, saveBidPlan, type AuctionDeal, type EdgeCalc, type PlanKind } from "../lib/api";
+import { onWatchChange, watchedCards } from "./WatchButton";
 import { useSession } from "../lib/auth";
 import { MarketLinkRow } from "./MarketLinks";
 import { formatCents } from "../lib/roi";
@@ -22,6 +23,70 @@ const GRADE_LABEL: Record<string, string> = {
 const SOURCE_LABEL: Record<string, string> = { fanatics: "Fanatics", ebay: "eBay" };
 
 type SortKey = "pressure" | "edge" | "live";
+
+// What's already in this Sunday's Buying prep (and the watchlist), to mark
+// rows: by card, with each list's grades and max bids.
+type PrepKind = "auction" | "min_bid" | "lowball";
+type PrepEntry = { kind: PrepKind; grade: string; max?: number; origin?: string; status: string };
+const PREP: Record<PrepKind | "watch", { label: string; chip: string; edge: string }> = {
+  auction: { label: "Sunday's bids", chip: "bg-indigo-900/70 text-indigo-200 border-indigo-700/60", edge: "border-l-indigo-500" },
+  min_bid: { label: "Min-bid", chip: "bg-amber-900/60 text-amber-200 border-amber-700/60", edge: "border-l-amber-500" },
+  lowball: { label: "Lowball", chip: "bg-teal-900/60 text-teal-200 border-teal-700/60", edge: "border-l-teal-500" },
+  watch: { label: "Watchlist", chip: "bg-yellow-900/40 text-yellow-200 border-yellow-700/50", edge: "border-l-yellow-500" },
+};
+
+function usePrepMarks() {
+  const session = useSession();
+  const [plans, setPlans] = useState<Map<string, PrepEntry[]>>(new Map());
+  const [watched, setWatched] = useState<Set<string>>(new Set());
+  const [day, setDay] = useState<string | null>(null);
+  const [tick, setTick] = useState(0);
+  useEffect(() => {
+    if (!session) return;
+    let live = true;
+    Promise.all((["auction", "min_bid", "lowball"] as PlanKind[]).map((k) => fetchBidPlans(undefined, k).catch(() => null))).then((rs) => {
+      if (!live) return;
+      const m = new Map<string, PrepEntry[]>();
+      for (const r of rs) {
+        if (!r) continue;
+        setDay(r.auction_date);
+        for (const p of r.plans) {
+          if (p.status === "skipped") continue;
+          const e: PrepEntry = { kind: r.kind as PrepKind, grade: p.grade, max: p.max_bid_cents, origin: p.origin, status: p.status };
+          m.set(p.display_key, [...(m.get(p.display_key) ?? []), e]);
+        }
+      }
+      setPlans(m);
+    });
+    return () => { live = false; };
+  }, [session, tick]);
+  useEffect(() => {
+    if (!session) return;
+    let live = true;
+    const load = () => watchedCards().then((m) => live && setWatched(new Set(m.keys())));
+    load();
+    const off = onWatchChange(load);
+    return () => { live = false; off(); };
+  }, [session]);
+  return { plans, watched, day, reload: () => setTick((t) => t + 1), on: !!session };
+}
+
+// Tags under the card name: the lists it's on (grade shown when it differs
+// from the row's).
+function PrepTags({ entries, watched, grade }: { entries: PrepEntry[]; watched: boolean; grade: string }) {
+  if (!entries.length && !watched) return null;
+  return (
+    <div className="mt-0.5 flex flex-wrap gap-1">
+      {entries.map((e, i) => (
+        <span key={i} className={`px-1 rounded border text-[10px] leading-4 ${PREP[e.kind].chip} ${e.grade !== grade ? "opacity-70" : ""}`}
+          title={`On this Sunday's ${PREP[e.kind].label} list${e.origin === "auto" ? " (added by auto-prep)" : ""} · ${e.status}${e.max != null ? ` · your max ${formatCents(e.max)}` : " · no max yet"}`}>
+          {PREP[e.kind].label}{e.grade !== grade ? ` · ${GRADE_LABEL[e.grade] ?? e.grade.toUpperCase().replace("-", " ")}` : ""}{e.max != null ? ` · ${formatCents(e.max)}` : ""}{e.origin === "auto" ? " · auto" : ""}
+        </span>
+      ))}
+      {watched && <span className={`px-1 rounded border text-[10px] leading-4 ${PREP.watch.chip}`} title="On your watchlist">★ Watchlist</span>}
+    </div>
+  );
+}
 
 function pct(x: number | undefined, digits = 0): string {
   if (x == null) return "—";
@@ -133,11 +198,12 @@ function ResaleWorking({ e }: { e: EdgeCalc }) {
 
 // Put this auction on the bid list for the coming Sunday, max bid prefilled
 // with the suggestion (whole dollars: Fanatics bids in $1 steps).
-function AddToBidList({ d }: { d: AuctionDeal }) {
+function AddToBidList({ d, entries, onSaved }: { d: AuctionDeal; entries: PrepEntry[]; onSaved: () => void }) {
   const session = useSession();
   const [max, setMax] = useState(d.snipe_hammer_cents != null ? Math.floor(d.snipe_hammer_cents / 100) : 0);
   const [note, setNote] = useState("");
-  const [kind, setKind] = useState<"auction" | "min_bid">("auction");
+  const [kind, setKind] = useState<PrepKind>("auction");
+  const already = entries.filter((e) => e.grade === d.grade);
   const [state, setState] = useState<"idle" | "busy" | "done" | "error">("idle");
   const [msg, setMsg] = useState("");
   if (!session) return <div className="text-gray-500">Sign in to add it to your bid list.</div>;
@@ -146,15 +212,19 @@ function AddToBidList({ d }: { d: AuctionDeal }) {
       ev.preventDefault();
       setState("busy");
       saveBidPlan({ display_key: d.display_key, grade: d.grade, max_bid_cents: max * 100, note: note || undefined, kind })
-        .then((r) => { setState("done"); setMsg(`on the ${r.auction_date} ${kind === "min_bid" ? "min-bid " : ""}list`); })
+        .then((r) => { setState("done"); setMsg(`on the ${r.auction_date} ${PREP[kind].label} list`); onSaved(); })
         .catch((e: Error) => { setState("error"); setMsg(e.message); });
     }}>
       <span className="text-gray-200 font-medium">Bid list</span>
-      <select value={kind} onChange={(e) => { const k = e.target.value as "auction" | "min_bid"; setKind(k); if (k === "min_bid") setMax(Math.min(max, 6)); }}
+      {already.length > 0 && (
+        <span className="text-indigo-200">Already on {already.map((e) => `${PREP[e.kind].label}${e.max != null ? ` (max ${formatCents(e.max)})` : ""}`).join(", ")}:</span>
+      )}
+      <select value={kind} onChange={(e) => { const k = e.target.value as PrepKind; setKind(k); if (k === "min_bid") setMax(Math.min(max, 6)); }}
         className="bg-gray-900 border border-gray-700 rounded px-1 py-0.5 text-gray-200"
         title="Sunday's bids: set a floor and bid near the close. Min-bid: cheap cards bid early at a small max, hoping nobody pays more.">
         <option value="auction">Sunday's bids (bid late)</option>
         <option value="min_bid">Min-bid (bid early)</option>
+        <option value="lowball">Lowball (bid late)</option>
       </select>
       <label className="flex items-center gap-1">max bid $
         <input type="number" min={0} step={1} value={max} onChange={(e) => setMax(Math.max(0, Math.floor(Number(e.target.value) || 0)))}
@@ -172,12 +242,12 @@ function AddToBidList({ d }: { d: AuctionDeal }) {
   );
 }
 
-function Detail({ d }: { d: AuctionDeal }) {
+function Detail({ d, entries, onSaved }: { d: AuctionDeal; entries: PrepEntry[]; onSaved: () => void }) {
   return (
     <div className="grid gap-4 md:grid-cols-3 text-xs text-gray-400 p-3 bg-gray-950/60">
       <div className="md:col-span-3 space-y-2">
         <MarketLinkRow links={d.links} />
-        <AddToBidList d={d} />
+        <AddToBidList d={d} entries={entries} onSaved={onSaved} />
       </div>
       {d.edge_calc && <div className="md:col-span-2"><EdgeWorking e={d.edge_calc} /></div>}
       {d.edge_calc && <ResaleWorking e={d.edge_calc} />}
@@ -263,6 +333,8 @@ export default function AuctionDealsTab({ lang }: { lang: "" | "en" | "ja" }) {
   const [error, setError] = useState<string | null>(null);
   const [sort, setSort] = useState<SortKey>("pressure");
   const [dumpsOnly, setDumpsOnly] = useState(false);
+  const [prepFilter, setPrepFilter] = useState<"" | "in" | "out">("");
+  const marks = usePrepMarks();
   const [open, setOpen] = useState<string | null>(null);
   const [margin, setMargin] = useState<number | null>(null);
 
@@ -279,10 +351,11 @@ export default function AuctionDealsTab({ lang }: { lang: "" | "en" | "ja" }) {
 
   const shown = useMemo(() => {
     if (!rows) return [];
-    const xs = rows.filter((d) => !dumpsOnly || (d.pressure ?? 0) >= 2);
+    const inPrep = (d: AuctionDeal) => (marks.plans.get(d.display_key) ?? []).some((e) => e.grade === d.grade);
+    const xs = rows.filter((d) => (!dumpsOnly || (d.pressure ?? 0) >= 2) && (prepFilter === "" || (prepFilter === "in") === inPrep(d)));
     const key = (d: AuctionDeal) => (sort === "pressure" ? d.pressure ?? 0 : sort === "edge" ? d.edge_calc?.adjusted_pct ?? -9 : d.live_auctions);
     return [...xs].sort((a, b) => key(b) - key(a));
-  }, [rows, sort, dumpsOnly]);
+  }, [rows, sort, dumpsOnly, prepFilter, marks.plans]);
 
   return (
     <div className="space-y-3">
@@ -304,7 +377,23 @@ export default function AuctionDealsTab({ lang }: { lang: "" | "en" | "ja" }) {
           <input type="checkbox" checked={dumpsOnly} onChange={(e) => setDumpsOnly(e.target.checked)} className="accent-indigo-500" />
           Heavy or dumping only (2×+)
         </label>
+        {marks.on && (
+          <select value={prepFilter} onChange={(e) => setPrepFilter(e.target.value as "" | "in" | "out")}
+            className="bg-gray-900 border border-gray-700 rounded px-2 py-1 text-gray-200" title={`Buying prep for Sunday ${marks.day ?? ""}`}>
+            <option value="">In prep or not</option>
+            <option value="out">Not in this Sunday's prep</option>
+            <option value="in">In this Sunday's prep</option>
+          </select>
+        )}
         {rows && <span className="text-gray-500">{shown.length} of {rows.length}</span>}
+        {marks.on && (
+          <span className="flex flex-wrap items-center gap-1 text-[11px] text-gray-500">
+            {(["auction", "min_bid", "lowball", "watch"] as const).map((k) => (
+              <span key={k} className={`px-1 rounded border ${PREP[k].chip}`}>{k === "watch" ? "★ " : ""}{PREP[k].label}</span>
+            ))}
+            <span>= on that list{marks.day ? ` (Sunday ${marks.day})` : ""}; faded = a different grade of the card</span>
+          </span>
+        )}
       </div>
       {error && <ErrorMsg msg={error} />}
       {!rows && !error && <Spinner />}
@@ -330,9 +419,13 @@ export default function AuctionDealsTab({ lang }: { lang: "" | "en" | "ja" }) {
               {shown.map((d) => {
                 const id = `${d.display_key}|${d.grade}`;
                 const first = d.sources.map((s) => s.first_ends_at).filter(Boolean).sort()[0];
+                const entries = marks.plans.get(d.display_key) ?? [];
+                const same = entries.find((e) => e.grade === d.grade);
+                const watched = marks.watched.has(d.display_key);
+                const edge = same ? `border-l-4 ${PREP[same.kind].edge} bg-indigo-950/20` : entries.length ? "border-l-4 border-l-gray-600" : watched ? `border-l-4 ${PREP.watch.edge}` : "border-l-4 border-l-transparent";
                 return (
                   <Fragment key={id}>
-                    <tr className="align-top hover:bg-gray-900/40 cursor-pointer" onClick={() => setOpen(open === id ? null : id)}>
+                    <tr className={`align-top hover:bg-gray-900/40 cursor-pointer ${edge}`} onClick={() => setOpen(open === id ? null : id)}>
                       <td className="pl-3 py-2 w-12">
                         {d.image_url ? (
                           <img src={cardThumb(d.image_url)} alt={d.name} loading="lazy" className="w-10 h-14 object-cover rounded-sm bg-gray-800" />
@@ -347,6 +440,7 @@ export default function AuctionDealsTab({ lang }: { lang: "" | "en" | "ja" }) {
                           <span className="ml-1.5 px-1 rounded bg-gray-800 text-gray-300">{GRADE_LABEL[d.grade] ?? d.grade}</span>
                           {d.months_since_release != null && <span className="ml-1.5">month {d.months_since_release}</span>}
                         </div>
+                        <PrepTags entries={entries} watched={watched} grade={d.grade} />
                       </td>
                       <td className="px-3 py-2 text-xs text-gray-400 whitespace-nowrap">
                         {d.sources.map((s) => (
@@ -397,7 +491,7 @@ export default function AuctionDealsTab({ lang }: { lang: "" | "en" | "ja" }) {
                     </tr>
                     {open === id && (
                       <tr>
-                        <td colSpan={11} className="p-0"><Detail d={d} /></td>
+                        <td colSpan={11} className="p-0"><Detail d={d} entries={entries} onSaved={marks.reload} /></td>
                       </tr>
                     )}
                   </Fragment>
