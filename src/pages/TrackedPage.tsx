@@ -1,8 +1,8 @@
 import { Fragment, createContext, useContext, useEffect, useMemo, useState } from "react";
 import WatchButton from "../components/WatchButton";
 import { CardMarketLinks } from "../components/MarketLinks";
-import { SetTimingSummary, TargetChips, tierOf } from "../components/BuyWindows";
-import { PresetBar } from "../components/WatchTargets";
+import { PhaseChip, SetTimingSummary, TargetChips, cardWindow, phaseOfWindow, tierOf } from "../components/BuyWindows";
+import { CardPrepButtons, PresetBar } from "../components/WatchTargets";
 import { CardGlance, WeeklyVsPc } from "../components/CardGlance";
 import { useSession } from "../lib/auth";
 import { SCORE_KINDS, fetchLiveListings, fetchScores, fetchSetWindows, setPrintStatus, type CardListing, type CardScore, type ScoreKind, type SetWindows } from "../lib/api";
@@ -342,6 +342,11 @@ function CardCell({ c }: { c: TrackedCard }) {
         <span className="text-gray-100">{c.name}</span>
         <WatchButton displayKey={c.display_key} compact />
         <TargetChips displayKey={c.display_key} set={windows.get(c.set_code)} tier={tierOf(c.rarity, c.number, c.set_code)} />
+        <CardPrepButtons displayKey={c.display_key} />
+        {(() => {
+          const w = cardWindow(windows.get(c.set_code), "raw", tierOf(c.rarity, c.number, c.set_code));
+          return <PhaseChip phase={phaseOfWindow(w)} title={w ? `${w.headline}` : undefined} />;
+        })()}
         {c.finish === "rh" && (
           <span className="text-[10px] px-1 rounded bg-cyan-900/50 text-cyan-300">RH</span>
         )}

@@ -3,7 +3,7 @@ import { Link } from "react-router-dom";
 import { BUY_TARGETS, fetchWatchlist, type BuyTarget, type TargetHit, type WatchItem, type WatchIntent, type WatchTarget } from "../lib/api";
 import { useSession } from "../lib/auth";
 import { STANCE } from "../components/BuyingGuide";
-import { PresetBar, TARGET_LABEL, TargetEditor, usePresets } from "../components/WatchTargets";
+import { CardPrepButtons, PresetBar, TARGET_LABEL, TargetEditor, usePresets } from "../components/WatchTargets";
 import { cardThumb } from "../lib/thumb";
 import { Spinner, ErrorMsg } from "../components/Spinner";
 
@@ -236,6 +236,7 @@ export default function WatchlistPage() {
                       <td className="py-1.5 pr-2">
                         <Link to={`/cards/${encodeURIComponent(it.display_key)}`} className="text-gray-100 hover:text-indigo-300 print:text-black">{it.name}</Link>
                         <div className="text-gray-500">#{it.number} · {INTENT_LABEL[it.intent]}</div>
+                        <div className="mt-0.5"><CardPrepButtons displayKey={it.display_key} /></div>
                         {it.note && <div className="text-gray-400 italic">{it.note}</div>}
                       </td>
                       <td className="py-1.5 pr-2 min-w-[16rem]">

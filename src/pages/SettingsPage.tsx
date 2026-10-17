@@ -204,17 +204,17 @@ export default function SettingsPage() {
               <Field label="Near mint from grade" hint="Lowest grade the min-bid and lowball lists take (up to PSA 8 / CGC 8.5).">
                 {num(a.nm_min_grade, (v) => ap({ nm_min_grade: v }), 0.5)}
               </Field>
-              <Field label="Min-bid: raw price from / to" hint="Cards whose raw price is in this range.">
-                <Money cents={a.min_bid_raw_min_cents} onChange={(c) => ap({ min_bid_raw_min_cents: c })} /> – <Money cents={a.min_bid_raw_max_cents} onChange={(c) => ap({ min_bid_raw_max_cents: c })} />
+              <Field label="Low grades: raw price from / to" hint="Near-mint low-grade slabs of cards whose raw price is in this range.">
+                <Money cents={a.low_raw_min_cents} onChange={(c) => ap({ low_raw_min_cents: c })} /> – <Money cents={a.low_raw_max_cents} onChange={(c) => ap({ low_raw_max_cents: c })} />
               </Field>
-              <Field label="Min-bid: pay at most" hint="All-in (with buyer's premium), as a share of the raw price.">
-                <Pct value={a.min_bid_pct} onChange={(v) => ap({ min_bid_pct: v })} /><span className="text-gray-500"> of raw</span>
+              <Field label="Low grades: pay at most" hint="All-in (with buyer's premium), as a share of the raw price.">
+                <Pct value={a.low_pct} onChange={(v) => ap({ low_pct: v })} /><span className="text-gray-500"> of raw</span>
               </Field>
-              <Field label="Lowball: raw price from / to" hint="Above the min-bid range.">
-                <Money cents={a.lowball_raw_min_cents} onChange={(c) => ap({ lowball_raw_min_cents: c })} /> – <Money cents={a.lowball_raw_max_cents} onChange={(c) => ap({ lowball_raw_max_cents: c })} />
+              <Field label="Bid early when the max is at most" hint="Cheap auctions where $1 decides it go on the early list (bid now); the rest are bid late.">
+                <Money cents={a.early_max_cents} onChange={(c) => ap({ early_max_cents: c })} />
               </Field>
-              <Field label="Lowball: pay at most" hint="All-in, as a share of the raw price.">
-                <Pct value={a.lowball_pct} onChange={(v) => ap({ lowball_pct: v })} /><span className="text-gray-500"> of raw</span>
+              <Field label="…or the current bid is within" hint="Also bid early when the current bid is already this close to your max.">
+                <Money cents={a.early_gap_cents} onChange={(c) => ap({ early_gap_cents: c })} /><span className="text-gray-500"> of the max</span>
               </Field>
             </section>
           </>

@@ -1106,6 +1106,7 @@ export interface WatchItem {
   set_release_date?: string;
   image_url?: string;
   intent: WatchIntent;
+  auto_fanatics?: boolean; // auto-prep: any live Fanatics copy goes to Buying prep
   targets?: BuyTarget[];
   note?: string;
   added_by?: string;
@@ -1118,6 +1119,12 @@ export interface WatchItem {
 
 export function fetchWatchlist(keysOnly = false): Promise<{ count: number; items: WatchItem[] }> {
   return adminFetch(`/v1/admin/watchlist${keysOnly ? "?keys_only=1" : ""}`);
+}
+
+export function setAutoFanatics(displayKey: string, on: boolean): Promise<unknown> {
+  return adminFetch(`/v1/admin/watchlist/${encodeURIComponent(displayKey)}`, {
+    method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ auto_fanatics: on }),
+  });
 }
 
 export function watchCard(displayKey: string, intent: WatchIntent, note?: string): Promise<unknown> {
@@ -1340,6 +1347,7 @@ export interface AuctionDeal {
   advice?: { signal: "sell_now" | "hold"; hold_months: number; reason: string };
   projection_confidence?: "low" | "medium" | "high";
   auction_discount?: AuctionDiscount;
+  timing?: { phase: "hype" | "post_hype" | "out_of_print" | "recovering" | "unknown"; phase_label: string; raw_action?: string; grade_action?: string; headline?: string };
   flags: string[];
 }
 
@@ -1640,12 +1648,11 @@ export interface AutoPrepRules {
   auction_discount_min: number;
   require_window: boolean;
   nm_min_grade: number;
-  min_bid_raw_min_cents: number;
-  min_bid_raw_max_cents: number;
-  min_bid_pct: number;
-  lowball_raw_min_cents: number;
-  lowball_raw_max_cents: number;
-  lowball_pct: number;
+  low_raw_min_cents: number;
+  low_raw_max_cents: number;
+  low_pct: number;
+  early_max_cents: number; // max bid at or under this: bid early
+  early_gap_cents: number; // or the current bid within this of the max
 }
 
 export interface AutoPrepResult {
