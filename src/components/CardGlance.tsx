@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import {
-  fetchCardAnalysis, fetchCardHistory,
-  type CardAnalysis, type CardHistory, type EVWorking, type GradingEV, type MarketValue, type PcHistoryWeek,
+  fetchCardAnalysis, fetchCardHistory, fetchPriceSources,
+  type CardAnalysis, type CardHistory, type EVWorking, type GradingEV, type MarketValue, type PcHistoryWeek, type PriceReading,
 } from "../lib/api";
 import { formatCents } from "../lib/roi";
 
@@ -133,6 +133,73 @@ function Working({ ev, w }: { ev: GradingEV; w: EVWorking }) {
   );
 }
 
+const SOURCE_LABEL: Record<string, string> = { pokemonpricetracker: "PokemonPriceTracker", poketrace: "PokeTrace" };
+const CHANNEL_LABEL: Record<string, string> = { tcgplayer: "TCGplayer", ebay: "eBay sold", sold: "Sold (eBay + Fanatics)", cardmarket: "Cardmarket" };
+// The one number per source / channel / grade shown first; the rest on hover.
+const HEADLINE = ["median_30d", "median", "market", "avg_30d", "smart_market", "avg", "median_7d", "avg_7d", "low"];
+const METRIC_LABEL: Record<string, string> = {
+  market: "market", low: "lowest listing", avg: "average", median: "median", median_7d: "7-day median", median_30d: "30-day median",
+  avg_7d: "7-day average", avg_30d: "30-day average", smart_market: "smart market",
+};
+
+// Other sources' readings for each grade, beside the value we use.
+function OtherSources({ displayKey, a }: { displayKey: string; a: CardAnalysis }) {
+  const [rs, setRs] = useState<PriceReading[] | null>(null);
+  useEffect(() => {
+    fetchPriceSources(displayKey).then((r) => setRs(r.readings)).catch(() => setRs([]));
+  }, [displayKey]);
+  if (!rs || rs.length === 0) return null;
+  const groups = new Map<string, PriceReading[]>();
+  for (const r of rs) {
+    const k = `${r.grade}|${r.source}|${r.channel}`;
+    groups.set(k, [...(groups.get(k) ?? []), r]);
+  }
+  const order = (g: string) => { const i = GRADE_ROWS.findIndex((x) => x.key === g); return i < 0 ? 99 : i; };
+  const rows = [...groups.entries()].map(([k, xs]) => {
+    const [grade, source, channel] = k.split("|");
+    const head = [...xs].sort((x, y) => HEADLINE.indexOf(x.metric) - HEADLINE.indexOf(y.metric))[0];
+    return { grade, source, channel, head, xs };
+  }).sort((x, y) => order(x.grade) - order(y.grade) || x.grade.localeCompare(y.grade) || x.source.localeCompare(y.source));
+  const ours = (g: string) => a.grades.find((x) => x.grade === g)?.market?.cents;
+  return (
+    <div>
+      <h3 className="text-xs font-semibold text-gray-300 mb-1">Other sources</h3>
+      <table className="w-full text-xs tabular-nums">
+        <thead className="text-gray-500">
+          <tr>
+            <th className="text-left py-1 pr-2 font-medium">Grade</th>
+            <th className="text-left py-1 pr-2 font-medium">Source</th>
+            <th className="text-right py-1 pr-2 font-medium">Price</th>
+            <th className="text-right py-1 pr-2 font-medium" title="Against the value used (Prices above)">vs ours</th>
+            <th className="text-right py-1 font-medium">Read</th>
+          </tr>
+        </thead>
+        <tbody className="divide-y divide-gray-800/70 text-gray-300">
+          {rows.map(({ grade, source, channel, head, xs }) => {
+            const o = ours(grade);
+            const d = o ? head.price_cents / o - 1 : null;
+            return (
+              <tr key={`${grade}${source}${channel}`}>
+                <td className="py-1 pr-2 text-gray-200">{GRADE_ROWS.find((x) => x.key === grade)?.label ?? grade.toUpperCase().replace("-", " ")}</td>
+                <td className="py-1 pr-2 text-gray-500">{SOURCE_LABEL[source] ?? source} · {CHANNEL_LABEL[channel] ?? channel}</td>
+                <td className="py-1 pr-2 text-right font-mono text-gray-100 cursor-help"
+                  title={xs.map((x) => `${METRIC_LABEL[x.metric] ?? x.metric}: ${money(x.price_cents)}${x.sample_n != null ? ` (${x.sample_n} sales)` : ""}${x.confidence ? `, ${x.confidence} confidence` : ""}`).join("\n")}>
+                  {money(head.price_cents)} <span className="text-gray-600 font-sans">{METRIC_LABEL[head.metric] ?? head.metric}{head.sample_n != null ? ` · ${head.sample_n}` : ""}</span>
+                </td>
+                <td className={`py-1 pr-2 text-right ${d == null ? "text-gray-600" : Math.abs(d) > 0.25 ? "text-amber-300" : "text-gray-400"}`}>
+                  {d == null ? "—" : `${d >= 0 ? "+" : ""}${Math.round(d * 100)}%`}
+                </td>
+                <td className="py-1 text-right text-gray-500" title={head.as_of ? `Source last updated ${head.as_of.slice(0, 10)}` : undefined}>{head.observed_on}</td>
+              </tr>
+            );
+          })}
+        </tbody>
+      </table>
+      <p className="text-[11px] text-gray-600 mt-1">Collected daily from free API tiers, highest-priority cards first. Amber: more than 25% off the value we use. Hover a price for every number the source gave.</p>
+    </div>
+  );
+}
+
 export function CardGlance({ displayKey }: { displayKey: string }) {
   const [a, setA] = useState<CardAnalysis | null>(null);
   const [err, setErr] = useState<string | null>(null);
@@ -149,6 +216,7 @@ export function CardGlance({ displayKey }: { displayKey: string }) {
         <div className="space-y-3">
           <h3 className="text-xs font-semibold text-gray-300">Prices</h3>
           <Prices a={a} />
+          <OtherSources displayKey={displayKey} a={a} />
           <h3 className="text-xs font-semibold text-gray-300">Gem rates</h3>
           <GemRates a={a} />
         </div>
