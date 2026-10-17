@@ -47,6 +47,29 @@ export function bestWindow(set: SetWindows | undefined, grade: string): SetWindo
 }
 
 // The card's window for a grade: its tier's own, else the set as a whole.
+// The card's price-cycle phase, from its raw window: still falling after
+// release, at the bottom (in print / out of print), or recovering.
+export const PHASE: Record<string, { label: string; cls: string; hint: string }> = {
+  hype: { label: "Hype", cls: "bg-rose-900/50 text-rose-200 border-rose-700/50", hint: "Release hype: prices are still falling toward the bottom" },
+  post_hype: { label: "Post-hype", cls: "bg-green-900/50 text-green-200 border-green-700/50", hint: "At the bottom and still in print" },
+  out_of_print: { label: "Out of print", cls: "bg-sky-900/50 text-sky-200 border-sky-700/50", hint: "At the bottom and out of print: recovery usually starts 6-12 months after" },
+  recovering: { label: "Recovering", cls: "bg-amber-900/50 text-amber-200 border-amber-700/50", hint: "Past the bottom: prices typically rising" },
+};
+export function phaseOfWindow(raw?: SetWindow): string {
+  switch (raw?.action) {
+    case "wait": return "hype";
+    case "buy": return "post_hype";
+    case "watch_only": return "out_of_print";
+    case "past": return "recovering";
+  }
+  return "unknown";
+}
+export function PhaseChip({ phase, title }: { phase?: string; title?: string }) {
+  const p = phase ? PHASE[phase] : undefined;
+  if (!p) return null;
+  return <span className={`px-1 rounded border text-[10px] leading-4 ${p.cls}`} title={title ?? p.hint}>{p.label}</span>;
+}
+
 export function cardWindow(set: SetWindows | undefined, grade: string, tier: string): SetWindow | undefined {
   return set?.windows.find((w) => w.grade === grade && w.tier === tier) ?? set?.windows.find((w) => w.grade === grade && w.tier === "all");
 }

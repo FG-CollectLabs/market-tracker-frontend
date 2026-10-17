@@ -1,9 +1,10 @@
 import { useEffect, useState } from "react";
 import {
-  BUY_TARGETS, RULE_KINDS, applyPreset, fetchWatchPresets, putTargets,
+  BUY_TARGETS, RULE_KINDS, applyPreset, fetchWatchPresets, putTargets, saveBidPlan, setAutoFanatics,
   type BuyTarget, type Channels, type RuleKind, type WatchPreset, type WatchTarget,
 } from "../lib/api";
-import { watchChanged } from "./WatchButton";
+import { onWatchChange, watchChanged, watchedCards } from "./WatchButton";
+import { useSession } from "../lib/auth";
 
 // Watchlist buy targets: per watched card, each grade you'd buy and the
 // price rule for it, plus strategy presets you can apply to many cards.
@@ -179,5 +180,48 @@ export function PresetBar({ keys, onClear, onApplied, extra }: {
         </>
       )}
     </div>
+  );
+}
+
+// Two quick actions on a card: "any Fanatics copy" (auto-prep adds every
+// live Fanatics auction of it, any grade; watches the card) and "singles"
+// (onto the Singles / card show list to look at and pre-grade in person).
+export function CardPrepButtons({ displayKey }: { displayKey: string }) {
+  const session = useSession();
+  const [anyCopy, setAnyCopy] = useState<boolean | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [single, setSingle] = useState<"idle" | "done" | "error">("idle");
+  useEffect(() => {
+    if (!session) return;
+    let live = true;
+    const load = () => watchedCards().then((m) => live && setAnyCopy(!!m.get(displayKey)?.autoFanatics));
+    load();
+    const off = onWatchChange(load);
+    return () => { live = false; off(); };
+  }, [session, displayKey]);
+  if (!session || anyCopy == null) return null;
+  const btn = "px-1 rounded border text-[10px] leading-4 print:hidden";
+  return (
+    <span className="inline-flex gap-0.5" onClick={(e) => e.stopPropagation()}>
+      <button disabled={busy} title={anyCopy ? "Any Fanatics copy: on. Auto-prep adds every live Fanatics auction of this card, any grade. Click to turn off." : "Any Fanatics copy: auto-prep adds every live Fanatics auction of this card, any grade, to Buying prep (and watches the card)."}
+        onClick={async () => {
+          setBusy(true);
+          try {
+            await setAutoFanatics(displayKey, !anyCopy);
+            setAnyCopy(!anyCopy);
+            watchChanged();
+          } finally {
+            setBusy(false);
+          }
+        }}
+        className={`${btn} ${anyCopy ? "bg-indigo-800 text-white border-indigo-500 font-semibold" : "border-gray-700/60 text-gray-500 hover:text-gray-200"}`}>
+        {anyCopy ? "✓ " : ""}Any Fanatics
+      </button>
+      <button title={single === "done" ? "On your Singles / card show list" : "Add to the Singles / card show list: look at it and pre-grade it when you see it raw"}
+        onClick={() => saveBidPlan({ display_key: displayKey, grade: "raw", kind: "single" }).then(() => setSingle("done")).catch(() => setSingle("error"))}
+        className={`${btn} ${single === "done" ? "bg-emerald-900/70 text-emerald-200 border-emerald-700" : single === "error" ? "border-red-700 text-red-300" : "border-gray-700/60 text-gray-500 hover:text-gray-200"}`}>
+        {single === "done" ? "✓ Singles" : "+ Singles"}
+      </button>
+    </span>
   );
 }

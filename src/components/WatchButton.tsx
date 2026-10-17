@@ -7,6 +7,7 @@ const INTENTS: WatchIntent[] = ["grade", "invest", "flip", "watch"];
 export interface Watched {
   intent: WatchIntent;
   targets: BuyTarget[];
+  autoFanatics: boolean;
 }
 
 // Watched cards, shared by every star and target chip on the page (one fetch).
@@ -15,7 +16,7 @@ const listeners = new Set<() => void>();
 export function watchedCards(force = false): Promise<Map<string, Watched>> {
   if (!cache || force) {
     cache = fetchWatchlist(true)
-      .then((r) => new Map(r.items.map((i) => [i.display_key, { intent: i.intent, targets: i.targets ?? [] }] as [string, Watched])))
+      .then((r) => new Map(r.items.map((i) => [i.display_key, { intent: i.intent, targets: i.targets ?? [], autoFanatics: !!i.auto_fanatics }] as [string, Watched])))
       .catch(() => new Map());
   }
   return cache;

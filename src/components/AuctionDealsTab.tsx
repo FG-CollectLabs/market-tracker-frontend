@@ -2,6 +2,7 @@ import { Fragment, useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import { fetchAuctionDeals, fetchBidPlans, saveBidPlan, type AuctionDeal, type EdgeCalc, type PlanKind } from "../lib/api";
 import { onWatchChange, watchedCards } from "./WatchButton";
+import { PhaseChip } from "./BuyWindows";
 import { useSession } from "../lib/auth";
 import { MarketLinkRow } from "./MarketLinks";
 import { formatCents } from "../lib/roi";
@@ -29,8 +30,8 @@ type SortKey = "pressure" | "edge" | "live";
 type PrepKind = "auction" | "min_bid" | "lowball";
 type PrepEntry = { kind: PrepKind; grade: string; max?: number; origin?: string; status: string };
 const PREP: Record<PrepKind | "watch", { label: string; chip: string; edge: string }> = {
-  auction: { label: "Sunday's bids", chip: "bg-indigo-900/70 text-indigo-200 border-indigo-700/60", edge: "border-l-indigo-500" },
-  min_bid: { label: "Min-bid", chip: "bg-amber-900/60 text-amber-200 border-amber-700/60", edge: "border-l-amber-500" },
+  auction: { label: "Late bids", chip: "bg-indigo-900/70 text-indigo-200 border-indigo-700/60", edge: "border-l-indigo-500" },
+  min_bid: { label: "Early bids", chip: "bg-amber-900/60 text-amber-200 border-amber-700/60", edge: "border-l-amber-500" },
   lowball: { label: "Lowball", chip: "bg-teal-900/60 text-teal-200 border-teal-700/60", edge: "border-l-teal-500" },
   watch: { label: "Watchlist", chip: "bg-yellow-900/40 text-yellow-200 border-yellow-700/50", edge: "border-l-yellow-500" },
 };
@@ -44,7 +45,7 @@ function usePrepMarks() {
   useEffect(() => {
     if (!session) return;
     let live = true;
-    Promise.all((["auction", "min_bid", "lowball"] as PlanKind[]).map((k) => fetchBidPlans(undefined, k).catch(() => null))).then((rs) => {
+    Promise.all((["auction", "min_bid"] as PlanKind[]).map((k) => fetchBidPlans(undefined, k).catch(() => null))).then((rs) => {
       if (!live) return;
       const m = new Map<string, PrepEntry[]>();
       for (const r of rs) {
@@ -222,9 +223,8 @@ function AddToBidList({ d, entries, onSaved }: { d: AuctionDeal; entries: PrepEn
       <select value={kind} onChange={(e) => { const k = e.target.value as PrepKind; setKind(k); if (k === "min_bid") setMax(Math.min(max, 6)); }}
         className="bg-gray-900 border border-gray-700 rounded px-1 py-0.5 text-gray-200"
         title="Sunday's bids: set a floor and bid near the close. Min-bid: cheap cards bid early at a small max, hoping nobody pays more.">
-        <option value="auction">Sunday's bids (bid late)</option>
-        <option value="min_bid">Min-bid (bid early)</option>
-        <option value="lowball">Lowball (bid late)</option>
+        <option value="auction">Late bids (near the close)</option>
+        <option value="min_bid">Early bids (bid now)</option>
       </select>
       <label className="flex items-center gap-1">max bid $
         <input type="number" min={0} step={1} value={max} onChange={(e) => setMax(Math.max(0, Math.floor(Number(e.target.value) || 0)))}
@@ -388,7 +388,7 @@ export default function AuctionDealsTab({ lang }: { lang: "" | "en" | "ja" }) {
         {rows && <span className="text-gray-500">{shown.length} of {rows.length}</span>}
         {marks.on && (
           <span className="flex flex-wrap items-center gap-1 text-[11px] text-gray-500">
-            {(["auction", "min_bid", "lowball", "watch"] as const).map((k) => (
+            {(["auction", "min_bid", "watch"] as const).map((k) => (
               <span key={k} className={`px-1 rounded border ${PREP[k].chip}`}>{k === "watch" ? "★ " : ""}{PREP[k].label}</span>
             ))}
             <span>= on that list{marks.day ? ` (Sunday ${marks.day})` : ""}; faded = a different grade of the card</span>
@@ -439,6 +439,8 @@ export default function AuctionDealsTab({ lang }: { lang: "" | "en" | "ja" }) {
                           <span className="font-mono">{d.set_code.replace(/^jp-/, "JP ").toUpperCase()}</span>
                           <span className="ml-1.5 px-1 rounded bg-gray-800 text-gray-300">{GRADE_LABEL[d.grade] ?? d.grade}</span>
                           {d.months_since_release != null && <span className="ml-1.5">month {d.months_since_release}</span>}
+                          {d.timing && <span className="ml-1.5"><PhaseChip phase={d.timing.phase} title={`${d.timing.phase_label}${d.timing.headline ? `\n${GRADE_LABEL[d.grade] ?? d.grade} window: ${d.timing.headline}` : ""}`} /></span>}
+                          {d.timing?.grade_action === "buy" && <span className="ml-1 text-green-400" title={d.timing.headline}>in window</span>}
                         </div>
                         <PrepTags entries={entries} watched={watched} grade={d.grade} />
                       </td>

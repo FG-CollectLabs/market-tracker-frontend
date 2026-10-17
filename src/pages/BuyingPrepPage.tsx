@@ -14,7 +14,8 @@ import { Spinner, ErrorMsg } from "../components/Spinner";
 const GRADE: Record<string, string> = { "psa-10": "PSA 10", "psa-9": "PSA 9", "cgc-10": "CGC 10", "cgc-10-pristine": "CGC Pristine", raw: "Raw" };
 const gradeLabel = (g: string) => GRADE[g] ?? g.replace(/^(psa|cgc)-/, (_, x: string) => `${x.toUpperCase()} `);
 type AuctionKind = "auction" | "min_bid" | "lowball";
-const KIND_LABEL: Record<AuctionKind, string> = { auction: "Fanatics weekly auctions", min_bid: "Min-bid (bid early)", lowball: "Lowball (bid late)" };
+const KIND_LABEL: Record<AuctionKind, string> = { auction: "Late bids (near the close)", min_bid: "Early bids (bid now)", lowball: "Lowball" };
+const isLowGrade = (g: string) => /^(psa|cgc)-[1-8](\.5)?$/.test(g);
 
 // Why auto-prep added a row, and what to check.
 function AutoReasons({ p }: { p: BidPlan }) {
@@ -62,7 +63,7 @@ function AutoPrepBar({ onApplied }: { onApplied: () => void }) {
         <div className="space-y-1 text-xs">
           <div className="text-gray-300">
             {res.dry_run ? "Preview" : "Done"} for Sunday {res.auction_date}:{" "}
-            {(["auction", "min_bid", "lowball"] as AuctionKind[]).map((k) => {
+            {(["auction", "min_bid"] as AuctionKind[]).map((k) => {
               const c = res.counts[k] ?? {};
               return (
                 <span key={k} className="mr-3">
@@ -74,9 +75,9 @@ function AutoPrepBar({ onApplied }: { onApplied: () => void }) {
           </div>
           {r && (
             <div className="text-gray-500">
-              Rules: weekly = pressure ≥ {r.pressure_min}× or weighted edge ≥ {Math.round(r.edge_min * 100)}% or auctions ≥ {Math.round(r.auction_discount_min * 100)}% under eBay / Buy Now sold
-              {r.require_window ? ", grade in its buy window" : ""}. Min-bid = {r.nm_min_grade}+ grades of {formatCents(r.min_bid_raw_min_cents)}–{formatCents(r.min_bid_raw_max_cents)} raw cards at ≤ {Math.round(r.min_bid_pct * 100)}% of raw all-in.
-              Lowball = the same for {formatCents(r.lowball_raw_min_cents)}–{formatCents(r.lowball_raw_max_cents)} at ≤ {Math.round(r.lowball_pct * 100)}%{r.require_window ? "; both in the raw window (post hype)" : ""}. Change them on the Settings page.
+              Picks: slabs with pressure ≥ {r.pressure_min}×, weighted edge ≥ {Math.round(r.edge_min * 100)}% or auctions ≥ {Math.round(r.auction_discount_min * 100)}% under eBay / Buy Now sold
+              {r.require_window ? " (grade in its buy window)" : ""}; {r.nm_min_grade}+ low grades of {formatCents(r.low_raw_min_cents)}–{formatCents(r.low_raw_max_cents)} raw cards at ≤ {Math.round(r.low_pct * 100)}% of raw all-in
+              {r.require_window ? " (raw window, post hype)" : ""}; any copy of cards marked "Any Fanatics". Early when the max is ≤ {formatCents(r.early_max_cents)} or the current bid is within {formatCents(r.early_gap_cents)} of it; late otherwise. Change them on the Settings page.
             </div>
           )}
           {res.skipped.length > 0 && (
@@ -106,7 +107,7 @@ function AutoPrepBar({ onApplied }: { onApplied: () => void }) {
   );
 }
 
-// Min-bid / lowball row: a low-grade slab against the raw card.
+// Low-grade row: a low-grade slab against the raw card.
 function LowRow({ p, premium, kind, onChange, onRemove }: { p: BidPlan; premium: number; kind: AuctionKind; onChange: () => void; onRemove: () => void }) {
   const lp = p.low;
   const [max, setMax] = useState(dollars(p.max_bid_cents));
@@ -406,7 +407,7 @@ function PlanRow({ p, premium, kind, onChange, onRemove }: { p: BidPlan; premium
 
 function AuctionsPrep({ kind, tick: outer }: { kind: AuctionKind; tick: number }) {
   const minBid = kind === "min_bid";
-  const low = kind !== "auction";
+
   const session = useSession();
   const [date, setDate] = useState<string | undefined>(undefined);
   const [data, setData] = useState<Awaited<ReturnType<typeof fetchBidPlans>> | null>(null);
@@ -420,6 +421,8 @@ function AuctionsPrep({ kind, tick: outer }: { kind: AuctionKind; tick: number }
   if (error) return <ErrorMsg msg={error} />;
   if (!data) return <Spinner />;
   const day = data.auction_date;
+  const lows = data.plans.filter((p) => isLowGrade(p.grade));
+  const slabs = data.plans.filter((p) => !isLowGrade(p.grade));
   const refresh = () => setTick((t) => t + 1);
   return (
     <div className="space-y-4">
@@ -427,10 +430,8 @@ function AuctionsPrep({ kind, tick: outer }: { kind: AuctionKind; tick: number }
         <div>
           <p className="text-sm text-gray-500 max-w-3xl">
             {minBid
-              ? <>Min-bid auctions closing Sunday {day}: near-mint low grades of cheap cards, bid early at a small max ($5–6) because $1 can decide them. Priced against the raw card.</>
-              : kind === "lowball"
-              ? <>Lowball auctions closing Sunday {day}: near-mint low grades bid late at a discount to raw (a PSA 8 of a $15 card for $10–11 all-in), to resell around raw or crack.</>
-              : <>Fanatics weekly auctions you've decided to bid on, closing Sunday {day}, with a floor you'll bid near the close. Add cards from Deals → This week's auctions (open a row, "Add to Sunday's bids").</>}
+              ? <>Fanatics auctions closing Sunday {day} to bid on now: small maxes, or the current bid already close to your max, where $1 can decide it.</>
+              : <>Fanatics auctions closing Sunday {day} to bid on near the close, with a floor. Low grades are priced against the raw card. Add cards from Deals → This week's auctions or run auto-prep.</>}
             Max bids are whole dollars: Fanatics bids go in $1 steps. Suggested max clears your target margin on the resale; hover it for the working.
           </p>
         </div>
@@ -452,29 +453,9 @@ function AuctionsPrep({ kind, tick: outer }: { kind: AuctionKind; tick: number }
         </div>
         {data.plans.length === 0 ? (
           <p className="text-sm text-gray-500">Nothing on this Sunday's {kind === "auction" ? "" : KIND_LABEL[kind] + " "}list yet. Run auto-prep above, or add cards from Deals → This week's auctions.</p>
-        ) : low ? (
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead className="text-xs text-gray-500">
-                <tr>
-                  <th className="text-left font-medium py-1" colSpan={2}>Card</th>
-                  <th className="text-left font-medium py-1 pr-3">Raw price</th>
-                  <th className="text-left font-medium py-1 pr-3" title="This week's Fanatics auctions of this grade: current bid, bids">Up this week</th>
-                  <th className="text-left font-medium py-1 pr-3" title="The rule's max bid">Rule max</th>
-                  <th className="text-left font-medium py-1 pr-3">Your max</th>
-                  <th className="text-left font-medium py-1 pr-3">Status</th>
-                  <th className="text-left font-medium py-1">Note</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-gray-800/70">
-                {data.plans.map((p) => (
-                  <LowRow key={p.id + p.updated_at} p={p} premium={data.buyers_premium_pct} kind={kind} onChange={refresh}
-                    onRemove={() => deleteBidPlan(p.id).then(refresh).catch(() => undefined)} />
-                ))}
-              </tbody>
-            </table>
-          </div>
         ) : (
+          <div className="space-y-4">
+            {slabs.length > 0 && (
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
               <thead className="text-xs text-gray-500">
@@ -493,12 +474,40 @@ function AuctionsPrep({ kind, tick: outer }: { kind: AuctionKind; tick: number }
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-800/70">
-                {data.plans.map((p) => (
+                {slabs.map((p) => (
                   <PlanRow key={p.id + p.updated_at} p={p} premium={data.buyers_premium_pct} kind={kind} onChange={refresh}
                     onRemove={() => deleteBidPlan(p.id).then(refresh).catch(() => undefined)} />
                 ))}
               </tbody>
             </table>
+          </div>
+            )}
+            {lows.length > 0 && (
+              <div>
+                <h3 className="text-xs font-semibold text-gray-300 mb-1">Low grades vs raw · {lows.length}</h3>
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead className="text-xs text-gray-500">
+                <tr>
+                  <th className="text-left font-medium py-1" colSpan={2}>Card</th>
+                  <th className="text-left font-medium py-1 pr-3">Raw price</th>
+                  <th className="text-left font-medium py-1 pr-3" title="This week's Fanatics auctions of this grade: current bid, bids">Up this week</th>
+                  <th className="text-left font-medium py-1 pr-3" title="The rule's max bid">Rule max</th>
+                  <th className="text-left font-medium py-1 pr-3">Your max</th>
+                  <th className="text-left font-medium py-1 pr-3">Status</th>
+                  <th className="text-left font-medium py-1">Note</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-gray-800/70">
+                {lows.map((p) => (
+                  <LowRow key={p.id + p.updated_at} p={p} premium={data.buyers_premium_pct} kind={kind} onChange={refresh}
+                    onRemove={() => deleteBidPlan(p.id).then(refresh).catch(() => undefined)} />
+                ))}
+              </tbody>
+            </table>
+          </div>
+              </div>
+            )}
           </div>
         )}
       </section>
@@ -645,7 +654,7 @@ export default function BuyingPrepPage() {
       <h1 className="text-xl font-semibold text-white">Buying prep</h1>
       <AutoPrepBar onApplied={() => setTick((t) => t + 1)} />
       <nav className="flex gap-1 border-b border-gray-800 text-sm print:hidden">
-        {([["auction", "Fanatics auctions"], ["min_bid", "Min-bid (bid early)"], ["lowball", "Lowball (bid late)"], ["single", "Singles / card show"]] as const).map(([k, label]) => (
+        {([["auction", "Late bids (Fanatics)"], ["min_bid", "Early bids (Fanatics)"], ["single", "Singles / card show"]] as const).map(([k, label]) => (
           <button key={k} onClick={() => setTab(k)}
             className={`px-3 py-1.5 -mb-px border-b-2 ${tab === k ? "border-indigo-500 text-white" : "border-transparent text-gray-400 hover:text-gray-200"}`}>{label}</button>
         ))}
