@@ -996,6 +996,24 @@ function analysisQS(o?: { targetMargin?: number; exitFeePct?: number }): URLSear
   return q;
 }
 
+// Latest reading of a card from each outside price source.
+export interface PriceReading {
+  source: "pokemonpricetracker" | "poketrace" | string;
+  channel: "tcgplayer" | "ebay" | "sold" | "cardmarket" | string;
+  grade: string;
+  condition?: string;
+  metric: string; // market, low, avg, median, median_7d, median_30d, avg_7d, avg_30d, smart_market
+  price_cents: number;
+  sample_n?: number;
+  confidence?: string;
+  as_of?: string;
+  observed_on: string;
+}
+
+export function fetchPriceSources(displayKey: string): Promise<{ readings: PriceReading[] }> {
+  return get(`/v1/cards/${encodeURIComponent(displayKey)}/price-sources`);
+}
+
 export function fetchCardAnalysis(displayKey: string, o?: { targetMargin?: number; exitFeePct?: number }): Promise<CardAnalysis> {
   return get(`/v1/cards/${encodeURIComponent(displayKey)}/analysis?${analysisQS(o)}`);
 }
