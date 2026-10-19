@@ -46,7 +46,7 @@ function Working({ r }: { r: MakeRow }) {
   );
 }
 
-export default function MakeVsMarketTab({ lang }: { lang: "" | "en" | "ja" }) {
+export default function MakeVsMarketTab({ lang }: { lang: "" | "en" | "ja" | "zh" }) {
   const [data, setData] = useState<Awaited<ReturnType<typeof fetchMakeVsMarket>> | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [grader, setGrader] = useState<"" | "psa" | "cgc">("");
@@ -57,7 +57,7 @@ export default function MakeVsMarketTab({ lang }: { lang: "" | "en" | "ja" }) {
   }, []);
   const rows = useMemo(() => (data?.rows ?? []).filter((r) =>
     (!grader || r.grade.startsWith(grader)) &&
-    (!lang || (lang === "ja") === r.set_code.startsWith("jp-")) &&
+    (!lang || lang === (r.set_code.startsWith("jp-") ? "ja" : r.set_code.startsWith("cn-") ? "zh" : "en")) &&
     (!under || r.gap_pct < 0) &&
     r.sales_90d >= minSales), [data, grader, lang, under, minSales]);
   if (error) return <ErrorMsg msg={error} />;
@@ -116,7 +116,7 @@ export default function MakeVsMarketTab({ lang }: { lang: "" | "en" | "ja" }) {
                     <td className="px-3 py-2">
                       <Link to={`/cards/${encodeURIComponent(r.display_key)}`} className="text-gray-100 hover:text-indigo-300">{r.name}</Link>
                       <div className="text-[11px] text-gray-500">
-                        <span className="font-mono">{r.set_code.replace(/^jp-/, "JP ").toUpperCase()}</span>
+                        <span className="font-mono">{r.set_code.replace(/^jp-/, "JP ").replace(/^cn-/, "CN ").toUpperCase()}</span>
                         <span className="ml-1.5 px-1 rounded bg-gray-800 text-gray-300">{r.grade === "psa-10" ? "PSA 10" : "CGC 10"}</span>
                         {r.months_since_release != null && <span className="ml-1.5">month {Math.round(r.months_since_release)}</span>}
                         {!r.in_print && <span className="ml-1.5 text-sky-300">out of print</span>}

@@ -37,7 +37,7 @@ const KIND_LABEL: Record<string, string> = {
 export default function DealsPage() {
   const [params, setParams] = useSearchParams();
   const tab = TABS.some((t) => t.key === params.get("tab")) ? params.get("tab")! : "auctions";
-  const lang = (["en", "ja"].includes(params.get("lang") ?? "") ? params.get("lang") : "") as "" | "en" | "ja";
+  const lang = (["en", "ja", "zh"].includes(params.get("lang") ?? "") ? params.get("lang") : "") as "" | "en" | "ja" | "zh";
   const set = (k: string, v: string) => {
     const next = new URLSearchParams(params);
     if (v) next.set(k, v);
@@ -51,7 +51,7 @@ export default function DealsPage() {
       </div>
       <div className="flex flex-wrap items-center gap-3 text-sm">
         <div className="inline-flex rounded border border-gray-700 overflow-hidden">
-          {([["", "All languages"], ["en", "English"], ["ja", "Japanese"]] as const).map(([k, label]) => (
+          {([["", "All languages"], ["en", "English"], ["ja", "Japanese"], ["zh", "Chinese"]] as const).map(([k, label]) => (
             <button key={k} onClick={() => set("lang", k)}
               className={`px-3 py-1 ${lang === k ? "bg-indigo-700 text-white" : "bg-gray-900 text-gray-400 hover:text-gray-200"}`}>
               {label}
@@ -74,7 +74,7 @@ export default function DealsPage() {
 
 // One kind of live buying opportunity, ranked. The same list the agent's
 // find_deals tool returns.
-function OpportunitiesTab({ kind, lang }: { kind: string; lang: "" | "en" | "ja" }) {
+function OpportunitiesTab({ kind, lang }: { kind: string; lang: "" | "en" | "ja" | "zh" }) {
   const [afterHype, setAfterHype] = useState(false);
   const [vetted, setVetted] = useState<Map<string, AgentFinding[]>>(new Map());
   useEffect(() => {
@@ -154,7 +154,7 @@ function OpportunitiesTab({ kind, lang }: { kind: string; lang: "" | "en" | "ja"
                   </td>
                   <td className="px-3 py-2 whitespace-nowrap">
                     <Link to={`/cards/${encodeURIComponent(d.display_key)}`} className="text-gray-100 hover:text-indigo-300">{d.name}</Link>
-                    <div className="text-[11px] text-gray-500 font-mono">{d.set_code.replace(/^jp-/, "JP ").toUpperCase()}</div>
+                    <div className="text-[11px] text-gray-500 font-mono">{d.set_code.replace(/^jp-/, "JP ").replace(/^cn-/, "CN ").toUpperCase()}</div>
                     {d.months_since_release != null && (
                       <div className="text-[11px] text-gray-500 mt-0.5">
                         month {Math.floor(d.months_since_release)}

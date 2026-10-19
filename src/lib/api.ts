@@ -1052,7 +1052,7 @@ export function fetchCardAnalysis(displayKey: string, o?: { targetMargin?: numbe
   return get(`/v1/cards/${encodeURIComponent(displayKey)}/analysis?${analysisQS(o)}`);
 }
 
-export function fetchDeals(o?: { targetMargin?: number; exitFeePct?: number; kind?: string; limit?: number; afterHype?: boolean; lang?: "en" | "ja" }): Promise<{ deals: Deal[]; settings: AnalysisSettings }> {
+export function fetchDeals(o?: { targetMargin?: number; exitFeePct?: number; kind?: string; limit?: number; afterHype?: boolean; lang?: "en" | "ja" | "zh" }): Promise<{ deals: Deal[]; settings: AnalysisSettings }> {
   const q = analysisQS(o);
   if (o?.kind) q.set("kind", o.kind);
   if (o?.afterHype) q.set("after_hype", "1");
@@ -1403,7 +1403,7 @@ export interface AuctionDeal {
   flags: string[];
 }
 
-export function fetchAuctionDeals(o?: { lang?: "en" | "ja"; limit?: number }): Promise<{
+export function fetchAuctionDeals(o?: { lang?: "en" | "ja" | "zh"; limit?: number }): Promise<{
   count: number;
   auctions: AuctionDeal[];
   settings: { target_margin: number; sell_fee_pct: number; buyers_premium_pct: number };
@@ -1448,7 +1448,7 @@ export interface SetWindows {
   windows: SetWindow[];
 }
 
-export function fetchSetWindows(lang?: "en" | "ja"): Promise<{ band: number; out_of_print_months: number; sets: SetWindows[] }> {
+export function fetchSetWindows(lang?: "en" | "ja" | "zh"): Promise<{ band: number; out_of_print_months: number; sets: SetWindows[] }> {
   return get(`/v1/analysis/set-windows${lang ? `?lang=${lang}` : ""}`);
 }
 

@@ -8,6 +8,7 @@ import { ago, isStale, shortDate } from "../lib/freshness";
 const LANGS = [
   { key: "en", label: "English" },
   { key: "ja", label: "Japanese" },
+  { key: "zh", label: "Chinese" },
 ] as const;
 
 interface Era {
@@ -83,7 +84,7 @@ function SetTile({ s, win }: { s: BrowseSet; win?: SetWindows }) {
         <div className="text-sm text-gray-100 leading-tight">{s.name}</div>
         <div className="mt-1 flex items-center gap-2 text-[11px] text-gray-500">
           <span>{untracked ? "not tracked" : `${s.tracked} tracked`}</span>
-          {s.lang === "ja" && <span className="font-mono">{s.code.slice(3).toUpperCase()}</span>}
+          {s.lang !== "en" && <span className="font-mono">{s.code.slice(3).toUpperCase()}</span>}
           {s.release_date && <span>{s.release_date.slice(0, 4)}</span>}
           {stale && <span className="text-amber-500" title="Prices older than 8 days">• stale</span>}
         </div>
@@ -97,7 +98,7 @@ export default function BrowsePage() {
   const [sets, setSets] = useState<BrowseSet[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [params, setParams] = useSearchParams();
-  const lang = params.get("lang") === "ja" ? "ja" : "en";
+  const lang = (["ja", "zh"].includes(params.get("lang") ?? "") ? params.get("lang") : "en") as "en" | "ja" | "zh";
   const showAll = params.get("all") === "1";
 
   useEffect(() => {
