@@ -97,8 +97,17 @@ function niceStep(span: number): number {
 // weeks are gaps unless a series connects across them; negative values get
 // a zero baseline. End-of-line direct labels for up to 4 series (legend
 // otherwise); crosshair + tooltip.
-export function LineChart({ weeks, series, fmt, axisFmt, xLabel, xTitle }: {
+// A point of interest on the x-axis (e.g. a set at its current month);
+// several at one index are drawn as one counted marker.
+export interface ChartMarker {
+  i: number; // x index
+  label: string;
+}
+
+export function LineChart({ weeks, series, fmt, axisFmt, xLabel, xTitle, markers, shadeBefore }: {
   weeks: string[];
+  markers?: ChartMarker[]; // drawn along the bottom, listed in the tooltip
+  shadeBefore?: number; // grey out x indexes before this one
   xLabel?: (w: string) => string; // x tick text (default: week date)
   xTitle?: (w: string) => string; // tooltip heading (default: "Week of …")
   series: LineSeries[];
@@ -127,6 +136,11 @@ export function LineChart({ weeks, series, fmt, axisFmt, xLabel, xTitle }: {
   for (let t = lo; t <= hi + step / 2; t += step) ticks.push(Math.round(t / step) * step);
   const labels = labelIndexes(weeks.length);
   const af = axisFmt ?? fmt;
+  const markerAt = new Map<number, ChartMarker[]>();
+  for (const m of markers ?? []) {
+    if (m.i >= 0 && m.i < weeks.length) markerAt.set(m.i, [...(markerAt.get(m.i) ?? []), m]);
+  }
+  const markerGroups = [...markerAt.entries()];
 
   return (
     <div className="relative">
@@ -139,6 +153,9 @@ export function LineChart({ weeks, series, fmt, axisFmt, xLabel, xTitle }: {
             </g>
           ))}
           {lo < 0 && <line x1={PAD.left} x2={PAD.left + IW} y1={y(0)} y2={y(0)} stroke="#9ca3af" strokeWidth={1} />}
+          {shadeBefore != null && shadeBefore > 0 && (
+            <rect x={PAD.left} y={PAD.top} width={Math.max(0, x(Math.min(shadeBefore, weeks.length - 1)) - PAD.left)} height={IH} fill="#030712" opacity={0.55} />
+          )}
           {weeks.map((w, i) =>
             labels.has(i) ? <text key={w} x={x(i)} y={H - 6} textAnchor="middle">{(xLabel ?? shortWeek)(w)}</text> : null,
           )}
@@ -184,6 +201,12 @@ export function LineChart({ weeks, series, fmt, axisFmt, xLabel, xTitle }: {
             )}
           </g>
         )}
+        {markerGroups.map(([i, ms]) => (
+          <g key={`m${i}`}>
+            <circle cx={x(i)} cy={PAD.top + IH - 8} r={ms.length > 1 ? 7 : 5} fill="#4f46e5" stroke="#111827" strokeWidth={1.5} />
+            {ms.length > 1 && <text x={x(i)} y={PAD.top + IH - 5} textAnchor="middle" fill="#fff" className="text-[9px] font-semibold">{ms.length}</text>}
+          </g>
+        ))}
         {weeks.map((w, i) => (
           <rect key={w} x={x(i) - IW / Math.max(1, weeks.length - 1) / 2} y={PAD.top}
             width={IW / Math.max(1, weeks.length - 1)} height={IH} fill="transparent" onMouseEnter={() => setHover(i)} />
@@ -200,6 +223,9 @@ export function LineChart({ weeks, series, fmt, axisFmt, xLabel, xTitle }: {
             </div>
           ))}
           {series.every((s) => s.values[hover] == null) && <div className="text-gray-500">No data this week</div>}
+          {markerAt.get(hover) && (
+            <div className="mt-1 border-t border-gray-700 pt-1 text-indigo-200 max-w-[16rem]">{markerAt.get(hover)!.map((m) => m.label).join(", ")}</div>
+          )}
         </Tooltip>
       )}
     </div>
