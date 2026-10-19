@@ -127,7 +127,7 @@ function LowRow({ p, premium, kind, onChange, onRemove }: { p: BidPlan; premium:
       <td className="py-2 pr-3">
         <Link to={`/cards/${encodeURIComponent(p.display_key)}`} className="text-gray-100 hover:text-indigo-300">{p.deal?.name ?? p.display_key}</Link>
         <div className="text-[11px] text-gray-500">
-          <span className="font-mono">{(p.deal?.set_code ?? "").replace(/^jp-/, "JP ").toUpperCase()}</span>
+          <span className="font-mono">{(p.deal?.set_code ?? "").replace(/^jp-/, "JP ").replace(/^cn-/, "CN ").toUpperCase()}</span>
           <span className="ml-1.5 px-1 rounded bg-gray-800 text-gray-300">{gradeLabel(p.grade)}</span>
         </div>
         <AutoReasons p={p} />
@@ -276,7 +276,7 @@ function PlanRow({ p, premium, kind, onChange, onRemove }: { p: BidPlan; premium
         <td className="py-2 pr-3">
           <Link to={`/cards/${encodeURIComponent(p.display_key)}`} className="text-gray-100 hover:text-indigo-300">{d?.name ?? p.display_key}</Link>
           <div className="text-[11px] text-gray-500">
-            <span className="font-mono">{(d?.set_code ?? "").replace(/^jp-/, "JP ").toUpperCase()}</span>
+            <span className="font-mono">{(d?.set_code ?? "").replace(/^jp-/, "JP ").replace(/^cn-/, "CN ").toUpperCase()}</span>
             <span className="ml-1.5 px-1 rounded bg-gray-800 text-gray-300">{GRADE[p.grade] ?? p.grade}</span>
           </div>
           <button onClick={() => setOpen((v) => !v)} className="text-[11px] text-indigo-300 hover:underline print:hidden">{open ? "hide" : "history & links"}</button>
@@ -535,7 +535,7 @@ function SingleRow({ p, onChange, onRemove }: { p: BidPlan; onChange: () => void
           {sp?.image_url ? <img src={cardThumb(sp.image_url)} alt="" className="w-10 h-14 object-cover rounded-sm bg-gray-800 shrink-0" /> : null}
           <div>
         <Link to={`/cards/${encodeURIComponent(p.display_key)}`} className="text-gray-100 hover:text-indigo-300">{name}</Link>
-        <span className="ml-1.5 text-[11px] text-gray-500 font-mono">{(sp?.set_code ?? "").replace(/^jp-/, "JP ").toUpperCase()}</span>
+        <span className="ml-1.5 text-[11px] text-gray-500 font-mono">{(sp?.set_code ?? "").replace(/^jp-/, "JP ").replace(/^cn-/, "CN ").toUpperCase()}</span>
         <div className="text-[11px]"><span className="px-1 rounded bg-gray-800 text-gray-300">{GRADE[p.grade] ?? p.grade}</span>
           {sp && !sp.in_print && <span className="ml-1.5 text-amber-300/80">out of print</span>}</div>
         <div className="mt-1"><MarketLinkRow links={sp?.links} compact /></div>

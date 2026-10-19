@@ -192,7 +192,7 @@ export default function WatchlistPage() {
       {bySet.map((g) => (
         <section key={g.code} className="rounded-lg border border-gray-800 bg-gray-900 p-3 break-inside-avoid print:border-gray-300 print:bg-white">
           <h2 className="text-sm font-semibold text-gray-100 print:text-black mb-2">
-            {g.name} <span className="text-gray-500 font-mono text-xs">{g.code.replace(/^jp-/, "JP ").toUpperCase()}</span>
+            {g.name} <span className="text-gray-500 font-mono text-xs">{g.code.replace(/^jp-/, "JP ").replace(/^cn-/, "CN ").toUpperCase()}</span>
           </h2>
           <div className="overflow-x-auto">
           <table className="w-full text-xs tabular-nums">

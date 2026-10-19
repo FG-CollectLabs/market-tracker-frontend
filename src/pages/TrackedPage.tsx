@@ -952,7 +952,7 @@ export default function TrackedPage() {
   }), [session, picked]);
   const [winTick, setWinTick] = useState(0);
   useEffect(() => {
-    const lang = code ? (code.startsWith("jp-") ? "ja" : "en") : undefined;
+    const lang = code ? (code.startsWith("jp-") ? "ja" : code.startsWith("cn-") ? "zh" : "en") : undefined;
     fetchSetWindows(lang)
       .then((r) => setWindows(new Map(r.sets.map((x) => [x.code, x]))))
       .catch(() => setWindows(new Map()));

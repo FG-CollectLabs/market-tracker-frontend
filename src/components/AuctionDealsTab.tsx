@@ -365,7 +365,7 @@ function Detail({ d, entries, onSaved }: { d: AuctionDeal; entries: PrepEntry[];
   );
 }
 
-export default function AuctionDealsTab({ lang }: { lang: "" | "en" | "ja" }) {
+export default function AuctionDealsTab({ lang }: { lang: "" | "en" | "ja" | "zh" }) {
   const [rows, setRows] = useState<AuctionDeal[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [sort, setSort] = useState<SortKey>("pressure");
@@ -475,7 +475,7 @@ export default function AuctionDealsTab({ lang }: { lang: "" | "en" | "ja" }) {
                       <td className="px-3 py-2 whitespace-nowrap">
                         <Link to={`/cards/${encodeURIComponent(d.display_key)}`} onClick={(e) => e.stopPropagation()} className="text-gray-100 hover:text-indigo-300">{d.name}</Link>
                         <div className="text-[11px] text-gray-500">
-                          <span className="font-mono">{d.set_code.replace(/^jp-/, "JP ").toUpperCase()}</span>
+                          <span className="font-mono">{d.set_code.replace(/^jp-/, "JP ").replace(/^cn-/, "CN ").toUpperCase()}</span>
                           <span className="ml-1.5 px-1 rounded bg-gray-800 text-gray-300">{GRADE_LABEL[d.grade] ?? d.grade}</span>
                           {d.months_since_release != null && <span className="ml-1.5">month {d.months_since_release}</span>}
                           {d.timing && <span className="ml-1.5"><PhaseChip phase={d.timing.phase} title={`${d.timing.phase_label}${d.timing.headline ? `\n${GRADE_LABEL[d.grade] ?? d.grade} window: ${d.timing.headline}` : ""}`} /></span>}
