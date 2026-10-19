@@ -819,6 +819,40 @@ export interface GradingEV {
   nine_cents?: number;
   nine_source?: string;
   working?: EVWorking;
+  break_even_working?: BreakEvenWorking;
+}
+
+// The cost to make a 10, figure by figure (GradingEV.break_even_working).
+export interface BreakEvenWorking {
+  raw_cents: number;
+  cost_cents: number; // per graded copy
+  salvage_cents: number; // what the misses bring back per copy, after the fee
+  ten_share: number; // 10s (Pristine included) per copy graded
+  cost_per_10_cents: number;
+  sell_fee_pct: number;
+  break_even_cents: number;
+}
+
+export interface MakeRow {
+  display_key: string;
+  name: string;
+  set_code: string;
+  image_url?: string;
+  months_since_release?: number;
+  in_print: boolean;
+  grade: "psa-10" | "cgc-10";
+  market: MarketValue;
+  sales_90d: number;
+  cheapest_buy_now_cents?: number;
+  cheapest_buy_now_source?: string;
+  buy_now_listings: number;
+  break_even_cents: number;
+  gap_pct: number; // market / cost to make - 1
+  make: GradingEV;
+}
+
+export function fetchMakeVsMarket(): Promise<{ count: number; rows: MakeRow[]; formula: string; settings: Record<string, unknown> }> {
+  return get(`/v1/analysis/make-vs-market`);
 }
 
 // One copy's grading math, line by line: cost lines add up to cost_cents,

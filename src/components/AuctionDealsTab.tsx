@@ -3,6 +3,7 @@ import { Link } from "react-router-dom";
 import { fetchAuctionDeals, fetchBidPlans, saveBidPlan, type AuctionDeal, type EdgeCalc, type PlanKind } from "../lib/api";
 import { onWatchChange, watchedCards } from "./WatchButton";
 import { PhaseChip } from "./BuyWindows";
+import HelpTip from "./HelpTip";
 import { useSession } from "../lib/auth";
 import { MarketLinkRow } from "./MarketLinks";
 import { formatCents } from "../lib/roi";
@@ -24,6 +25,42 @@ const GRADE_LABEL: Record<string, string> = {
 const SOURCE_LABEL: Record<string, string> = { fanatics: "Fanatics", ebay: "eBay" };
 
 type SortKey = "pressure" | "edge" | "live";
+
+const Formula = ({ children }: { children: React.ReactNode }) => (
+  <div className="my-1.5 rounded bg-gray-900 px-2 py-1 font-mono text-[11px] text-gray-200">{children}</div>
+);
+
+// What each sort means and how it's worked out (hover the buttons).
+const SORT_HELP: Record<SortKey, React.ReactNode> = {
+  pressure: (
+    <>
+      <div className="font-semibold text-gray-100">Most pressure: more copies up than buyers usually take</div>
+      <Formula>pressure = auctions closing this week ÷ copies sold a week</Formula>
+      <p>Copies sold a week counts every channel (Fanatics auctions and Buy Now, eBay) over the last 12 weeks, floored at 1 so a card that rarely sells can't show a huge number.</p>
+      <p className="mt-1"><span className="text-amber-300">2×</span> = heavy, <span className="text-red-400">3×+</span> = a dump: closes tend to come in low because buyers can't absorb them all.</p>
+      <p className="mt-1 text-gray-500">Example: 6 closing this week, 2 sold a week usually → 3.0×.</p>
+    </>
+  ),
+  edge: (
+    <>
+      <div className="font-semibold text-gray-100">Biggest edge: profit buying at the expected close and reselling now</div>
+      <Formula>edge = (resale after fees − projected close) ÷ projected close</Formula>
+      <ul className="list-disc pl-4 space-y-1">
+        <li><span className="text-gray-100">Projected close</span>: the card's usual weekly Fanatics auction close (median of its weekly averages, all-in with the buyer's premium), adjusted for this week's supply by how it closed in its own heavy weeks. Under 2 weeks of its own closes, a grade-wide model is used instead.</li>
+        <li><span className="text-gray-100">Resale</span>: the better of the Fanatics Buy Now sold median (after your Fanatics fee) and the eBay sold median (after the eBay fee, shipping and the vault withdrawal), lowered when its price trend is falling. Sold prices only, never asking prices.</li>
+        <li><span className="text-gray-100">Sorted by</span> edge × confidence (high 1, medium 0.75, low 0.4) so thin data can't top the list. Dots after the number mean lower confidence.</li>
+      </ul>
+      <p className="mt-1 text-gray-500">Hover any edge value for its full working.</p>
+    </>
+  ),
+  live: (
+    <>
+      <div className="font-semibold text-gray-100">Most auctions: the most copies closing this week</div>
+      <Formula>count of live auctions of this card + grade ending in the next 7 days</Formula>
+      <p>Raw volume, not adjusted for how fast the card sells: a popular card can have many up without any pressure. Compare with the Pressure column.</p>
+    </>
+  ),
+};
 
 // What's already in this Sunday's Buying prep (and the watchlist), to mark
 // rows: by card, with each list's grades and max bids.
@@ -369,8 +406,10 @@ export default function AuctionDealsTab({ lang }: { lang: "" | "en" | "ja" }) {
       <div className="flex flex-wrap items-center gap-3 text-sm">
         <div className="inline-flex rounded border border-gray-700 overflow-hidden">
           {([["pressure", "Most pressure"], ["edge", "Biggest edge"], ["live", "Most auctions"]] as const).map(([k, label]) => (
-            <button key={k} onClick={() => setSort(k)}
-              className={`px-3 py-1 ${sort === k ? "bg-indigo-700 text-white" : "bg-gray-900 text-gray-400 hover:text-gray-200"}`}>{label}</button>
+            <HelpTip key={k} help={SORT_HELP[k]}>
+              <button onClick={() => setSort(k)}
+                className={`px-3 py-1 ${sort === k ? "bg-indigo-700 text-white" : "bg-gray-900 text-gray-400 hover:text-gray-200"}`}>{label}</button>
+            </HelpTip>
           ))}
         </div>
         <label className="flex items-center gap-1.5 text-gray-400">
