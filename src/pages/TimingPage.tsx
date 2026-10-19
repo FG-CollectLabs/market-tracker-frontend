@@ -1,8 +1,11 @@
 import { useEffect, useMemo, useState } from "react";
+import { Link } from "react-router-dom";
 import {
-  fetchReleaseCurves, type CurveCategory, type CurveGrade, type CurveLang, type ReleaseCurve, type ReleaseCurves, type WindowRow,
+  fetchReleaseCurves, fetchSetWindows, type CurveCategory, type CurveGrade, type CurveLang, type ReleaseCurve, type ReleaseCurves, type SetWindows,
+  type WindowRow,
 } from "../lib/api";
-import { LineChart, Legend, SERIES, type LineSeries } from "../components/HistoryCharts";
+import { LineChart, Legend, SERIES, type ChartMarker, type LineSeries } from "../components/HistoryCharts";
+import { PhaseChip, phaseOfWindow } from "../components/BuyWindows";
 import { Spinner, ErrorMsg } from "../components/Spinner";
 import CompareBy from "../components/CompareBy";
 import AfterHype from "../components/AfterHype";
@@ -42,16 +45,127 @@ const pct = (v: number) => {
 };
 const axisPct = (v: number) => `${+v.toFixed(Math.abs(v) < 5 && v !== Math.round(v) ? 1 : 0)}%`;
 
-function seriesFor(curves: ReleaseCurve[], picks: { key: string; label: string; color: string; dashed?: boolean }[]) {
+// Change vs launch at a month (null past the curve's end).
+function changeAt(c: ReleaseCurve, month: number): number | null {
+  return c.points.find((p) => p.month === month)?.change ?? null;
+}
+
+// Change from buying at month `from` to month `to`, off the curve:
+// (1 + change(to)) / (1 + change(from)) - 1.
+function changeBetween(c: ReleaseCurve, from: number, to: number): number | null {
+  const a = changeAt(c, from), b = changeAt(c, to);
+  return a == null || b == null ? null : (1 + b) / (1 + a) - 1;
+}
+
+// Curves as % change since `start` (0 = launch); months before start are empty.
+function seriesFor(curves: ReleaseCurve[], picks: { key: string; label: string; color: string; dashed?: boolean }[], start = 0) {
   const months = Math.max(0, ...curves.map((c) => c.points[c.points.length - 1].month));
   const xs = Array.from({ length: months + 1 }, (_, i) => String(i));
   const series: LineSeries[] = picks.flatMap((p) => {
     const c = curves.find((x) => x.grade === p.key);
     if (!c) return [];
-    const byMonth = new Map(c.points.map((pt) => [pt.month, pt.change * 100]));
-    return [{ label: p.label, color: p.color, dashed: p.dashed, values: xs.map((m) => byMonth.get(Number(m)) ?? null) }];
+    return [{ label: p.label, color: p.color, dashed: p.dashed, values: xs.map((m) => {
+      const v = Number(m) < start ? null : changeBetween(c, start, Number(m));
+      return v == null ? null : v * 100;
+    }) }];
   });
   return { xs, series };
+}
+
+const annualize = (r: number, months: number) => Math.pow(1 + r, 12 / months) - 1;
+const HOLDS = [6, 12, 24, 36];
+
+// What buying at `start` returned on each picked curve.
+function ReturnsFrom({ curves, picked, start }: { curves: ReleaseCurve[]; picked: typeof GRADES; start: number }) {
+  return (
+    <div className="overflow-x-auto">
+      <table className="text-xs tabular-nums">
+        <thead className="text-gray-500">
+          <tr>
+            <th className="text-left py-1 pr-4 font-medium">Bought at month {start}</th>
+            {HOLDS.map((h) => <th key={h} className="text-right py-1 px-3 font-medium" title={`Change from month ${start} to month ${start + h}, and per year`}>{h} months later</th>)}
+          </tr>
+        </thead>
+        <tbody className="text-gray-300">
+          {picked.map((g) => {
+            const c = curves.find((x) => x.grade === g.key);
+            return (
+              <tr key={g.key}>
+                <td className="py-1 pr-4 whitespace-nowrap"><span className="inline-block w-3 h-0.5 mr-1.5 align-middle" style={{ background: g.color }} />{g.label}</td>
+                {HOLDS.map((h) => {
+                  const r = c ? changeBetween(c, start, start + h) : null;
+                  return (
+                    <td key={h} className="py-1 px-3 text-right">
+                      {r == null ? <span className="text-gray-600" title="Past the end of the curve">—</span> : (
+                        <>
+                          <span className={r > 0 ? "text-green-400" : r < 0 ? "text-red-400" : ""}>{pct(r)}</span>
+                          <span className="text-gray-500"> · {pct(annualize(r, h))}/yr</span>
+                        </>
+                      )}
+                    </td>
+                  );
+                })}
+              </tr>
+            );
+          })}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
+const WIN_GRADE: Record<string, "raw" | "psa-10" | "cgc-10"> = { raw: "raw", "psa-10": "psa-10", "psa-9": "psa-10", "cgc-10": "cgc-10", "cgc-10-pristine": "cgc-10", "cgc-7-9": "raw" };
+
+// Each set's position on the curve for one tier + grade: where it is now,
+// what the curve says comes next.
+function SetCycle({ sets, curves, cat, grade }: { sets: SetWindows[]; curves: ReleaseCurve[]; cat: CurveCategory; grade: string }) {
+  const c = curves.find((x) => x.grade === grade);
+  if (!c) return <p className="text-xs text-gray-500">No {GRADE_LABEL[grade] ?? grade} curve for this tier and language.</p>;
+  const rows = [...sets].sort((a, b) => a.months_since_release - b.months_since_release);
+  const winOf = (s: SetWindows, g: string) => s.windows.find((w) => w.grade === g && w.tier === cat) ?? s.windows.find((w) => w.grade === g && w.tier === "all");
+  const v = (r: number | null) => r == null ? <span className="text-gray-600">—</span> : <span className={r > 0 ? "text-green-400" : r < 0 ? "text-red-400" : ""}>{pct(r)}</span>;
+  return (
+    <div className="overflow-x-auto">
+      <table className="w-full text-xs tabular-nums">
+        <thead className="text-gray-500">
+          <tr>
+            <th className="text-left py-1 pr-2 font-medium">Set</th>
+            <th className="text-right py-1 px-2 font-medium">Month</th>
+            <th className="text-left py-1 px-2 font-medium" title="Phase of the raw price cycle">Phase</th>
+            <th className="text-left py-1 px-2 font-medium" title={`This tier's ${GRADE_LABEL[grade]} buy window`}>{GRADE_LABEL[grade]} window</th>
+            <th className="text-right py-1 px-2 font-medium" title="Where the curve sits now vs launch">vs launch now</th>
+            <th className="text-right py-1 px-2 font-medium" title="Curve change over the next 6 months">Next 6 mo</th>
+            <th className="text-right py-1 px-2 font-medium" title="Curve change over the next 12 months">Next 12 mo</th>
+            <th className="text-right py-1 px-2 font-medium" title="Curve change over the next 24 months">Next 24 mo</th>
+          </tr>
+        </thead>
+        <tbody className="divide-y divide-gray-800 text-gray-300">
+          {rows.map((s) => {
+            const m = Math.floor(s.months_since_release);
+            const w = winOf(s, WIN_GRADE[grade] ?? "raw");
+            const raw = winOf(s, "raw");
+            return (
+              <tr key={s.code}>
+                <td className="py-1 pr-2 whitespace-nowrap">
+                  <Link to={`/browse/${encodeURIComponent(s.code)}`} className="text-gray-100 hover:text-indigo-300">{s.name}</Link>
+                  {!s.in_print && <span className="ml-1.5 text-sky-300">OOP</span>}
+                </td>
+                <td className="py-1 px-2 text-right">M{m}</td>
+                <td className="py-1 px-2"><PhaseChip phase={phaseOfWindow(raw)} title={raw?.headline} /></td>
+                <td className="py-1 px-2 whitespace-nowrap text-gray-400" title={w?.headline}>
+                  {w ? `M${w.from}–${w.to} · ${w.action === "buy" ? "in window" : w.action === "wait" ? `opens in ${w.months_to_window ?? "?"} mo` : w.action === "past" ? "past" : w.action === "watch_only" ? "watch only" : "—"}` : "—"}
+                </td>
+                <td className="py-1 px-2 text-right">{v(changeAt(c, m))}</td>
+                <td className="py-1 px-2 text-right">{v(changeBetween(c, m, m + 6))}</td>
+                <td className="py-1 px-2 text-right">{v(changeBetween(c, m, m + 12))}</td>
+                <td className="py-1 px-2 text-right">{v(changeBetween(c, m, m + 24))}</td>
+              </tr>
+            );
+          })}
+        </tbody>
+      </table>
+    </div>
+  );
 }
 
 function ProvisionalBadge({ c }: { c: { provisional: boolean; min_sets: number } }) {
@@ -87,10 +201,16 @@ export default function TimingPage() {
   const [tCat, setTCat] = useState<CurveCategory | "">("");
   const [tGrade, setTGrade] = useState<string>("");
   const [sort, setSort] = useState<{ k: SortKey; desc: boolean }>({ k: "trail", desc: true });
+  const [start, setStart] = useState(0);
+  const [sets, setSets] = useState<SetWindows[]>([]);
+  const [cycleGrade, setCycleGrade] = useState("psa-10");
 
   useEffect(() => {
     fetchReleaseCurves().then(setData).catch((e: Error) => setError(e.message));
   }, []);
+  useEffect(() => {
+    fetchSetWindows(lang === "all" ? undefined : lang).then((r) => setSets(r.sets.filter((x) => x.lang !== "zh"))).catch(() => setSets([]));
+  }, [lang]);
 
   const rows = useMemo(() => {
     if (!data) return [];
@@ -102,7 +222,9 @@ export default function TimingPage() {
 
   const curves = data.curves.filter((c) => c.lang === lang && c.category === cat);
   const picked = GRADES.filter((g) => grades.includes(g.key));
-  const price = seriesFor(curves, picked);
+  const price = seriesFor(curves, picked, start);
+  const maxMonth = Math.max(0, ...curves.map((c) => c.points[c.points.length - 1].month));
+  const markers: ChartMarker[] = sets.map((x) => ({ i: Math.floor(x.months_since_release), label: x.name }));
   const prem = curves.find((c) => c.grade === "premium");
   const premium = seriesFor(curves, [{ key: "premium", label: "Premium", color: SERIES[0] }]);
   const bottoms = data.bottoms.filter((b) => b.lang === lang && b.category === cat);
@@ -192,12 +314,29 @@ export default function TimingPage() {
 
           <section className="rounded-lg border border-gray-800 bg-gray-900 p-4 space-y-2">
             <div className="flex flex-wrap items-baseline justify-between gap-2">
-              <h2 className="text-sm font-semibold text-gray-100">Price vs launch month · {CAT_LABEL[cat]}</h2>
+              <h2 className="text-sm font-semibold text-gray-100">
+                {start === 0 ? "Price vs launch month" : `Price vs month ${start} (bought at M${start})`} · {CAT_LABEL[cat]}
+              </h2>
               <Legend items={price.series.map((s) => ({ label: s.label, color: s.color }))} />
             </div>
-            <LineChart weeks={price.xs} series={price.series} fmt={(v) => pct(v / 100)} axisFmt={axisPct}
-              xLabel={(m) => `M${m}`} xTitle={(m) => `Month ${m} since release`} />
-            <p className="text-xs text-gray-500">Curves stop where fewer than 8 cards have a price for the next month.</p>
+            <div className="flex flex-wrap items-center gap-3 text-xs text-gray-400">
+              <label htmlFor="start-month" className="whitespace-nowrap">Buy at month</label>
+              <input id="start-month" type="range" min={0} max={Math.max(0, maxMonth - 6)} value={Math.min(start, Math.max(0, maxMonth - 6))}
+                onChange={(e) => setStart(Number(e.target.value))} className="w-64 accent-indigo-500" />
+              <span className="font-mono text-gray-100 w-10">M{start}</span>
+              {[0, 6, 8, 12, 18, 24].filter((m) => m <= maxMonth - 6).map((m) => (
+                <button key={m} onClick={() => setStart(m)}
+                  className={`px-1.5 py-0.5 rounded border ${start === m ? "border-indigo-500 text-white" : "border-gray-700 text-gray-400 hover:text-gray-200"}`}>M{m}</button>
+              ))}
+              <span className="text-gray-500">Slide to re-base every curve on buying at that month instead of at release.</span>
+            </div>
+            <LineChart weeks={price.xs} series={price.series} fmt={(v) => pct(v / 100)} axisFmt={axisPct} shadeBefore={start} markers={markers}
+              xLabel={(m) => `M${m}`} xTitle={(m) => `Month ${m} since release${start ? ` (${Number(m) - start >= 0 ? `${Number(m) - start} months after buying` : "before buying"})` : ""}`} />
+            <ReturnsFrom curves={curves} picked={picked} start={start} />
+            <p className="text-xs text-gray-500">
+              Curves stop where fewer than 8 cards have a price for the next month. <span className="text-indigo-300">●</span> marks sets at their current month
+              (number = several sets); hover a month to see which.
+            </p>
           </section>
 
           {prem && (
@@ -212,6 +351,24 @@ export default function TimingPage() {
             </section>
           )}
         </>
+      )}
+
+      {curves.length > 0 && sets.length > 0 && (
+        <section className="rounded-lg border border-gray-800 bg-gray-900 p-4 space-y-2">
+          <div className="flex flex-wrap items-baseline justify-between gap-2">
+            <div>
+              <h2 className="text-sm font-semibold text-gray-100">Where sets are on the cycle · {CAT_LABEL[cat]}</h2>
+              <p className="text-xs text-gray-500">
+                Each set at its current month on the {CAT_LABEL[cat]} curve: where the curve has it vs launch, and what the curve says the next 6, 12 and 24
+                months typically bring. The curve is the tier's average, not a forecast for any one card.
+              </p>
+            </div>
+            <select value={cycleGrade} onChange={(e) => setCycleGrade(e.target.value)} className="bg-gray-950 border border-gray-700 rounded px-1.5 py-1 text-xs text-gray-200">
+              {GRADES.map((g) => <option key={g.key} value={g.key}>{g.label}</option>)}
+            </select>
+          </div>
+          <SetCycle sets={sets} curves={curves} cat={cat} grade={cycleGrade} />
+        </section>
       )}
 
       <section className="rounded-lg border border-gray-800 bg-gray-900 p-4 space-y-3">

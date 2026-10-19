@@ -1438,7 +1438,7 @@ export interface SetWindow {
 export interface SetWindows {
   code: string;
   name: string;
-  lang: "en" | "ja";
+  lang: "en" | "ja" | "zh";
   release_date?: string;
   months_since_release: number;
   tracked: number;
