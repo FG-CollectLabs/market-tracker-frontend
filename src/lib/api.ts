@@ -1768,3 +1768,62 @@ export async function deleteBidPlan(id: string): Promise<void> {
   const res = await fetch(`${BASE}/v1/admin/bid-plans/${encodeURIComponent(id)}`, { method: "DELETE", headers: await authHeaders() });
   if (!res.ok && res.status !== 204) throw new Error(`${res.status}`);
 }
+
+// ---- Ending soon (snipe board) and watchlist suggestions ------------------------
+
+export interface EndingAuction {
+  display_key: string;
+  name: string;
+  set_code: string;
+  image_url?: string;
+  grade: string;
+  title: string;
+  url?: string;
+  ends_at: string;
+  bid_cents: number; // current bid (hammer)
+  bids: number;
+  all_in_cents: number; // bid + buyer's premium
+  bid_seen_at: string; // when the bid was read
+  marketplace: string;
+  value_cents?: number;
+  value_source?: "estimate" | "market";
+  confidence?: string;
+  low_cents?: number;
+  high_cents?: number;
+  discount?: number; // 1 - all-in / value
+  max_bid_at_value_cents?: number;
+  max_bid_at_margin_cents?: number;
+  watched: boolean;
+  in_prep?: "auction" | "min_bid";
+}
+
+export function fetchEndingSoon(hours: number): Promise<{ hours: number; count: number; auctions: EndingAuction[]; settings: { buyers_premium_pct: number; target_margin: number } }> {
+  return get(`/v1/deals/ending-soon?hours=${hours}`);
+}
+
+export interface WatchSuggestion {
+  id: number;
+  display_key: string;
+  name: string;
+  set_code: string;
+  image_url?: string;
+  rule: "raw_window" | "under_make" | "auction_discount";
+  grade: string;
+  summary: string;
+  score: number;
+  preset?: string;
+  targets: { target: string; rule_kind: string; rule_value?: number; buy_all: boolean; channels: string }[];
+  created_at: string;
+}
+
+export function fetchWatchSuggestions(): Promise<{ count: number; suggestions: WatchSuggestion[] }> {
+  return adminFetch(`/v1/admin/watch-suggestions`);
+}
+
+export function decideWatchSuggestion(id: number, action: "accept" | "dismiss"): Promise<unknown> {
+  return adminFetch(`/v1/admin/watch-suggestions/${id}/${action}`, { method: "POST" });
+}
+
+export function runWatchSuggestions(): Promise<{ proposed: number; added: number; updated: number; skipped_recently_dismissed: number; expired: number }> {
+  return adminFetch(`/v1/admin/watch-suggestions/run`, { method: "POST" });
+}

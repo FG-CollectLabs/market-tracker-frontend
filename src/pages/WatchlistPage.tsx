@@ -6,6 +6,7 @@ import { STANCE } from "../components/BuyingGuide";
 import { CardPrepButtons, PresetBar, TARGET_LABEL, TargetEditor, usePresets } from "../components/WatchTargets";
 import { cardThumb } from "../lib/thumb";
 import { Spinner, ErrorMsg } from "../components/Spinner";
+import WatchSuggestions from "../components/WatchSuggestions";
 
 const usd = (c?: number | null) => (c == null ? "—" : `$${(c / 100).toFixed(2)}`);
 const INTENT_LABEL: Record<WatchIntent, string> = { grade: "Grade", invest: "Invest", flip: "Flip", watch: "Watch" };
@@ -114,6 +115,8 @@ export default function WatchlistPage() {
         </div>
         <button onClick={() => window.print()} className="px-3 py-1 rounded bg-indigo-600 text-white text-sm hover:bg-indigo-500 print:hidden">Print</button>
       </div>
+
+      <WatchSuggestions onAccepted={load} />
 
       <div className="flex flex-wrap items-center gap-2 print:hidden">
         <select value={target} onChange={(e) => setTarget(e.target.value as typeof target)} className={sel}>
