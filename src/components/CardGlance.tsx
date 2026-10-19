@@ -133,12 +133,12 @@ function Working({ ev, w }: { ev: GradingEV; w: EVWorking }) {
   );
 }
 
-const SOURCE_LABEL: Record<string, string> = { pokemonpricetracker: "PokemonPriceTracker", poketrace: "PokeTrace" };
+const SOURCE_LABEL: Record<string, string> = { pokemonpricetracker: "PokemonPriceTracker", poketrace: "PokeTrace", compsapi: "CompsAPI" };
 const CHANNEL_LABEL: Record<string, string> = { tcgplayer: "TCGplayer", ebay: "eBay sold", sold: "Sold (eBay + Fanatics)", cardmarket: "Cardmarket" };
 // The one number per source / channel / grade shown first; the rest on hover.
 const HEADLINE = ["median_30d", "median", "market", "avg_30d", "smart_market", "avg", "median_7d", "avg_7d", "low"];
 const METRIC_LABEL: Record<string, string> = {
-  market: "market", low: "lowest listing", avg: "average", median: "median", median_7d: "7-day median", median_30d: "30-day median",
+  market: "market", low: "low", high: "high", avg: "average", median: "median", median_7d: "7-day median", median_30d: "30-day median",
   avg_7d: "7-day average", avg_30d: "30-day average", smart_market: "smart market",
 };
 
