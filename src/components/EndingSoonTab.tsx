@@ -34,6 +34,32 @@ function ago(iso: string, now: number): string {
   return `${Math.round(m / 1440)} days ago`;
 }
 
+function playBeep() {
+  try {
+    const Ctx = window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
+    const ctx = new Ctx();
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+    osc.type = "sine";
+    osc.frequency.value = 880;
+    gain.gain.setValueAtTime(0.15, ctx.currentTime);
+    gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.2);
+    osc.connect(gain);
+    gain.connect(ctx.destination);
+    osc.start(ctx.currentTime);
+    osc.stop(ctx.currentTime + 0.2);
+  } catch {
+    /* audio not available */
+  }
+}
+
+function notifySnipe(row: EndingAuction) {
+  if (!("Notification" in window) || Notification.permission !== "granted") return;
+  const labels = row.signals?.map((s) => SIGNAL[s]?.label ?? s).join(", ");
+  const n = new Notification(`${row.name} ${gradeLabel(row.grade)}`, { body: labels });
+  if (row.url) n.onclick = () => window.open(row.url, "_blank");
+}
+
 type Sort = "snipe" | "discount" | "ends" | "value";
 
 const SIGNAL: Record<SnipeSignal, { label: string; cls: string; help: string }> = {
@@ -165,6 +191,11 @@ export default function EndingSoonTab({ lang }: { lang: "" | "en" | "ja" | "zh" 
   const [noBids, setNoBids] = useState(() => loadFilters().noBids);
   const [sort, setSort] = useState<Sort>(() => loadFilters().sort);
   const [snipesOnly, setSnipesOnly] = useState(() => loadFilters().snipesOnly);
+  const [alertMe, setAlertMe] = useState(false);
+  const [notifDenied, setNotifDenied] = useState(false);
+  const [highlighted, setHighlighted] = useState<Set<string>>(new Set());
+  const prevSignals = useRef<Set<string>>(new Set());
+  const firstLoad = useRef(true);
   const [now, setNow] = useState(Date.now());
   const [tick, setTick] = useState(0);
 
@@ -199,6 +230,36 @@ export default function EndingSoonTab({ lang }: { lang: "" | "en" | "ja" | "zh" 
     return [...xs].sort((a, b) => key[sort](a) - key[sort](b));
   }, [data, lang, watchedOnly, noBids, minDisc, sort]);
 
+  // Alert me: detect new snipe rows after each reload, beep + notify + highlight.
+  useEffect(() => {
+    if (!data) return;
+    const current = new Set(data.auctions.filter((a) => (a.signals?.length ?? 0) > 0).map((a) => a.url ?? a.display_key));
+    if (firstLoad.current) {
+      firstLoad.current = false;
+      prevSignals.current = current;
+      return;
+    }
+    if (!alertMe) {
+      prevSignals.current = current;
+      return;
+    }
+    const newUrls = Array.from(current).filter((u) => !prevSignals.current.has(u));
+    if (newUrls.length === 0) return;
+    playBeep();
+    for (const u of newUrls) {
+      const row = data.auctions.find((a) => (a.url ?? a.display_key) === u);
+      if (row) notifySnipe(row);
+    }
+    setHighlighted((h) => new Set([...h, ...newUrls]));
+    const timer = setTimeout(() => setHighlighted((h) => {
+      const next = new Set(h);
+      for (const u of newUrls) next.delete(u);
+      return next;
+    }), 10_000);
+    prevSignals.current = current;
+    return () => clearTimeout(timer);
+  }, [data, alertMe, tick]);
+
   if (error) return <ErrorMsg msg={error} />;
   if (!data) return <Spinner />;
   const premium = Math.round(data.settings.buyers_premium_pct * 100);
@@ -226,6 +287,16 @@ export default function EndingSoonTab({ lang }: { lang: "" | "en" | "ja" | "zh" 
         <label className="flex items-center gap-1.5 text-emerald-300" title="Only auctions with a snipe signal">
           <input type="checkbox" checked={snipesOnly} onChange={(e) => setSnipesOnly(e.target.checked)} className="accent-emerald-500" /> Snipes only
         </label>
+        <label className="flex items-center gap-1.5 text-gray-400" title="Beep and notify when a new snipe appears">
+          <input type="checkbox" checked={alertMe} onChange={(e) => {
+            const on = e.target.checked;
+            if (on && "Notification" in window && Notification.permission === "default") {
+              Notification.requestPermission().then((p) => { if (p === "denied") setNotifDenied(true); });
+            }
+            setAlertMe(on);
+          }} className="accent-emerald-500" /> Alert me
+        </label>
+        {alertMe && notifDenied && <span className="text-xs text-amber-400">Notifications blocked — beep and highlight still work.</span>}
         <label className="flex items-center gap-1.5 text-gray-400">
           <input type="checkbox" checked={watchedOnly} onChange={(e) => setWatchedOnly(e.target.checked)} className="accent-indigo-500" /> Watchlist only
         </label>
@@ -265,7 +336,7 @@ export default function EndingSoonTab({ lang }: { lang: "" | "en" | "ja" | "zh" 
               {rows.map((a, i) => {
                 const d = a.discount;
                 return (
-                  <tr key={a.url ?? i} className={`align-top hover:bg-gray-900/40 ${a.signals?.length ? "bg-emerald-950/20 " : ""}${a.watched ? "border-l-4 border-l-yellow-500" : "border-l-4 border-l-transparent"}`}>
+                  <tr key={a.url ?? i} className={`align-top hover:bg-gray-900/40 ${a.signals?.length ? "bg-emerald-950/20 " : ""}${highlighted.has(a.url ?? a.display_key) ? "ring-1 ring-emerald-400 " : ""}${a.watched ? "border-l-4 border-l-yellow-500" : "border-l-4 border-l-transparent"}`}>
                     <td className="pl-3 py-2 w-12">
                       {a.image_url ? <img src={cardThumb(a.image_url)} alt="" loading="lazy" className="w-10 h-14 object-cover rounded-sm bg-gray-800" /> : <span className="block w-10 h-14 rounded-sm bg-gray-800/60" />}
                     </td>
