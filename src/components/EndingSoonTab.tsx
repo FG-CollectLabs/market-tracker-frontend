@@ -44,6 +44,31 @@ const SIGNAL: Record<SnipeSignal, { label: string; cls: string; help: string }> 
 
 const pct = (x?: number | null) => (x == null ? "—" : `${Math.round(x * 100)}%`);
 
+function CopyBtn({ cents }: { cents: number }) {
+  const [state, setState] = useState<"ok" | "err" | null>(null);
+  const [msg, setMsg] = useState("");
+  const copy = () => {
+    navigator.clipboard
+      .writeText(String(Math.round(cents / 100)))
+      .then(() => {
+        setState("ok");
+        setTimeout(() => setState(null), 1500);
+      })
+      .catch((e: Error) => {
+        setState("err");
+        setMsg(e.message);
+        setTimeout(() => setState(null), 1500);
+      });
+  };
+  return (
+    <>
+      <button onClick={copy} className="print:hidden text-gray-500 hover:text-gray-200" title="Copy bid" aria-label="Copy bid">⧉</button>
+      {state === "ok" && <span className="text-green-400 text-xs">✓</span>}
+      {state === "err" && <span className="text-red-400 text-xs" title={msg}>✕</span>}
+    </>
+  );
+}
+
 function PulseBar({ pulse, now, onScanned }: { pulse?: PulseStatus; now: number; onScanned: () => void }) {
   const session = useSession();
   const [busy, setBusy] = useState(false);
@@ -251,12 +276,28 @@ export default function EndingSoonTab({ lang }: { lang: "" | "en" | "ja" | "zh" 
                     <td className="px-3 py-2 text-right tabular-nums">
                       {a.max_bid_at_margin_cents != null && (
                         <>
-                          <div className="text-green-400 font-medium" title={`Keeps your ${margin}% margin`}>{money(a.max_bid_at_margin_cents)}</div>
-                          <div className="text-[10px] text-gray-500" title="Pays exactly the value all-in">{money(a.max_bid_at_value_cents)} at value</div>
+                          <div className="flex items-center justify-end gap-1">
+                            <span className="text-green-400 font-medium" title={`Keeps your ${margin}% margin`}>{money(a.max_bid_at_margin_cents)}</span>
+                            <CopyBtn cents={a.max_bid_at_margin_cents} />
+                          </div>
+                          <div className="flex items-center justify-end gap-1 text-[10px]">
+                            <span className="text-gray-500" title="Pays exactly the value all-in">{money(a.max_bid_at_value_cents)} at value</span>
+                            <CopyBtn cents={a.max_bid_at_value_cents ?? 0} />
+                          </div>
                         </>
                       )}
-                      {a.max_bid_for_mint_cents != null && <div className="text-[10px] text-emerald-300/90" title={`Stays ${pct(rules?.mint_gap)} under the cost to make`}>{money(a.max_bid_for_mint_cents)} vs make</div>}
-                      {a.max_bid_for_flip_cents != null && <div className="text-[10px] text-sky-300/90" title={`Keeps the ${pct(rules?.flip_margin)} flip margin`}>{money(a.max_bid_for_flip_cents)} to flip</div>}
+                      {a.max_bid_for_mint_cents != null && (
+                        <div className="flex items-center justify-end gap-1 text-[10px]">
+                          <span className="text-emerald-300/90" title={`Stays ${pct(rules?.mint_gap)} under the cost to make`}>{money(a.max_bid_for_mint_cents)} vs make</span>
+                          <CopyBtn cents={a.max_bid_for_mint_cents} />
+                        </div>
+                      )}
+                      {a.max_bid_for_flip_cents != null && (
+                        <div className="flex items-center justify-end gap-1 text-[10px]">
+                          <span className="text-sky-300/90" title={`Keeps the ${pct(rules?.flip_margin)} flip margin`}>{money(a.max_bid_for_flip_cents)} to flip</span>
+                          <CopyBtn cents={a.max_bid_for_flip_cents} />
+                        </div>
+                      )}
                       {a.max_bid_at_margin_cents == null && a.max_bid_for_mint_cents == null && a.max_bid_for_flip_cents == null && "—"}
                     </td>
                   </tr>
