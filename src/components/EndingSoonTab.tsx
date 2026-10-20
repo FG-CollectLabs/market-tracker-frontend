@@ -10,9 +10,10 @@ import { Spinner, ErrorMsg } from "./Spinner";
 // Ending soon: every live Fanatics auction closing in the next few hours,
 // its current bid against what the card + grade is worth. For the last
 // hour on the watchlist and for snipes on auctions nobody is watching.
-// In the last hour the API re-reads closing lots every few minutes (the
-// snipe pulse) and flags three kinds of snipe: under the cost to make the
-// slab, a deep discount to its value, and a Buy Now flip.
+// The snipe pulse sweeps the weekly auction 2 h before the close; in the
+// last hour you scan by hand. Lots are flagged as three kinds of snipe:
+// under the cost to make the slab, a deep discount to its value, and a Buy
+// Now flip.
 
 const money = (c?: number | null) => formatCents(c ?? null);
 const GRADE: Record<string, string> = { raw: "Raw", "psa-10": "PSA 10", "psa-9": "PSA 9", "cgc-10": "CGC 10", "cgc-10-pristine": "CGC Pristine" };
@@ -63,8 +64,9 @@ function PulseBar({ pulse, now, onScanned }: { pulse?: PulseStatus; now: number;
   return (
     <div className={`flex flex-wrap items-center gap-x-3 gap-y-1 rounded-lg border px-3 py-2 text-xs ${pulse?.active ? "border-emerald-700/70 bg-emerald-950/30" : "border-gray-800 bg-gray-900/40"}`}>
       <span className={`font-semibold ${pulse?.active ? "text-emerald-300" : "text-gray-400"}`}>
-        {pulse?.active ? "● Snipe window: live bids every 3 min" : "Snipe pulse idle"}
+        {pulse?.active ? (pulse.swept ? "● Snipe window: swept, scan by hand" : "● Snipe window: sweeping") : "Snipe pulse idle"}
       </span>
+      {!pulse?.active && pulse?.sweep_at && <span className="text-gray-400">auto sweep {new Date(pulse.sweep_at).toLocaleString(undefined, { weekday: "short", hour: "numeric", minute: "2-digit" })}</span>}
       {close && <span className="text-gray-400">next close {new Date(close).toLocaleString(undefined, { weekday: "short", hour: "numeric", minute: "2-digit" })} ({endsIn(close, now)})</span>}
       {pulse?.at ? (
         <span className="text-gray-500">
@@ -72,7 +74,7 @@ function PulseBar({ pulse, now, onScanned }: { pulse?: PulseStatus; now: number;
           {pulse.error && <span className="ml-1.5 text-red-400">· {pulse.error}</span>}
         </span>
       ) : <span className="text-gray-500">no scan since the API started</span>}
-      <HelpDot help="From 65 minutes before a close until 10 minutes after it (extended bidding), the API reads every tracked, watched and owned card's auctions once, then re-reads the cards with lots closing every 3 minutes. Bids between scans can still move: open the auction before bidding." />
+      <HelpDot help="Weekly auction only (premier is left out). 2 hours before the close the API reads every tracked, watched and owned card's weekly lots once. After that it doesn't re-read on its own: press Scan now in the last hour (a few seconds; at most once a minute) to refresh the cards with lots closing. The window stays open 10 minutes past the close for extended bidding. Bids move between scans: open the auction before bidding." />
       <span className="flex-1" />
       {err && <span className="text-red-400">{err}</span>}
       {session && (
@@ -136,7 +138,7 @@ export default function EndingSoonTab({ lang }: { lang: "" | "en" | "ja" | "zh" 
     <div className="space-y-3">
       <p className="text-sm text-gray-500 max-w-4xl">
         Every Fanatics auction closing soon, its current bid against what the card is worth (the Pricing API's estimate from recent sales, all-in).
-        In the last hour before a close the snipe pulse re-reads bids every few minutes and flags snipes: under the cost to make the slab
+        The weekly auction is swept 2 h before the close; in the last hour press Scan now for fresh bids. Snipes are flagged: under the cost to make the slab
         (by {pct(rules?.mint_gap)}+), {pct(rules?.discount)}+ under value, or a Buy Now flip clearing {pct(rules?.flip_margin)}. Bids can still move
         between scans, so check the listing before bidding. This page reloads every 2 minutes.
       </p>

@@ -35,8 +35,8 @@ and endpoint below exists (backend PR #82, frontend PR `feat/snipe-board`, both 
 - Tick the clock every second while any shown auction ends within 60 minutes (keep 30 s otherwise).
   One interval for the whole table, not one per row.
 - Under 60 minutes show `mm:ss` (e.g. `12:05`); under 5 minutes make it `text-red-400 font-semibold`.
-  Past the listed close show `extended?` in amber (Fanatics extends on late bids; the pulse keeps
-  reading 10 minutes past the close).
+  Past the listed close show `extended?` in amber (Fanatics extends on late bids; the snipe window
+  stays open 10 minutes past the close).
 - Same treatment for the "next close" countdown in `PulseBar`.
 
 **Done when:** a lot closing in 4 minutes counts down live in red, and nothing re-renders every second
