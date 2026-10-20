@@ -1,5 +1,5 @@
 import { useEffect, useState, type ReactNode } from "react";
-import { fetchSettings, saveSettings, type AnalysisSettings, type Grader, type ServiceTier } from "../lib/api";
+import { fetchSettings, saveSettings, type AnalysisSettings, type Grader, type ServiceTier, type SnipeRules } from "../lib/api";
 import { useSession } from "../lib/auth";
 import { Spinner, ErrorMsg } from "../components/Spinner";
 
@@ -114,6 +114,11 @@ export default function SettingsPage() {
   const set = (patch: Partial<AnalysisSettings>) => {
     setSaved(null);
     setS((cur) => (cur ? { ...cur, ...patch } : cur));
+  };
+
+  const setSnipe = (patch: Partial<SnipeRules>) => {
+    const base = s?.snipe ?? { mint_gap: 0.25, discount: 0.4, flip_margin: 0.3 };
+    set({ snipe: { ...base, ...patch } });
   };
 
   const save = () => {
@@ -271,6 +276,19 @@ export default function SettingsPage() {
         <Field label="Benchmark return" hint="What the money could earn in the S&P 500 (long-run ~10%/yr). The Timing page flags card categories that beat it after the selling fee.">
           <Pct value={s.benchmark_rate} onChange={(v) => set({ benchmark_rate: v })} step={0.5} />
           <span className="text-gray-500"> / yr</span>
+        </Field>
+      </section>
+
+      <h2 className="text-xs font-semibold uppercase tracking-wide text-gray-500">Snipe signals</h2>
+      <section className="rounded-lg border border-gray-800 bg-gray-900 px-4 py-2 divide-y divide-gray-800">
+        <Field label="Under cost to make" hint="flag 'Under cost to make' when all-in is at least this far under the cost to make the slab">
+          <Pct value={s.snipe?.mint_gap ?? 0.25} onChange={(v) => setSnipe({ mint_gap: v })} />
+        </Field>
+        <Field label="Deep discount" hint="flag 'Deep discount' when all-in is at least this far under value">
+          <Pct value={s.snipe?.discount ?? 0.4} onChange={(v) => setSnipe({ discount: v })} />
+        </Field>
+        <Field label="Buy Now flip" hint="flag 'Buy Now flip' when relisting nets at least this margin after the selling fee">
+          <Pct value={s.snipe?.flip_margin ?? 0.3} onChange={(v) => setSnipe({ flip_margin: v })} />
         </Field>
       </section>
 
