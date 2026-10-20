@@ -18,11 +18,16 @@ const money = (c?: number | null) => formatCents(c ?? null);
 const GRADE: Record<string, string> = { raw: "Raw", "psa-10": "PSA 10", "psa-9": "PSA 9", "cgc-10": "CGC 10", "cgc-10-pristine": "CGC Pristine" };
 const gradeLabel = (g: string) => GRADE[g] ?? g.toUpperCase().replace("-", " ");
 
-function endsIn(iso: string, now: number): string {
-  const m = Math.round((new Date(iso).getTime() - now) / 60000);
-  if (m <= 0) return "ending";
-  if (m < 60) return `${m} min`;
-  return `${Math.floor(m / 60)}h ${m % 60}m`;
+function Countdown({ iso, now }: { iso: string; now: number }) {
+  const ms = new Date(iso).getTime() - now;
+  if (ms <= 0) return <span className="text-amber-400">extended?</span>;
+  const s = Math.floor(ms / 1000);
+  const mm = String(Math.floor(s / 60)).padStart(2, "0");
+  const ss = String(s % 60).padStart(2, "0");
+  if (s < 5 * 60) return <span className="tabular-nums text-red-400 font-semibold">{mm}:{ss}</span>;
+  if (s < 60 * 60) return <span className="tabular-nums">{mm}:{ss}</span>;
+  const m = Math.round(ms / 60_000);
+  return <span className="tabular-nums">{Math.floor(m / 60)}h {m % 60}m</span>;
 }
 
 function ago(iso: string, now: number): string {
@@ -65,7 +70,7 @@ function PulseBar({ pulse, now, onScanned }: { pulse?: PulseStatus; now: number;
       <span className={`font-semibold ${pulse?.active ? "text-emerald-300" : "text-gray-400"}`}>
         {pulse?.active ? "● Snipe window: live bids every 3 min" : "Snipe pulse idle"}
       </span>
-      {close && <span className="text-gray-400">next close {new Date(close).toLocaleString(undefined, { weekday: "short", hour: "numeric", minute: "2-digit" })} ({endsIn(close, now)})</span>}
+      {close && <span className="text-gray-400">next close {new Date(close).toLocaleString(undefined, { weekday: "short", hour: "numeric", minute: "2-digit" })} (<Countdown iso={close} now={now} />)</span>}
       {pulse?.at ? (
         <span className="text-gray-500">
           last scan {ago(pulse.at, now)} · {pulse.kind} · {pulse.cards} cards, {pulse.lots} lots, {pulse.requests} request{pulse.requests === 1 ? "" : "s"}, {(pulse.took_ms / 1000).toFixed(1)} s
@@ -103,12 +108,6 @@ export default function EndingSoonTab({ lang }: { lang: "" | "en" | "ja" | "zh" 
     setError(null);
     fetchEndingSoon(hours, snipesOnly).then(setData).catch((e: Error) => setError(e.message));
   }, [hours, snipesOnly, tick]);
-  // Refresh every 2 minutes; the clock every 30 s.
-  useEffect(() => {
-    const a = setInterval(() => setTick((t) => t + 1), 120_000);
-    const b = setInterval(() => setNow(Date.now()), 30_000);
-    return () => { clearInterval(a); clearInterval(b); };
-  }, []);
 
   const rows = useMemo(() => {
     const langOf = (code: string) => (code.startsWith("jp-") ? "ja" : code.startsWith("cn-") ? "zh" : "en");
@@ -123,6 +122,21 @@ export default function EndingSoonTab({ lang }: { lang: "" | "en" | "ja" | "zh" 
     };
     return [...xs].sort((a, b) => key[sort](a) - key[sort](b));
   }, [data, lang, watchedOnly, noBids, minDisc, sort]);
+
+  const anyEndingSoon = useMemo(
+    () => rows.some((a) => new Date(a.ends_at).getTime() - now < 60 * 60_000),
+    [rows, now],
+  );
+
+  // Refresh every 2 minutes; tick the clock every second while something closes within the hour.
+  useEffect(() => {
+    const a = setInterval(() => setTick((t) => t + 1), 120_000);
+    const b = setInterval(() => setNow(Date.now()), anyEndingSoon ? 1_000 : 30_000);
+    return () => {
+      clearInterval(a);
+      clearInterval(b);
+    };
+  }, [anyEndingSoon]);
 
   if (error) return <ErrorMsg msg={error} />;
   if (!data) return <Spinner />;
@@ -212,7 +226,7 @@ export default function EndingSoonTab({ lang }: { lang: "" | "en" | "ja" | "zh" 
                       )}
                       {a.url && <a href={a.url} target="_blank" rel="noreferrer" className="text-[11px] text-indigo-300 hover:underline">open auction ↗</a>}
                     </td>
-                    <td className="px-3 py-2 text-right tabular-nums text-gray-300 whitespace-nowrap">{endsIn(a.ends_at, now)}</td>
+                    <td className="px-3 py-2 text-right tabular-nums text-gray-300 whitespace-nowrap"><Countdown iso={a.ends_at} now={now} /></td>
                     <td className="px-3 py-2 text-right tabular-nums">
                       <div className="text-gray-100">{money(a.bid_cents)} <span className="text-gray-500">· {a.bids} bid{a.bids === 1 ? "" : "s"}</span></div>
                       <div className="text-[10px] text-gray-500">{money(a.all_in_cents)} all-in · read {ago(a.bid_seen_at, now)}</div>
