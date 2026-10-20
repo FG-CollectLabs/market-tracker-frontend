@@ -1815,15 +1815,17 @@ export interface SnipeRules { mint_gap: number; discount: number; flip_margin: n
 
 export interface PulseStatus {
   at?: string;
-  kind?: "sweep" | "closing" | "manual";
+  kind?: "sweep" | "manual"; // sweep: the automatic one 2 h before the close
   cards: number;
   lots: number;
   requests: number;
   took_ms: number;
   error?: string;
   running: boolean;
-  next_close?: string;
-  active: boolean; // inside a last-hour window now
+  next_close?: string; // the next weekly close
+  sweep_at?: string; // when the automatic sweep runs
+  swept: boolean; // it has run for this close
+  active: boolean; // between the sweep and 10 min past the close
 }
 
 export function fetchEndingSoon(hours: number, signalsOnly = false): Promise<{
