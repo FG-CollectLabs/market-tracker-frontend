@@ -299,6 +299,7 @@ function CostBreakdown({ m }: { m: MakeTen }) {
 function PlanRow({ p, premium, kind, onChange }: { p: BidPlan; premium: number; kind: PlanKind; onChange: () => void }) {
   const d = p.deal;
   const [max, setMax] = useState(dollars(p.max_bid_cents));
+  // Floor: prefilled with the suggested max until you set your own.
   const [floor, setFloor] = useState(dollars(p.floor_bid_cents ?? d?.snipe_hammer_cents));
   const [note, setNote] = useState(p.note ?? "");
   const [won, setWon] = useState(dollars(p.won_cents));
@@ -553,14 +554,14 @@ function AuctionsPrep({ kind, tick: outer }: { kind: AuctionKind; tick: number }
                   <th className="text-left font-medium py-1 pr-3" title="Most to bid and still clear your target margin reselling at the best channel">Suggested max</th>
                   <th className="text-left font-medium py-1 pr-3">Your max</th>
                   <th className="text-left font-medium py-1 pr-3">Status</th>
-                   <th className="text-left font-medium py-1">Note</th>
-                   <th className="text-left font-medium py-1">Actions</th>
-                 </tr>
-               </thead>
-               <tbody className="divide-y divide-gray-800/70">
-                 {slabs.map((p) => (
-                   <PlanRow key={p.id + p.updated_at} p={p} premium={data.buyers_premium_pct} kind={kind} onChange={refresh} />
-                 ))}
+                  <th className="text-left font-medium py-1">Note</th>
+                  <th className="text-left font-medium py-1 print:hidden">Actions</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-gray-800/70">
+                {slabs.map((p) => (
+                  <PlanRow key={p.id + p.updated_at} p={p} premium={data.buyers_premium_pct} kind={kind} onChange={refresh} />
+                ))}
               </tbody>
             </table>
           </div>
@@ -577,15 +578,15 @@ function AuctionsPrep({ kind, tick: outer }: { kind: AuctionKind; tick: number }
                   <th className="text-left font-medium py-1 pr-3" title="This week's Fanatics auctions of this grade: current bid, bids">Up this week</th>
                   <th className="text-left font-medium py-1 pr-3" title="The rule's max bid">Rule max</th>
                   <th className="text-left font-medium py-1 pr-3">Your max</th>
-                   <th className="text-left font-medium py-1 pr-3">Status</th>
-                   <th className="text-left font-medium py-1">Note</th>
-                   <th className="text-left font-medium py-1">Actions</th>
-                 </tr>
-               </thead>
-               <tbody className="divide-y divide-gray-800/70">
-                 {lows.map((p) => (
-                   <LowRow key={p.id + p.updated_at} p={p} premium={data.buyers_premium_pct} kind={kind} onChange={refresh} />
-                 ))}
+                  <th className="text-left font-medium py-1 pr-3">Status</th>
+                  <th className="text-left font-medium py-1">Note</th>
+                  <th className="text-left font-medium py-1 print:hidden">Actions</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-gray-800/70">
+                {lows.map((p) => (
+                  <LowRow key={p.id + p.updated_at} p={p} premium={data.buyers_premium_pct} kind={kind} onChange={refresh} />
+                ))}
               </tbody>
             </table>
           </div>
@@ -732,14 +733,14 @@ function SinglesPrep() {
                 <th className="text-left font-medium py-1 pr-3">Buy range</th>
                 <th className="text-left font-medium py-1 pr-3">Your max</th>
                 <th className="text-left font-medium py-1 pr-3">Status</th>
-                 <th className="text-left font-medium py-1">Note</th>
-                 <th className="text-left font-medium py-1">Actions</th>
-               </tr>
-             </thead>
-             <tbody className="divide-y divide-gray-800/70">
-               {data.plans.map((p) => (
-                 <SingleRow key={p.id + p.updated_at} p={p} onChange={refresh} />
-               ))}
+                <th className="text-left font-medium py-1">Note</th>
+                <th className="text-left font-medium py-1 print:hidden">Actions</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-gray-800/70">
+              {data.plans.map((p) => (
+                <SingleRow key={p.id + p.updated_at} p={p} onChange={refresh} />
+              ))}
             </tbody>
           </table>
         </div>

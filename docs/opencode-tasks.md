@@ -1,9 +1,15 @@
 # Small frontend tasks
 
+**Status:** all three done (PRs #48, #49, #50) and reviewed; see `docs/opencode-tasks-summary.md`
+for what was built and the fixes made in review. Kept as the template for future task lists.
+
 Three self-contained UI tasks for the market tracker frontend (React + TypeScript + Tailwind, Vite).
 No backend work is needed: the endpoints below exist and are deployed.
 
-Before you finish, run `npx tsc -b` and `npm run build`; both must pass. Match the existing code style:
+Before you finish, run `npm run lint`, `npx tsc -b` and `npm run build`; all three must pass (the
+deploy runs lint first). Lint covers the React hooks rules, which the type checker can't see: never
+call a hook (`useState`, `useCallback`, `useMemo`, `useEffect`, ...) after a component's early
+`return`. A `useCallback` placed after `if (!items) return <Spinner />` crashed the Watchlist page. Match the existing code style:
 Tailwind utility classes, the dark gray palette, small text (`text-xs` / `text-sm`), no new dependencies.
 Open one PR per task against `main`.
 
@@ -40,8 +46,10 @@ lines 159 and 202).
 **Today:** headers scroll out of view on long tables.
 
 **Do:**
-- Make each table's header row sticky: `position: sticky; top: 0` on the `<th>` cells, with an opaque
-  background (`bg-gray-900`, matching the section) and `z-10` so rows scroll under it.
+- Make each table's header row sticky on the `<th>` cells, with an opaque background (`bg-gray-900`,
+  matching the section) and `z-10` so rows scroll under it. The site's top nav (`src/App.tsx`) is
+  itself sticky and 48 px tall (`h-12`, `z-30`), so stick headers below it with `top-12`, not
+  `top-0` (at `top-0` they hide behind the nav). Anything sticky must stay under the nav's `z-30`.
 - **Gotcha:** each table sits in a `<div className="overflow-x-auto">`. An overflow ancestor makes
   `sticky` stick to that div instead of the page, so the header won't stick while you scroll the page.
   Fix it one of two ways (pick one and apply it consistently):

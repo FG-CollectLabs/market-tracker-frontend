@@ -158,7 +158,7 @@ export function PresetBar({ keys, onClear, onApplied, extra }: {
     }
   };
   return (
-    <div className="sticky top-0 z-20 flex flex-wrap items-center gap-2 rounded-lg border border-indigo-800/60 bg-gray-950/95 px-3 py-2 text-sm shadow-lg backdrop-blur print:hidden">
+    <div className="sticky top-12 z-20 flex flex-wrap items-center gap-2 rounded-lg border border-indigo-800/60 bg-gray-950/95 px-3 py-2 text-sm shadow-lg backdrop-blur print:hidden">
       {keys.length > 0 ? (
         <>
           <span className="text-gray-200">{keys.length} selected</span>

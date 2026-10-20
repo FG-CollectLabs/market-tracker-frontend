@@ -24,6 +24,7 @@ jobs:
           node-version: 20
           cache: npm
       - run: npm ci
+      - run: npm run lint   # React hooks rules: catches hook-order crashes tsc can't
       - run: npm run build
         env:
           VITE_API_URL: https://market.futuregadgetlabs.com
