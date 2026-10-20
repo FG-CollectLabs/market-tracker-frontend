@@ -151,23 +151,23 @@ export default function WatchlistPage() {
         {hits.length === 0 ? (
           <p className="text-xs text-gray-500">Nothing listed under your prices right now. Targets without a price rule never hit; give them one.</p>
         ) : (
-          <div className="overflow-x-auto">
+          <div className="overflow-x-auto lg:overflow-visible">
             <table className="w-full text-xs tabular-nums">
               <thead className="text-gray-500">
                 <tr>
-                  <th className="text-left py-1 pr-2 font-medium">Card</th>
-                  <th className="text-left py-1 pr-2 font-medium">Target</th>
-                  <th className="text-left py-1 pr-2 font-medium">Listing</th>
-                  <th className="text-right py-1 pr-2 font-medium" title="Ask, or current bid">Price</th>
-                  <th className="text-right py-1 pr-2 font-medium" title="What you'd pay now: auction bids plus the buyer's premium">All-in</th>
-                  <th className="text-right py-1 pr-2 font-medium">Your max</th>
-                  <th className="text-right py-1 font-medium">Under by</th>
+                  <th className="text-left py-1 pr-2 font-medium sticky top-0 left-0 bg-gray-900 z-20 print:static">Card</th>
+                  <th className="text-left py-1 pr-2 font-medium sticky top-0 bg-gray-900 z-10 print:static">Target</th>
+                  <th className="text-left py-1 pr-2 font-medium sticky top-0 bg-gray-900 z-10 print:static">Listing</th>
+                  <th className="text-right py-1 pr-2 font-medium sticky top-0 bg-gray-900 z-10 print:static" title="Ask, or current bid">Price</th>
+                  <th className="text-right py-1 pr-2 font-medium sticky top-0 bg-gray-900 z-10 print:static" title="What you'd pay now: auction bids plus the buyer's premium">All-in</th>
+                  <th className="text-right py-1 pr-2 font-medium sticky top-0 bg-gray-900 z-10 print:static">Your max</th>
+                  <th className="text-right py-1 font-medium sticky top-0 bg-gray-900 z-10 print:static">Under by</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-800 print:divide-gray-200 text-gray-300 print:text-black">
                 {hits.map(({ it, t, h, under }, i) => (
                   <tr key={i} className="align-top">
-                    <td className="py-1 pr-2">
+                    <td className="py-1 pr-2 sticky left-0 bg-gray-900 z-10 print:static">
                       <Link to={`/cards/${encodeURIComponent(it.display_key)}`} className="text-gray-100 hover:text-indigo-300 print:text-black">{it.name}</Link>
                       <span className="text-gray-500"> #{it.number} · {it.set_name}</span>
                     </td>
@@ -194,11 +194,11 @@ export default function WatchlistPage() {
           <h2 className="text-sm font-semibold text-gray-100 print:text-black mb-2">
             {g.name} <span className="text-gray-500 font-mono text-xs">{g.code.replace(/^jp-/, "JP ").replace(/^cn-/, "CN ").toUpperCase()}</span>
           </h2>
-          <div className="overflow-x-auto">
+          <div className="overflow-x-auto lg:overflow-visible">
           <table className="w-full text-xs tabular-nums">
             <thead className="text-gray-500">
               <tr>
-                <th className="w-5 print:hidden">
+                <th className="w-5 print:hidden sticky top-0 bg-gray-900 z-10 print:static">
                   <input type="checkbox" className="accent-indigo-500" title="Select this set's cards"
                     checked={g.items.every((it) => picked.has(it.display_key))}
                     onChange={(e) => setPicked((s) => {
@@ -207,16 +207,16 @@ export default function WatchlistPage() {
                       return n;
                     })} />
                 </th>
-                <th className="text-left py-1 pr-2 font-medium" colSpan={2}>Card</th>
-                <th className="text-left py-1 pr-2 font-medium">Buy targets</th>
-                <th className="text-left py-1 pr-2 font-medium">Play</th>
-                <th className="text-right py-1 pr-2 font-medium">Raw now</th>
-                <th className="text-right py-1 pr-2 font-medium" title="Expected raw low (release curve)">Exp. low</th>
-                <th className="text-right py-1 pr-2 font-medium" title="Most to pay raw to grade (your return bar)">Grade ≤</th>
-                <th className="text-right py-1 pr-2 font-medium" title="Grading nets $0 at this raw price: never pay more">Break-even</th>
-                <th className="text-right py-1 pr-2 font-medium">PSA 10</th>
-                <th className="text-right py-1 pr-2 font-medium" title="PSA 10 auction ceiling (hammer)">10 bid ≤</th>
-                <th className="text-right py-1 font-medium" title="Similar cards' yearly appreciation after fees (PSA 10)">Held/yr</th>
+                <th className="text-left py-1 pr-2 font-medium sticky top-0 left-0 bg-gray-900 z-20 print:static" colSpan={2}>Card</th>
+                <th className="text-left py-1 pr-2 font-medium sticky top-0 bg-gray-900 z-10 print:static">Buy targets</th>
+                <th className="text-left py-1 pr-2 font-medium sticky top-0 bg-gray-900 z-10 print:static">Play</th>
+                <th className="text-right py-1 pr-2 font-medium sticky top-0 bg-gray-900 z-10 print:static">Raw now</th>
+                <th className="text-right py-1 pr-2 font-medium sticky top-0 bg-gray-900 z-10 print:static" title="Expected raw low (release curve)">Exp. low</th>
+                <th className="text-right py-1 pr-2 font-medium sticky top-0 bg-gray-900 z-10 print:static" title="Most to pay raw to grade (your return bar)">Grade ≤</th>
+                <th className="text-right py-1 pr-2 font-medium sticky top-0 bg-gray-900 z-10 print:static" title="Grading nets $0 at this raw price: never pay more">Break-even</th>
+                <th className="text-right py-1 pr-2 font-medium sticky top-0 bg-gray-900 z-10 print:static">PSA 10</th>
+                <th className="text-right py-1 pr-2 font-medium sticky top-0 bg-gray-900 z-10 print:static" title="PSA 10 auction ceiling (hammer)">10 bid ≤</th>
+                <th className="text-right py-1 font-medium sticky top-0 bg-gray-900 z-10 print:static" title="Similar cards' yearly appreciation after fees (PSA 10)">Held/yr</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-800 print:divide-gray-200 text-gray-300 print:text-black">
@@ -230,10 +230,10 @@ export default function WatchlistPage() {
                       <td className="py-1.5 print:hidden">
                         <input type="checkbox" className="accent-indigo-500" checked={picked.has(it.display_key)} onChange={() => toggle(it.display_key)} />
                       </td>
-                      <td className="py-1.5 pr-2 w-9">
+                      <td className="py-1.5 pr-2 w-9 sticky left-0 bg-gray-900 z-10 print:static">
                         {it.image_url && <img src={cardThumb(it.image_url)} alt="" className="w-8 h-11 object-cover rounded-sm print:hidden" loading="lazy" />}
                       </td>
-                      <td className="py-1.5 pr-2">
+                      <td className="py-1.5 pr-2 sticky left-9 bg-gray-900 z-10 print:static">
                         <Link to={`/cards/${encodeURIComponent(it.display_key)}`} className="text-gray-100 hover:text-indigo-300 print:text-black">{it.name}</Link>
                         <div className="text-gray-500">#{it.number} · {INTENT_LABEL[it.intent]}</div>
                         <div className="mt-0.5"><CardPrepButtons displayKey={it.display_key} /></div>
