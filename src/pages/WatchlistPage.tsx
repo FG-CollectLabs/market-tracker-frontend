@@ -1,12 +1,13 @@
 import { Fragment, useCallback, useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
-import { BUY_TARGETS, fetchWatchlist, type BuyTarget, type TargetHit, type WatchItem, type WatchIntent, type WatchTarget } from "../lib/api";
+import { BUY_TARGETS, fetchWatchlist, unwatchCard, type BuyTarget, type TargetHit, type WatchItem, type WatchIntent, type WatchTarget } from "../lib/api";
 import { useSession } from "../lib/auth";
 import { STANCE } from "../components/BuyingGuide";
 import { CardPrepButtons, PresetBar, TARGET_LABEL, TargetEditor, usePresets } from "../components/WatchTargets";
 import { cardThumb } from "../lib/thumb";
 import { Spinner, ErrorMsg } from "../components/Spinner";
 import WatchSuggestions from "../components/WatchSuggestions";
+import { watchChanged } from "../components/WatchButton";
 
 const usd = (c?: number | null) => (c == null ? "—" : `$${(c / 100).toFixed(2)}`);
 const INTENT_LABEL: Record<WatchIntent, string> = { grade: "Grade", invest: "Invest", flip: "Flip", watch: "Watch" };
@@ -34,6 +35,8 @@ export default function WatchlistPage() {
   const [q, setQ] = useState("");
   const [editing, setEditing] = useState<string | null>(null);
   const [picked, setPicked] = useState<Set<string>>(new Set());
+  const [removing, setRemoving] = useState<string | null>(null);
+  const [removeErr, setRemoveErr] = useState<{ key: string; msg: string } | null>(null);
 
   const load = useCallback(() => {
     fetchWatchlist().then((r) => setItems(r.items)).catch((e: Error) => setError(e.message));
@@ -102,6 +105,22 @@ export default function WatchlistPage() {
     else n.add(k);
     return n;
   });
+
+  const removeCard = useCallback(async (it: WatchItem) => {
+    if (!window.confirm(`Remove ${it.name} from the watchlist? Its buy targets are removed too.`)) return;
+    setRemoving(it.display_key);
+    setRemoveErr(null);
+    try {
+      await unwatchCard(it.display_key);
+      watchChanged();
+      setPicked((s) => { const n = new Set(s); n.delete(it.display_key); return n; });
+      load();
+    } catch (e) {
+      setRemoveErr({ key: it.display_key, msg: (e as Error).message });
+    } finally {
+      setRemoving(null);
+    }
+  }, [load]);
 
   return (
     <div className="space-y-5 print:space-y-3 print:text-black">
@@ -261,6 +280,14 @@ export default function WatchlistPage() {
                           className="text-[11px] text-indigo-300 hover:text-indigo-200 print:hidden">
                           {editing === it.display_key ? "Close" : "Edit targets"}
                         </button>
+                        <button onClick={() => removeCard(it)}
+                          disabled={removing === it.display_key}
+                          className="ml-2 text-xs text-gray-500 hover:text-red-400 print:hidden">
+                          Remove
+                        </button>
+                        {removeErr?.key === it.display_key && (
+                          <div className="text-red-400 text-[11px] mt-1">{removeErr.msg}</div>
+                        )}
                       </td>
                       <td className="py-1.5 pr-2 max-w-xs">
                         {p && <span className={`px-1 rounded border text-[10px] mr-1 ${STANCE[p.stance].cls}`}>{STANCE[p.stance].label}</span>}
