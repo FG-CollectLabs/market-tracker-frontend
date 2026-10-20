@@ -146,3 +146,39 @@ Five PRs, each implementing one self-contained UI task on the Deals → Ending s
 ---
 
 ## Review
+
+Reviewed and merged as one integration PR (`snipe/integrate`), which takes all five branches,
+resolves the conflicts between them, and adds the fixes below. #53 and #55–#58 close as merged with it.
+
+**Conflicts:** tasks 1 and 2 branched from `main` before #54 (the weekly-only pulse bar), so task 1's
+"next close" line was merged onto #54's version (both the `sweep_at` line and `<Countdown>` kept).
+Tasks 2 and 3 both rewrote the filter state block; the merged version reads saved filters and adds
+task 2's alert state.
+
+**Fixes made in review:**
+- **Task 1:** the 2-minute refresh and the clock were one interval effect keyed on `anyEndingSoon`,
+  so crossing the one-hour line restarted the refresh timer. Split into two effects.
+- **Task 2, highlight could stick:** the effect's cleanup cleared the 10 s un-highlight timer, and
+  the effect re-ran on `tick` (bumped by "Scan now" before the new data arrived) and on toggling
+  "Alert me". Timers now live in a ref and are cleared only on unmount; `tick` is out of the deps.
+- **Task 2, missed re-alerts:** with no new rows the effect returned before updating the baseline, so
+  a lot that lost its signal and regained it never alerted. The baseline now updates every load.
+- **Task 2, false alerts:** switching 1 h → 24 h (or turning off "Snipes only") brought in lots that
+  were already flagged and alerted on all of them. Changing the window or "Snipes only" now starts a
+  new baseline. The fetch also drops stale responses (`live` flag) so a slow old query can't
+  overwrite a new one.
+- **Task 2, audio:** a new `AudioContext` per beep, created outside a user gesture, starts suspended
+  in Chrome/Safari (silent) and pages are capped on contexts. One shared context is now created or
+  resumed from the "Alert me" click.
+- **Task 2:** the "notifications blocked" note only showed if permission was denied during the
+  prompt, not when it was already denied. `new Notification` is wrapped in try/catch (Android
+  Chrome throws).
+- **Task 3:** `alertMe` is now persisted (task 2 is merged with it). Saved booleans are checked to be
+  booleans and `minDisc` to be finite. Saved filters are read once, not once per field.
+- **Task 4:** copy now uses `Math.floor`, not `Math.round`. Rounding up can put a bid $1 over the max
+  (the max bids are already whole dollars from the backend, so this only guards against changes there).
+  The "at value" copy button no longer copies `0` when there's no value bid.
+- **Task 5:** no changes. Uses the existing `Pct` field, and the backend returns `snipe` in the
+  settings, so the fallbacks only matter for an older API.
+
+**Checked:** `npm run lint`, `npx tsc -b`, `npm run build` pass on the merged branch.

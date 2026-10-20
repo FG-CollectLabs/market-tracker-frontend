@@ -39,10 +39,25 @@ function ago(iso: string, now: number): string {
   return `${Math.round(m / 1440)} days ago`;
 }
 
-function playBeep() {
+// One AudioContext for the page, created (or resumed) from the "Alert me"
+// click: browsers keep a context made outside a user gesture suspended, and
+// cap how many a page may open.
+let audio: AudioContext | null = null;
+function audioCtx(): AudioContext | null {
   try {
     const Ctx = window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
-    const ctx = new Ctx();
+    audio ??= new Ctx();
+    if (audio.state === "suspended") void audio.resume();
+    return audio;
+  } catch {
+    return null;
+  }
+}
+
+function playBeep() {
+  const ctx = audioCtx();
+  if (!ctx) return;
+  try {
     const osc = ctx.createOscillator();
     const gain = ctx.createGain();
     osc.type = "sine";
@@ -61,8 +76,12 @@ function playBeep() {
 function notifySnipe(row: EndingAuction) {
   if (!("Notification" in window) || Notification.permission !== "granted") return;
   const labels = row.signals?.map((s) => SIGNAL[s]?.label ?? s).join(", ");
-  const n = new Notification(`${row.name} ${gradeLabel(row.grade)}`, { body: labels });
-  if (row.url) n.onclick = () => window.open(row.url, "_blank");
+  try {
+    const n = new Notification(`${row.name} ${gradeLabel(row.grade)}`, { body: labels });
+    if (row.url) n.onclick = () => window.open(row.url, "_blank");
+  } catch {
+    /* some mobile browsers only notify from a service worker */
+  }
 }
 
 type Sort = "snipe" | "discount" | "ends" | "value";
@@ -80,7 +99,7 @@ function CopyBtn({ cents }: { cents: number }) {
   const [msg, setMsg] = useState("");
   const copy = () => {
     navigator.clipboard
-      .writeText(String(Math.round(cents / 100)))
+      .writeText(String(Math.floor(cents / 100))) // never round up past the max
       .then(() => {
         setState("ok");
         setTimeout(() => setState(null), 1500);
@@ -167,12 +186,12 @@ function loadFilters(): SavedFilters {
     const saved = JSON.parse(raw) as Partial<SavedFilters>;
     return {
       hours: HOURS.includes(saved.hours ?? 0) ? (saved.hours as number) : DEFAULT_FILTERS.hours,
-      snipesOnly: saved.snipesOnly ?? DEFAULT_FILTERS.snipesOnly,
-      watchedOnly: saved.watchedOnly ?? DEFAULT_FILTERS.watchedOnly,
-      noBids: saved.noBids ?? DEFAULT_FILTERS.noBids,
-      minDisc: typeof saved.minDisc === "number" && saved.minDisc >= 0 ? saved.minDisc : DEFAULT_FILTERS.minDisc,
+      snipesOnly: typeof saved.snipesOnly === "boolean" ? saved.snipesOnly : DEFAULT_FILTERS.snipesOnly,
+      watchedOnly: typeof saved.watchedOnly === "boolean" ? saved.watchedOnly : DEFAULT_FILTERS.watchedOnly,
+      noBids: typeof saved.noBids === "boolean" ? saved.noBids : DEFAULT_FILTERS.noBids,
+      minDisc: typeof saved.minDisc === "number" && Number.isFinite(saved.minDisc) && saved.minDisc >= 0 ? saved.minDisc : DEFAULT_FILTERS.minDisc,
       sort: ["snipe", "discount", "ends", "value"].includes(saved.sort as string) ? (saved.sort as Sort) : DEFAULT_FILTERS.sort,
-      ...(saved.alertMe !== undefined ? { alertMe: saved.alertMe } : {}),
+      alertMe: saved.alertMe === true,
     };
   } catch {
     return { ...DEFAULT_FILTERS };
@@ -188,32 +207,40 @@ function saveFilters(filters: SavedFilters) {
 }
 
 export default function EndingSoonTab({ lang }: { lang: "" | "en" | "ja" | "zh" }) {
-  const [hours, setHours] = useState(() => loadFilters().hours);
+  const [saved] = useState(loadFilters);
+  const [hours, setHours] = useState(saved.hours);
   const [data, setData] = useState<Awaited<ReturnType<typeof fetchEndingSoon>> | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [watchedOnly, setWatchedOnly] = useState(() => loadFilters().watchedOnly);
-  const [minDisc, setMinDisc] = useState(() => loadFilters().minDisc);
-  const [noBids, setNoBids] = useState(() => loadFilters().noBids);
-  const [sort, setSort] = useState<Sort>(() => loadFilters().sort);
-  const [snipesOnly, setSnipesOnly] = useState(() => loadFilters().snipesOnly);
-  const [alertMe, setAlertMe] = useState(false);
+  const [watchedOnly, setWatchedOnly] = useState(saved.watchedOnly);
+  const [minDisc, setMinDisc] = useState(saved.minDisc);
+  const [noBids, setNoBids] = useState(saved.noBids);
+  const [sort, setSort] = useState<Sort>(saved.sort);
+  const [snipesOnly, setSnipesOnly] = useState(saved.snipesOnly);
+  const [alertMe, setAlertMe] = useState(saved.alertMe ?? false);
   const [notifDenied, setNotifDenied] = useState(false);
   const [highlighted, setHighlighted] = useState<Set<string>>(new Set());
   const prevSignals = useRef<Set<string>>(new Set());
   const firstLoad = useRef(true);
+  const highlightTimers = useRef<number[]>([]);
   const [now, setNow] = useState(Date.now());
   const [tick, setTick] = useState(0);
 
+  // A different window or "Snipes only" isn't news: start a new alert baseline.
   useEffect(() => {
+    firstLoad.current = true;
+  }, [hours, snipesOnly]);
+  useEffect(() => {
+    let live = true;
     setError(null);
-    fetchEndingSoon(hours, snipesOnly).then(setData).catch((e: Error) => setError(e.message));
+    fetchEndingSoon(hours, snipesOnly).then((d) => live && setData(d)).catch((e: Error) => live && setError(e.message));
+    return () => { live = false; };
   }, [hours, snipesOnly, tick]);
 
   const filtersRef = useRef(false);
   useEffect(() => {
-    if (filtersRef.current) saveFilters({ hours, snipesOnly, watchedOnly, noBids, minDisc, sort });
+    if (filtersRef.current) saveFilters({ hours, snipesOnly, watchedOnly, noBids, minDisc, sort, alertMe });
     else filtersRef.current = true;
-  }, [hours, snipesOnly, watchedOnly, noBids, minDisc, sort]);
+  }, [hours, snipesOnly, watchedOnly, noBids, minDisc, sort, alertMe]);
 
   const rows = useMemo(() => {
     const langOf = (code: string) => (code.startsWith("jp-") ? "ja" : code.startsWith("cn-") ? "zh" : "en");
@@ -234,15 +261,17 @@ export default function EndingSoonTab({ lang }: { lang: "" | "en" | "ja" | "zh" 
     [rows, now],
   );
 
-  // Refresh every 2 minutes; tick the clock every second while something closes within the hour.
+  // Refresh every 2 minutes; tick the clock every second while something
+  // closes within the hour (separate, so switching speed doesn't reset the refresh).
   useEffect(() => {
     const a = setInterval(() => setTick((t) => t + 1), 120_000);
+    return () => clearInterval(a);
+  }, []);
+  useEffect(() => {
     const b = setInterval(() => setNow(Date.now()), anyEndingSoon ? 1_000 : 30_000);
-    return () => {
-      clearInterval(a);
-      clearInterval(b);
-    };
+    return () => clearInterval(b);
   }, [anyEndingSoon]);
+  useEffect(() => () => highlightTimers.current.forEach(clearTimeout), []);
 
   // Alert me: detect new snipe rows after each reload, beep + notify + highlight.
   useEffect(() => {
@@ -253,26 +282,23 @@ export default function EndingSoonTab({ lang }: { lang: "" | "en" | "ja" | "zh" 
       prevSignals.current = current;
       return;
     }
-    if (!alertMe) {
-      prevSignals.current = current;
-      return;
-    }
     const newUrls = Array.from(current).filter((u) => !prevSignals.current.has(u));
-    if (newUrls.length === 0) return;
+    prevSignals.current = current;
+    if (!alertMe || newUrls.length === 0) return;
     playBeep();
     for (const u of newUrls) {
       const row = data.auctions.find((a) => (a.url ?? a.display_key) === u);
       if (row) notifySnipe(row);
     }
     setHighlighted((h) => new Set([...h, ...newUrls]));
-    const timer = setTimeout(() => setHighlighted((h) => {
+    // Not cleared when the effect re-runs (turning "Alert me" off, the next
+    // reload): only on unmount, or a highlight could stick.
+    highlightTimers.current.push(window.setTimeout(() => setHighlighted((h) => {
       const next = new Set(h);
       for (const u of newUrls) next.delete(u);
       return next;
-    }), 10_000);
-    prevSignals.current = current;
-    return () => clearTimeout(timer);
-  }, [data, alertMe, tick]);
+    }), 10_000));
+  }, [data, alertMe]);
 
   if (error) return <ErrorMsg msg={error} />;
   if (!data) return <Spinner />;
@@ -304,8 +330,13 @@ export default function EndingSoonTab({ lang }: { lang: "" | "en" | "ja" | "zh" 
         <label className="flex items-center gap-1.5 text-gray-400" title="Beep and notify when a new snipe appears">
           <input type="checkbox" checked={alertMe} onChange={(e) => {
             const on = e.target.checked;
-            if (on && "Notification" in window && Notification.permission === "default") {
-              Notification.requestPermission().then((p) => { if (p === "denied") setNotifDenied(true); });
+            if (on) {
+              audioCtx(); // unlock audio inside the click
+              if ("Notification" in window && Notification.permission === "default") {
+                Notification.requestPermission().then((p) => setNotifDenied(p === "denied"));
+              } else {
+                setNotifDenied(!("Notification" in window) || Notification.permission === "denied");
+              }
             }
             setAlertMe(on);
           }} className="accent-emerald-500" /> Alert me
@@ -413,10 +444,12 @@ export default function EndingSoonTab({ lang }: { lang: "" | "en" | "ja" | "zh" 
                             <span className="text-green-400 font-medium" title={`Keeps your ${margin}% margin`}>{money(a.max_bid_at_margin_cents)}</span>
                             <CopyBtn cents={a.max_bid_at_margin_cents} />
                           </div>
-                          <div className="flex items-center justify-end gap-1 text-[10px]">
-                            <span className="text-gray-500" title="Pays exactly the value all-in">{money(a.max_bid_at_value_cents)} at value</span>
-                            <CopyBtn cents={a.max_bid_at_value_cents ?? 0} />
-                          </div>
+                          {a.max_bid_at_value_cents != null && (
+                            <div className="flex items-center justify-end gap-1 text-[10px]">
+                              <span className="text-gray-500" title="Pays exactly the value all-in">{money(a.max_bid_at_value_cents)} at value</span>
+                              <CopyBtn cents={a.max_bid_at_value_cents} />
+                            </div>
+                          )}
                         </>
                       )}
                       {a.max_bid_for_mint_cents != null && (
