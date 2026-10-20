@@ -106,7 +106,9 @@ export default function WatchlistPage() {
     return n;
   });
 
-  const removeCard = useCallback(async (it: WatchItem) => {
+  // Not a hook: this runs after the early returns above, and hooks there
+  // would change the hook count between renders (React throws).
+  const removeCard = async (it: WatchItem) => {
     if (!window.confirm(`Remove ${it.name} from the watchlist? Its buy targets are removed too.`)) return;
     setRemoving(it.display_key);
     setRemoveErr(null);
@@ -120,7 +122,7 @@ export default function WatchlistPage() {
     } finally {
       setRemoving(null);
     }
-  }, [load]);
+  };
 
   return (
     <div className="space-y-5 print:space-y-3 print:text-black">
@@ -177,13 +179,13 @@ export default function WatchlistPage() {
             <table className="w-full text-xs tabular-nums">
               <thead className="text-gray-500">
                 <tr>
-                  <th className="text-left py-1 pr-2 font-medium sticky top-0 left-0 bg-gray-900 z-20 print:static">Card</th>
-                  <th className="text-left py-1 pr-2 font-medium sticky top-0 bg-gray-900 z-10 print:static">Target</th>
-                  <th className="text-left py-1 pr-2 font-medium sticky top-0 bg-gray-900 z-10 print:static">Listing</th>
-                  <th className="text-right py-1 pr-2 font-medium sticky top-0 bg-gray-900 z-10 print:static" title="Ask, or current bid">Price</th>
-                  <th className="text-right py-1 pr-2 font-medium sticky top-0 bg-gray-900 z-10 print:static" title="What you'd pay now: auction bids plus the buyer's premium">All-in</th>
-                  <th className="text-right py-1 pr-2 font-medium sticky top-0 bg-gray-900 z-10 print:static">Your max</th>
-                  <th className="text-right py-1 font-medium sticky top-0 bg-gray-900 z-10 print:static">Under by</th>
+                  <th className="text-left py-1 pr-2 font-medium sticky top-12 left-0 bg-gray-900 z-20 print:static">Card</th>
+                  <th className="text-left py-1 pr-2 font-medium sticky top-12 bg-gray-900 z-10 print:static">Target</th>
+                  <th className="text-left py-1 pr-2 font-medium sticky top-12 bg-gray-900 z-10 print:static">Listing</th>
+                  <th className="text-right py-1 pr-2 font-medium sticky top-12 bg-gray-900 z-10 print:static" title="Ask, or current bid">Price</th>
+                  <th className="text-right py-1 pr-2 font-medium sticky top-12 bg-gray-900 z-10 print:static" title="What you'd pay now: auction bids plus the buyer's premium">All-in</th>
+                  <th className="text-right py-1 pr-2 font-medium sticky top-12 bg-gray-900 z-10 print:static">Your max</th>
+                  <th className="text-right py-1 font-medium sticky top-12 bg-gray-900 z-10 print:static">Under by</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-800 print:divide-gray-200 text-gray-300 print:text-black">
@@ -220,7 +222,7 @@ export default function WatchlistPage() {
           <table className="w-full text-xs tabular-nums">
             <thead className="text-gray-500">
               <tr>
-                <th className="w-5 print:hidden sticky top-0 bg-gray-900 z-10 print:static">
+                <th className="w-5 print:hidden sticky top-12 bg-gray-900 z-10 print:static">
                   <input type="checkbox" className="accent-indigo-500" title="Select this set's cards"
                     checked={g.items.every((it) => picked.has(it.display_key))}
                     onChange={(e) => setPicked((s) => {
@@ -229,16 +231,16 @@ export default function WatchlistPage() {
                       return n;
                     })} />
                 </th>
-                <th className="text-left py-1 pr-2 font-medium sticky top-0 left-0 bg-gray-900 z-20 print:static" colSpan={2}>Card</th>
-                <th className="text-left py-1 pr-2 font-medium sticky top-0 bg-gray-900 z-10 print:static">Buy targets</th>
-                <th className="text-left py-1 pr-2 font-medium sticky top-0 bg-gray-900 z-10 print:static">Play</th>
-                <th className="text-right py-1 pr-2 font-medium sticky top-0 bg-gray-900 z-10 print:static">Raw now</th>
-                <th className="text-right py-1 pr-2 font-medium sticky top-0 bg-gray-900 z-10 print:static" title="Expected raw low (release curve)">Exp. low</th>
-                <th className="text-right py-1 pr-2 font-medium sticky top-0 bg-gray-900 z-10 print:static" title="Most to pay raw to grade (your return bar)">Grade ≤</th>
-                <th className="text-right py-1 pr-2 font-medium sticky top-0 bg-gray-900 z-10 print:static" title="Grading nets $0 at this raw price: never pay more">Break-even</th>
-                <th className="text-right py-1 pr-2 font-medium sticky top-0 bg-gray-900 z-10 print:static">PSA 10</th>
-                <th className="text-right py-1 pr-2 font-medium sticky top-0 bg-gray-900 z-10 print:static" title="PSA 10 auction ceiling (hammer)">10 bid ≤</th>
-                <th className="text-right py-1 font-medium sticky top-0 bg-gray-900 z-10 print:static" title="Similar cards' yearly appreciation after fees (PSA 10)">Held/yr</th>
+                <th className="text-left py-1 pr-2 font-medium sticky top-12 left-0 bg-gray-900 z-20 print:static" colSpan={2}>Card</th>
+                <th className="text-left py-1 pr-2 font-medium sticky top-12 bg-gray-900 z-10 print:static">Buy targets</th>
+                <th className="text-left py-1 pr-2 font-medium sticky top-12 bg-gray-900 z-10 print:static">Play</th>
+                <th className="text-right py-1 pr-2 font-medium sticky top-12 bg-gray-900 z-10 print:static">Raw now</th>
+                <th className="text-right py-1 pr-2 font-medium sticky top-12 bg-gray-900 z-10 print:static" title="Expected raw low (release curve)">Exp. low</th>
+                <th className="text-right py-1 pr-2 font-medium sticky top-12 bg-gray-900 z-10 print:static" title="Most to pay raw to grade (your return bar)">Grade ≤</th>
+                <th className="text-right py-1 pr-2 font-medium sticky top-12 bg-gray-900 z-10 print:static" title="Grading nets $0 at this raw price: never pay more">Break-even</th>
+                <th className="text-right py-1 pr-2 font-medium sticky top-12 bg-gray-900 z-10 print:static">PSA 10</th>
+                <th className="text-right py-1 pr-2 font-medium sticky top-12 bg-gray-900 z-10 print:static" title="PSA 10 auction ceiling (hammer)">10 bid ≤</th>
+                <th className="text-right py-1 font-medium sticky top-12 bg-gray-900 z-10 print:static" title="Similar cards' yearly appreciation after fees (PSA 10)">Held/yr</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-800 print:divide-gray-200 text-gray-300 print:text-black">

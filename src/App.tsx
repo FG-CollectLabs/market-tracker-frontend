@@ -22,7 +22,7 @@ function Nav() {
       : "text-gray-400 hover:text-gray-200 text-sm transition-colors";
 
   return (
-    <nav className="border-b border-gray-800 px-6 py-3 flex items-center gap-6 sticky top-0 bg-gray-950 z-10 print:hidden">
+    <nav className="h-12 border-b border-gray-800 px-6 flex items-center gap-6 sticky top-0 bg-gray-950 z-30 print:hidden">
       <NavLink to="/" className="font-bold text-white tracking-tight text-sm shrink-0">
         Market Tracker
       </NavLink>
