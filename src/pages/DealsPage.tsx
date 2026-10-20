@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import AuctionDealsTab from "../components/AuctionDealsTab";
 import MakeVsMarketTab from "../components/MakeVsMarketTab";
+import EndingSoonTab from "../components/EndingSoonTab";
 import { fetchDeals, fetchFindings, type AgentFinding, type Deal } from "../lib/api";
 import { formatCents } from "../lib/roi";
 import { ACTION_STYLE } from "../components/BuyingGuide";
@@ -12,6 +13,7 @@ import { FairBar, PHASE_STYLE, PHASE_LABEL } from "../components/BuyingGuide";
 // Sub-tabs: this week's auctions first, then the other buying plays.
 const TABS = [
   { key: "auctions", label: "This week's auctions" },
+  { key: "ending", label: "Ending soon" },
   { key: "make", label: "Market vs cost to make" },
   { key: "buy_now", label: "Buy Now under max" },
   { key: "buy_raw_to_grade", label: "Grade raw · PSA" },
@@ -67,7 +69,7 @@ export default function DealsPage() {
           </button>
         ))}
       </nav>
-      {tab === "auctions" ? <AuctionDealsTab lang={lang} /> : tab === "make" ? <MakeVsMarketTab lang={lang} /> : <OpportunitiesTab kind={tab} lang={lang} />}
+      {tab === "auctions" ? <AuctionDealsTab lang={lang} /> : tab === "make" ? <MakeVsMarketTab lang={lang} /> : tab === "ending" ? <EndingSoonTab lang={lang} /> : <OpportunitiesTab kind={tab} lang={lang} />}
     </div>
   );
 }
