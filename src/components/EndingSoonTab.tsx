@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import { fetchEndingSoon, runSnipePulse, type EndingAuction, type PulseStatus, type SnipeSignal } from "../lib/api";
 import { useSession } from "../lib/auth";
@@ -89,15 +89,57 @@ function PulseBar({ pulse, now, onScanned }: { pulse?: PulseStatus; now: number;
   );
 }
 
+const HOURS = [1, 2, 3, 6, 24, 72];
+const FILTERS_KEY = "endingSoon.filters";
+
+interface SavedFilters {
+  hours: number;
+  snipesOnly: boolean;
+  watchedOnly: boolean;
+  noBids: boolean;
+  minDisc: number;
+  sort: Sort;
+  alertMe?: boolean;
+}
+
+const DEFAULT_FILTERS: SavedFilters = { hours: 3, snipesOnly: false, watchedOnly: false, noBids: false, minDisc: 0, sort: "snipe" };
+
+function loadFilters(): SavedFilters {
+  try {
+    const raw = localStorage.getItem(FILTERS_KEY);
+    if (!raw) return { ...DEFAULT_FILTERS };
+    const saved = JSON.parse(raw) as Partial<SavedFilters>;
+    return {
+      hours: HOURS.includes(saved.hours ?? 0) ? (saved.hours as number) : DEFAULT_FILTERS.hours,
+      snipesOnly: saved.snipesOnly ?? DEFAULT_FILTERS.snipesOnly,
+      watchedOnly: saved.watchedOnly ?? DEFAULT_FILTERS.watchedOnly,
+      noBids: saved.noBids ?? DEFAULT_FILTERS.noBids,
+      minDisc: typeof saved.minDisc === "number" && saved.minDisc >= 0 ? saved.minDisc : DEFAULT_FILTERS.minDisc,
+      sort: ["snipe", "discount", "ends", "value"].includes(saved.sort as string) ? (saved.sort as Sort) : DEFAULT_FILTERS.sort,
+      ...(saved.alertMe !== undefined ? { alertMe: saved.alertMe } : {}),
+    };
+  } catch {
+    return { ...DEFAULT_FILTERS };
+  }
+}
+
+function saveFilters(filters: SavedFilters) {
+  try {
+    localStorage.setItem(FILTERS_KEY, JSON.stringify(filters));
+  } catch {
+    /* private window or quota exceeded */
+  }
+}
+
 export default function EndingSoonTab({ lang }: { lang: "" | "en" | "ja" | "zh" }) {
-  const [hours, setHours] = useState(3);
+  const [hours, setHours] = useState(() => loadFilters().hours);
   const [data, setData] = useState<Awaited<ReturnType<typeof fetchEndingSoon>> | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [watchedOnly, setWatchedOnly] = useState(false);
-  const [minDisc, setMinDisc] = useState(0);
-  const [noBids, setNoBids] = useState(false);
-  const [sort, setSort] = useState<Sort>("snipe");
-  const [snipesOnly, setSnipesOnly] = useState(false);
+  const [watchedOnly, setWatchedOnly] = useState(() => loadFilters().watchedOnly);
+  const [minDisc, setMinDisc] = useState(() => loadFilters().minDisc);
+  const [noBids, setNoBids] = useState(() => loadFilters().noBids);
+  const [sort, setSort] = useState<Sort>(() => loadFilters().sort);
+  const [snipesOnly, setSnipesOnly] = useState(() => loadFilters().snipesOnly);
   const [now, setNow] = useState(Date.now());
   const [tick, setTick] = useState(0);
 
@@ -111,6 +153,12 @@ export default function EndingSoonTab({ lang }: { lang: "" | "en" | "ja" | "zh" 
     const b = setInterval(() => setNow(Date.now()), 30_000);
     return () => { clearInterval(a); clearInterval(b); };
   }, []);
+
+  const filtersRef = useRef(false);
+  useEffect(() => {
+    if (filtersRef.current) saveFilters({ hours, snipesOnly, watchedOnly, noBids, minDisc, sort });
+    else filtersRef.current = true;
+  }, [hours, snipesOnly, watchedOnly, noBids, minDisc, sort]);
 
   const rows = useMemo(() => {
     const langOf = (code: string) => (code.startsWith("jp-") ? "ja" : code.startsWith("cn-") ? "zh" : "en");
