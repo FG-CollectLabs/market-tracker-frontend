@@ -108,17 +108,52 @@ function AutoPrepBar({ onApplied }: { onApplied: () => void }) {
 }
 
 // Low-grade row: a low-grade slab against the raw card.
-function LowRow({ p, premium, kind, onChange, onRemove }: { p: BidPlan; premium: number; kind: AuctionKind; onChange: () => void; onRemove: () => void }) {
+function LowRow({ p, premium, kind, onChange }: { p: BidPlan; premium: number; kind: AuctionKind; onChange: () => void }) {
   const lp = p.low;
   const [max, setMax] = useState(dollars(p.max_bid_cents));
   const [note, setNote] = useState(p.note ?? "");
   const [won, setWon] = useState(dollars(p.won_cents));
+  const [busy, setBusy] = useState<string | null>(null);
+  const [err, setErr] = useState<string | null>(null);
   const save = (patch: Parameters<typeof saveBidPlan>[0]) => saveBidPlan(patch).then(onChange).catch(() => undefined);
   const base = { display_key: p.display_key, grade: p.grade, auction_date: p.auction_date, kind };
   const maxNum = Math.floor(Number(max) || 0);
   const raw = lp?.raw_cents;
   const sug = p.suggested_max_cents;
   const ofRaw = (hammer: number) => (raw ? `${Math.round((hammer * (1 + premium)) / raw * 100)}% of raw` : "");
+  const remove = async () => {
+    if (!window.confirm(`Remove ${p.deal?.name ?? p.display_key} ${p.grade} from Sunday's list?`)) return;
+    setBusy("remove");
+    setErr(null);
+    try {
+      await deleteBidPlan(p.id);
+      onChange();
+    } catch (e) {
+      setErr((e as Error).message);
+    } finally {
+      setBusy(null);
+    }
+  };
+  const move = async (toKind: Extract<PlanKind, "auction" | "min_bid">) => {
+    setBusy("move");
+    setErr(null);
+    try {
+      const patch: Parameters<typeof saveBidPlan>[0] = { display_key: p.display_key, grade: p.grade, kind: toKind };
+      if (p.auction_date) patch.auction_date = p.auction_date;
+      if (p.max_bid_cents != null) patch.max_bid_cents = p.max_bid_cents;
+      if (p.floor_bid_cents != null) patch.floor_bid_cents = p.floor_bid_cents;
+      if (p.status) patch.status = p.status;
+      if (p.won_cents != null) patch.won_cents = p.won_cents;
+      if (p.note) patch.note = p.note;
+      await saveBidPlan(patch);
+      await deleteBidPlan(p.id);
+      onChange();
+    } catch (e) {
+      setErr((e as Error).message);
+    } finally {
+      setBusy(null);
+    }
+  };
   return (
     <tr className="align-top">
       <td className="py-2 pr-2 w-12">
@@ -188,7 +223,14 @@ function LowRow({ p, premium, kind, onChange, onRemove }: { p: BidPlan; premium:
       <td className="py-2 pr-2 text-xs">
         <input value={note} placeholder="note" onChange={(e) => setNote(e.target.value)} onBlur={() => note !== (p.note ?? "") && save({ ...base, note })}
           className="w-40 bg-gray-900 border border-gray-700 rounded px-1.5 py-0.5 text-gray-200 print:border-0" />
-        <button onClick={onRemove} className="ml-2 text-gray-500 hover:text-red-400 print:hidden" title="Remove from this Sunday">✕</button>
+      </td>
+      <td className="py-1.5 pr-2 text-xs print:hidden">
+        <div className="flex flex-col gap-1">
+          <button onClick={remove} disabled={busy !== null} className="text-xs text-gray-500 hover:text-red-400">Remove</button>
+          {kind === "auction" && <button onClick={() => move("min_bid")} disabled={busy !== null} className="text-xs text-gray-500 hover:text-indigo-300">Move to early bids</button>}
+          {kind === "min_bid" && <button onClick={() => move("auction")} disabled={busy !== null} className="text-xs text-gray-500 hover:text-indigo-300">Move to late bids</button>}
+          {err && <div className="text-red-400 text-[11px] mt-1">{err}</div>}
+        </div>
       </td>
     </tr>
   );
@@ -254,19 +296,53 @@ function CostBreakdown({ m }: { m: MakeTen }) {
   );
 }
 
-function PlanRow({ p, premium, kind, onChange, onRemove }: { p: BidPlan; premium: number; kind: PlanKind; onChange: () => void; onRemove: () => void }) {
+function PlanRow({ p, premium, kind, onChange }: { p: BidPlan; premium: number; kind: PlanKind; onChange: () => void }) {
   const d = p.deal;
   const [max, setMax] = useState(dollars(p.max_bid_cents));
-  // Floor: prefilled with the suggested max until you set your own.
   const [floor, setFloor] = useState(dollars(p.floor_bid_cents ?? d?.snipe_hammer_cents));
   const [note, setNote] = useState(p.note ?? "");
   const [won, setWon] = useState(dollars(p.won_cents));
   const [open, setOpen] = useState(false);
+  const [busy, setBusy] = useState<string | null>(null);
+  const [err, setErr] = useState<string | null>(null);
   const save = (patch: Parameters<typeof saveBidPlan>[0]) => saveBidPlan(patch).then(onChange).catch(() => undefined);
   const base = { display_key: p.display_key, grade: p.grade, auction_date: p.auction_date, kind };
   const minBid = kind === "min_bid";
   const maxNum = Math.floor(Number(max) || 0);
   const closes = (d?.weeks ?? []).filter((w) => w.closed > 0);
+  const remove = async () => {
+    if (!window.confirm(`Remove ${d?.name ?? p.display_key} ${p.grade} from Sunday's list?`)) return;
+    setBusy("remove");
+    setErr(null);
+    try {
+      await deleteBidPlan(p.id);
+      onChange();
+    } catch (e) {
+      setErr((e as Error).message);
+    } finally {
+      setBusy(null);
+    }
+  };
+  const move = async (toKind: Extract<PlanKind, "auction" | "min_bid">) => {
+    setBusy("move");
+    setErr(null);
+    try {
+      const patch: Parameters<typeof saveBidPlan>[0] = { display_key: p.display_key, grade: p.grade, kind: toKind };
+      if (p.auction_date) patch.auction_date = p.auction_date;
+      if (p.max_bid_cents != null) patch.max_bid_cents = p.max_bid_cents;
+      if (p.floor_bid_cents != null) patch.floor_bid_cents = p.floor_bid_cents;
+      if (p.status) patch.status = p.status;
+      if (p.won_cents != null) patch.won_cents = p.won_cents;
+      if (p.note) patch.note = p.note;
+      await saveBidPlan(patch);
+      await deleteBidPlan(p.id);
+      onChange();
+    } catch (e) {
+      setErr((e as Error).message);
+    } finally {
+      setBusy(null);
+    }
+  };
   return (
     <Fragment>
       <tr className="align-top">
@@ -374,13 +450,20 @@ function PlanRow({ p, premium, kind, onChange, onRemove }: { p: BidPlan; premium
         <td className="py-2 pr-2 text-xs">
           <input value={note} placeholder="note" onChange={(e) => setNote(e.target.value)} onBlur={() => note !== (p.note ?? "") && save({ ...base, note })}
             className="w-40 bg-gray-900 border border-gray-700 rounded px-1.5 py-0.5 text-gray-200 print:border-0" />
-          <button onClick={onRemove} className="ml-2 text-gray-500 hover:text-red-400 print:hidden" title="Remove from this Sunday">✕</button>
+        </td>
+        <td className="py-1.5 pr-2 text-xs print:hidden">
+          <div className="flex flex-col gap-1">
+            <button onClick={remove} disabled={busy !== null} className="text-xs text-gray-500 hover:text-red-400">Remove</button>
+            {kind === "auction" && <button onClick={() => move("min_bid")} disabled={busy !== null} className="text-xs text-gray-500 hover:text-indigo-300">Move to early bids</button>}
+            {kind === "min_bid" && <button onClick={() => move("auction")} disabled={busy !== null} className="text-xs text-gray-500 hover:text-indigo-300">Move to late bids</button>}
+            {err && <div className="text-red-400 text-[11px] mt-1">{err}</div>}
+          </div>
         </td>
       </tr>
       {open && (
         <tr>
           <td />
-          <td colSpan={minBid ? 10 : 11} className="pb-3 text-xs text-gray-400 space-y-2">
+          <td colSpan={minBid ? 11 : 12} className="pb-3 text-xs text-gray-400 space-y-2">
             <MarketLinkRow links={d?.links} />
             {d?.make_ten && <CostBreakdown m={d.make_ten} />}
             {closes.length > 0 ? (
@@ -470,14 +553,14 @@ function AuctionsPrep({ kind, tick: outer }: { kind: AuctionKind; tick: number }
                   <th className="text-left font-medium py-1 pr-3" title="Most to bid and still clear your target margin reselling at the best channel">Suggested max</th>
                   <th className="text-left font-medium py-1 pr-3">Your max</th>
                   <th className="text-left font-medium py-1 pr-3">Status</th>
-                  <th className="text-left font-medium py-1">Note</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-gray-800/70">
-                {slabs.map((p) => (
-                  <PlanRow key={p.id + p.updated_at} p={p} premium={data.buyers_premium_pct} kind={kind} onChange={refresh}
-                    onRemove={() => deleteBidPlan(p.id).then(refresh).catch(() => undefined)} />
-                ))}
+                   <th className="text-left font-medium py-1">Note</th>
+                   <th className="text-left font-medium py-1">Actions</th>
+                 </tr>
+               </thead>
+               <tbody className="divide-y divide-gray-800/70">
+                 {slabs.map((p) => (
+                   <PlanRow key={p.id + p.updated_at} p={p} premium={data.buyers_premium_pct} kind={kind} onChange={refresh} />
+                 ))}
               </tbody>
             </table>
           </div>
@@ -494,15 +577,15 @@ function AuctionsPrep({ kind, tick: outer }: { kind: AuctionKind; tick: number }
                   <th className="text-left font-medium py-1 pr-3" title="This week's Fanatics auctions of this grade: current bid, bids">Up this week</th>
                   <th className="text-left font-medium py-1 pr-3" title="The rule's max bid">Rule max</th>
                   <th className="text-left font-medium py-1 pr-3">Your max</th>
-                  <th className="text-left font-medium py-1 pr-3">Status</th>
-                  <th className="text-left font-medium py-1">Note</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-gray-800/70">
-                {lows.map((p) => (
-                  <LowRow key={p.id + p.updated_at} p={p} premium={data.buyers_premium_pct} kind={kind} onChange={refresh}
-                    onRemove={() => deleteBidPlan(p.id).then(refresh).catch(() => undefined)} />
-                ))}
+                   <th className="text-left font-medium py-1 pr-3">Status</th>
+                   <th className="text-left font-medium py-1">Note</th>
+                   <th className="text-left font-medium py-1">Actions</th>
+                 </tr>
+               </thead>
+               <tbody className="divide-y divide-gray-800/70">
+                 {lows.map((p) => (
+                   <LowRow key={p.id + p.updated_at} p={p} premium={data.buyers_premium_pct} kind={kind} onChange={refresh} />
+                 ))}
               </tbody>
             </table>
           </div>
@@ -520,14 +603,29 @@ function AuctionsPrep({ kind, tick: outer }: { kind: AuctionKind; tick: number }
 const pct = (v?: number) => (v == null ? "—" : `${v >= 0 ? "+" : ""}${Math.round(v * 100)}%`);
 const MARKET_GRADES: [string, string][] = [["raw", "Raw"], ["psa-10", "PSA 10"], ["psa-9", "PSA 9"], ["cgc-10", "CGC 10"], ["cgc-10-pristine", "Pristine"]];
 
-function SingleRow({ p, onChange, onRemove }: { p: BidPlan; onChange: () => void; onRemove: () => void }) {
+function SingleRow({ p, onChange }: { p: BidPlan; onChange: () => void }) {
   const sp: SinglePrep | undefined = p.single;
   const [max, setMax] = useState(dollars(p.max_bid_cents));
   const [note, setNote] = useState(p.note ?? "");
   const [paid, setPaid] = useState(dollars(p.won_cents));
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
   const base = { display_key: p.display_key, grade: p.grade, auction_date: p.auction_date, kind: "single" as const };
   const save = (patch: Parameters<typeof saveBidPlan>[0]) => saveBidPlan(patch).then(onChange).catch(() => undefined);
   const name = sp?.name ?? p.display_key;
+  const remove = async () => {
+    if (!window.confirm(`Remove ${name} ${p.grade} from the singles list?`)) return;
+    setBusy(true);
+    setErr(null);
+    try {
+      await deleteBidPlan(p.id);
+      onChange();
+    } catch (e) {
+      setErr((e as Error).message);
+    } finally {
+      setBusy(false);
+    }
+  };
   return (
     <tr className="align-top">
       <td className="py-2 pr-3">
@@ -588,10 +686,15 @@ function SingleRow({ p, onChange, onRemove }: { p: BidPlan; onChange: () => void
           </label>
         )}
       </td>
-      <td className="py-2 text-xs">
+      <td className="py-2 pr-2 text-xs">
         <input value={note} placeholder="note" onChange={(e) => setNote(e.target.value)} onBlur={() => note !== (p.note ?? "") && save({ ...base, note })}
           className="w-36 bg-gray-900 border border-gray-700 rounded px-1.5 py-0.5 text-gray-200 print:border-0" />
-        <button onClick={onRemove} className="ml-2 text-gray-500 hover:text-red-400 print:hidden" title="Remove">✕</button>
+      </td>
+      <td className="py-1.5 pr-2 text-xs print:hidden">
+        <div className="flex flex-col gap-1">
+          <button onClick={remove} disabled={busy} className="text-xs text-gray-500 hover:text-red-400">Remove</button>
+          {err && <div className="text-red-400 text-[11px] mt-1">{err}</div>}
+        </div>
       </td>
     </tr>
   );
@@ -629,13 +732,14 @@ function SinglesPrep() {
                 <th className="text-left font-medium py-1 pr-3">Buy range</th>
                 <th className="text-left font-medium py-1 pr-3">Your max</th>
                 <th className="text-left font-medium py-1 pr-3">Status</th>
-                <th className="text-left font-medium py-1">Note</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-gray-800/70">
-              {data.plans.map((p) => (
-                <SingleRow key={p.id + p.updated_at} p={p} onChange={refresh} onRemove={() => deleteBidPlan(p.id).then(refresh).catch(() => undefined)} />
-              ))}
+                 <th className="text-left font-medium py-1">Note</th>
+                 <th className="text-left font-medium py-1">Actions</th>
+               </tr>
+             </thead>
+             <tbody className="divide-y divide-gray-800/70">
+               {data.plans.map((p) => (
+                 <SingleRow key={p.id + p.updated_at} p={p} onChange={refresh} />
+               ))}
             </tbody>
           </table>
         </div>
