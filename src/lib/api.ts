@@ -1795,10 +1795,46 @@ export interface EndingAuction {
   max_bid_at_margin_cents?: number;
   watched: boolean;
   in_prep?: "auction" | "min_bid";
+  // Snipe signals (see the backend's snipeSignals).
+  mint_cents?: number; // cost to make this slab by grading raw copies
+  mint_gap?: number; // all-in / mint - 1: below 0 = cheaper than making one
+  flip_sold_cents?: number; // Fanatics Buy Now sold median
+  flip_ask_cents?: number; // cheapest live Fanatics Buy Now
+  flip_list_cents?: number; // where to list it
+  flip_net_cents?: number; // after the selling fee
+  flip_margin?: number; // net / all-in - 1
+  max_bid_for_mint_cents?: number;
+  max_bid_for_flip_cents?: number;
+  signals: SnipeSignal[];
+  strength: number;
 }
 
-export function fetchEndingSoon(hours: number): Promise<{ hours: number; count: number; auctions: EndingAuction[]; settings: { buyers_premium_pct: number; target_margin: number } }> {
-  return get(`/v1/deals/ending-soon?hours=${hours}`);
+export type SnipeSignal = "under_mint" | "deep_discount" | "flip";
+
+export interface SnipeRules { mint_gap: number; discount: number; flip_margin: number }
+
+export interface PulseStatus {
+  at?: string;
+  kind?: "sweep" | "closing" | "manual";
+  cards: number;
+  lots: number;
+  requests: number;
+  took_ms: number;
+  error?: string;
+  running: boolean;
+  next_close?: string;
+  active: boolean; // inside a last-hour window now
+}
+
+export function fetchEndingSoon(hours: number, signalsOnly = false): Promise<{
+  hours: number; count: number; auctions: EndingAuction[]; pulse?: PulseStatus;
+  settings: { buyers_premium_pct: number; target_margin: number; sell_fee_pct: number; snipe: SnipeRules };
+}> {
+  return get(`/v1/deals/ending-soon?hours=${hours}${signalsOnly ? "&signals=1" : ""}`);
+}
+
+export function runSnipePulse(sweep = false): Promise<PulseStatus> {
+  return adminFetch(`/v1/admin/snipe/pulse${sweep ? "?sweep=1" : ""}`, { method: "POST" });
 }
 
 export interface WatchSuggestion {
