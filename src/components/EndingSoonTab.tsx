@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import { fetchEndingSoon, runSnipePulse, type EndingAuction, type PulseStatus, type SnipeSignal } from "../lib/api";
 import { useSession } from "../lib/auth";
@@ -19,11 +19,16 @@ const money = (c?: number | null) => formatCents(c ?? null);
 const GRADE: Record<string, string> = { raw: "Raw", "psa-10": "PSA 10", "psa-9": "PSA 9", "cgc-10": "CGC 10", "cgc-10-pristine": "CGC Pristine" };
 const gradeLabel = (g: string) => GRADE[g] ?? g.toUpperCase().replace("-", " ");
 
-function endsIn(iso: string, now: number): string {
-  const m = Math.round((new Date(iso).getTime() - now) / 60000);
-  if (m <= 0) return "ending";
-  if (m < 60) return `${m} min`;
-  return `${Math.floor(m / 60)}h ${m % 60}m`;
+function Countdown({ iso, now }: { iso: string; now: number }) {
+  const ms = new Date(iso).getTime() - now;
+  if (ms <= 0) return <span className="text-amber-400">extended?</span>;
+  const s = Math.floor(ms / 1000);
+  const mm = String(Math.floor(s / 60)).padStart(2, "0");
+  const ss = String(s % 60).padStart(2, "0");
+  if (s < 5 * 60) return <span className="tabular-nums text-red-400 font-semibold">{mm}:{ss}</span>;
+  if (s < 60 * 60) return <span className="tabular-nums">{mm}:{ss}</span>;
+  const m = Math.round(ms / 60_000);
+  return <span className="tabular-nums">{Math.floor(m / 60)}h {m % 60}m</span>;
 }
 
 function ago(iso: string, now: number): string {
@@ -32,6 +37,51 @@ function ago(iso: string, now: number): string {
   if (m < 60) return `${m} min ago`;
   if (m < 48 * 60) return `${Math.round(m / 60)} h ago`;
   return `${Math.round(m / 1440)} days ago`;
+}
+
+// One AudioContext for the page, created (or resumed) from the "Alert me"
+// click: browsers keep a context made outside a user gesture suspended, and
+// cap how many a page may open.
+let audio: AudioContext | null = null;
+function audioCtx(): AudioContext | null {
+  try {
+    const Ctx = window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
+    audio ??= new Ctx();
+    if (audio.state === "suspended") void audio.resume();
+    return audio;
+  } catch {
+    return null;
+  }
+}
+
+function playBeep() {
+  const ctx = audioCtx();
+  if (!ctx) return;
+  try {
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+    osc.type = "sine";
+    osc.frequency.value = 880;
+    gain.gain.setValueAtTime(0.15, ctx.currentTime);
+    gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.2);
+    osc.connect(gain);
+    gain.connect(ctx.destination);
+    osc.start(ctx.currentTime);
+    osc.stop(ctx.currentTime + 0.2);
+  } catch {
+    /* audio not available */
+  }
+}
+
+function notifySnipe(row: EndingAuction) {
+  if (!("Notification" in window) || Notification.permission !== "granted") return;
+  const labels = row.signals?.map((s) => SIGNAL[s]?.label ?? s).join(", ");
+  try {
+    const n = new Notification(`${row.name} ${gradeLabel(row.grade)}`, { body: labels });
+    if (row.url) n.onclick = () => window.open(row.url, "_blank");
+  } catch {
+    /* some mobile browsers only notify from a service worker */
+  }
 }
 
 type Sort = "snipe" | "discount" | "ends" | "value";
@@ -43,6 +93,31 @@ const SIGNAL: Record<SnipeSignal, { label: string; cls: string; help: string }> 
 };
 
 const pct = (x?: number | null) => (x == null ? "—" : `${Math.round(x * 100)}%`);
+
+function CopyBtn({ cents }: { cents: number }) {
+  const [state, setState] = useState<"ok" | "err" | null>(null);
+  const [msg, setMsg] = useState("");
+  const copy = () => {
+    navigator.clipboard
+      .writeText(String(Math.floor(cents / 100))) // never round up past the max
+      .then(() => {
+        setState("ok");
+        setTimeout(() => setState(null), 1500);
+      })
+      .catch((e: Error) => {
+        setState("err");
+        setMsg(e.message);
+        setTimeout(() => setState(null), 1500);
+      });
+  };
+  return (
+    <>
+      <button onClick={copy} className="print:hidden text-gray-500 hover:text-gray-200" title="Copy bid" aria-label="Copy bid">⧉</button>
+      {state === "ok" && <span className="text-green-400 text-xs">✓</span>}
+      {state === "err" && <span className="text-red-400 text-xs" title={msg}>✕</span>}
+    </>
+  );
+}
 
 function PulseBar({ pulse, now, onScanned }: { pulse?: PulseStatus; now: number; onScanned: () => void }) {
   const session = useSession();
@@ -67,7 +142,7 @@ function PulseBar({ pulse, now, onScanned }: { pulse?: PulseStatus; now: number;
         {pulse?.active ? (pulse.swept ? "● Snipe window: swept, scan by hand" : "● Snipe window: sweeping") : "Snipe pulse idle"}
       </span>
       {!pulse?.active && pulse?.sweep_at && <span className="text-gray-400">auto sweep {new Date(pulse.sweep_at).toLocaleString(undefined, { weekday: "short", hour: "numeric", minute: "2-digit" })}</span>}
-      {close && <span className="text-gray-400">next close {new Date(close).toLocaleString(undefined, { weekday: "short", hour: "numeric", minute: "2-digit" })} ({endsIn(close, now)})</span>}
+      {close && <span className="text-gray-400">next close {new Date(close).toLocaleString(undefined, { weekday: "short", hour: "numeric", minute: "2-digit" })} (<Countdown iso={close} now={now} />)</span>}
       {pulse?.at ? (
         <span className="text-gray-500">
           last scan {ago(pulse.at, now)} · {pulse.kind} · {pulse.cards} cards, {pulse.lots} lots, {pulse.requests} request{pulse.requests === 1 ? "" : "s"}, {(pulse.took_ms / 1000).toFixed(1)} s
@@ -89,28 +164,83 @@ function PulseBar({ pulse, now, onScanned }: { pulse?: PulseStatus; now: number;
   );
 }
 
+const HOURS = [1, 2, 3, 6, 24, 72];
+const FILTERS_KEY = "endingSoon.filters";
+
+interface SavedFilters {
+  hours: number;
+  snipesOnly: boolean;
+  watchedOnly: boolean;
+  noBids: boolean;
+  minDisc: number;
+  sort: Sort;
+  alertMe?: boolean;
+}
+
+const DEFAULT_FILTERS: SavedFilters = { hours: 3, snipesOnly: false, watchedOnly: false, noBids: false, minDisc: 0, sort: "snipe" };
+
+function loadFilters(): SavedFilters {
+  try {
+    const raw = localStorage.getItem(FILTERS_KEY);
+    if (!raw) return { ...DEFAULT_FILTERS };
+    const saved = JSON.parse(raw) as Partial<SavedFilters>;
+    return {
+      hours: HOURS.includes(saved.hours ?? 0) ? (saved.hours as number) : DEFAULT_FILTERS.hours,
+      snipesOnly: typeof saved.snipesOnly === "boolean" ? saved.snipesOnly : DEFAULT_FILTERS.snipesOnly,
+      watchedOnly: typeof saved.watchedOnly === "boolean" ? saved.watchedOnly : DEFAULT_FILTERS.watchedOnly,
+      noBids: typeof saved.noBids === "boolean" ? saved.noBids : DEFAULT_FILTERS.noBids,
+      minDisc: typeof saved.minDisc === "number" && Number.isFinite(saved.minDisc) && saved.minDisc >= 0 ? saved.minDisc : DEFAULT_FILTERS.minDisc,
+      sort: ["snipe", "discount", "ends", "value"].includes(saved.sort as string) ? (saved.sort as Sort) : DEFAULT_FILTERS.sort,
+      alertMe: saved.alertMe === true,
+    };
+  } catch {
+    return { ...DEFAULT_FILTERS };
+  }
+}
+
+function saveFilters(filters: SavedFilters) {
+  try {
+    localStorage.setItem(FILTERS_KEY, JSON.stringify(filters));
+  } catch {
+    /* private window or quota exceeded */
+  }
+}
+
 export default function EndingSoonTab({ lang }: { lang: "" | "en" | "ja" | "zh" }) {
-  const [hours, setHours] = useState(3);
+  const [saved] = useState(loadFilters);
+  const [hours, setHours] = useState(saved.hours);
   const [data, setData] = useState<Awaited<ReturnType<typeof fetchEndingSoon>> | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [watchedOnly, setWatchedOnly] = useState(false);
-  const [minDisc, setMinDisc] = useState(0);
-  const [noBids, setNoBids] = useState(false);
-  const [sort, setSort] = useState<Sort>("snipe");
-  const [snipesOnly, setSnipesOnly] = useState(false);
+  const [watchedOnly, setWatchedOnly] = useState(saved.watchedOnly);
+  const [minDisc, setMinDisc] = useState(saved.minDisc);
+  const [noBids, setNoBids] = useState(saved.noBids);
+  const [sort, setSort] = useState<Sort>(saved.sort);
+  const [snipesOnly, setSnipesOnly] = useState(saved.snipesOnly);
+  const [alertMe, setAlertMe] = useState(saved.alertMe ?? false);
+  const [notifDenied, setNotifDenied] = useState(false);
+  const [highlighted, setHighlighted] = useState<Set<string>>(new Set());
+  const prevSignals = useRef<Set<string>>(new Set());
+  const firstLoad = useRef(true);
+  const highlightTimers = useRef<number[]>([]);
   const [now, setNow] = useState(Date.now());
   const [tick, setTick] = useState(0);
 
+  // A different window or "Snipes only" isn't news: start a new alert baseline.
   useEffect(() => {
+    firstLoad.current = true;
+  }, [hours, snipesOnly]);
+  useEffect(() => {
+    let live = true;
     setError(null);
-    fetchEndingSoon(hours, snipesOnly).then(setData).catch((e: Error) => setError(e.message));
+    fetchEndingSoon(hours, snipesOnly).then((d) => live && setData(d)).catch((e: Error) => live && setError(e.message));
+    return () => { live = false; };
   }, [hours, snipesOnly, tick]);
-  // Refresh every 2 minutes; the clock every 30 s.
+
+  const filtersRef = useRef(false);
   useEffect(() => {
-    const a = setInterval(() => setTick((t) => t + 1), 120_000);
-    const b = setInterval(() => setNow(Date.now()), 30_000);
-    return () => { clearInterval(a); clearInterval(b); };
-  }, []);
+    if (filtersRef.current) saveFilters({ hours, snipesOnly, watchedOnly, noBids, minDisc, sort, alertMe });
+    else filtersRef.current = true;
+  }, [hours, snipesOnly, watchedOnly, noBids, minDisc, sort, alertMe]);
 
   const rows = useMemo(() => {
     const langOf = (code: string) => (code.startsWith("jp-") ? "ja" : code.startsWith("cn-") ? "zh" : "en");
@@ -125,6 +255,50 @@ export default function EndingSoonTab({ lang }: { lang: "" | "en" | "ja" | "zh" 
     };
     return [...xs].sort((a, b) => key[sort](a) - key[sort](b));
   }, [data, lang, watchedOnly, noBids, minDisc, sort]);
+
+  const anyEndingSoon = useMemo(
+    () => rows.some((a) => new Date(a.ends_at).getTime() - now < 60 * 60_000),
+    [rows, now],
+  );
+
+  // Refresh every 2 minutes; tick the clock every second while something
+  // closes within the hour (separate, so switching speed doesn't reset the refresh).
+  useEffect(() => {
+    const a = setInterval(() => setTick((t) => t + 1), 120_000);
+    return () => clearInterval(a);
+  }, []);
+  useEffect(() => {
+    const b = setInterval(() => setNow(Date.now()), anyEndingSoon ? 1_000 : 30_000);
+    return () => clearInterval(b);
+  }, [anyEndingSoon]);
+  useEffect(() => () => highlightTimers.current.forEach(clearTimeout), []);
+
+  // Alert me: detect new snipe rows after each reload, beep + notify + highlight.
+  useEffect(() => {
+    if (!data) return;
+    const current = new Set(data.auctions.filter((a) => (a.signals?.length ?? 0) > 0).map((a) => a.url ?? a.display_key));
+    if (firstLoad.current) {
+      firstLoad.current = false;
+      prevSignals.current = current;
+      return;
+    }
+    const newUrls = Array.from(current).filter((u) => !prevSignals.current.has(u));
+    prevSignals.current = current;
+    if (!alertMe || newUrls.length === 0) return;
+    playBeep();
+    for (const u of newUrls) {
+      const row = data.auctions.find((a) => (a.url ?? a.display_key) === u);
+      if (row) notifySnipe(row);
+    }
+    setHighlighted((h) => new Set([...h, ...newUrls]));
+    // Not cleared when the effect re-runs (turning "Alert me" off, the next
+    // reload): only on unmount, or a highlight could stick.
+    highlightTimers.current.push(window.setTimeout(() => setHighlighted((h) => {
+      const next = new Set(h);
+      for (const u of newUrls) next.delete(u);
+      return next;
+    }), 10_000));
+  }, [data, alertMe]);
 
   if (error) return <ErrorMsg msg={error} />;
   if (!data) return <Spinner />;
@@ -153,6 +327,21 @@ export default function EndingSoonTab({ lang }: { lang: "" | "en" | "ja" | "zh" 
         <label className="flex items-center gap-1.5 text-emerald-300" title="Only auctions with a snipe signal">
           <input type="checkbox" checked={snipesOnly} onChange={(e) => setSnipesOnly(e.target.checked)} className="accent-emerald-500" /> Snipes only
         </label>
+        <label className="flex items-center gap-1.5 text-gray-400" title="Beep and notify when a new snipe appears">
+          <input type="checkbox" checked={alertMe} onChange={(e) => {
+            const on = e.target.checked;
+            if (on) {
+              audioCtx(); // unlock audio inside the click
+              if ("Notification" in window && Notification.permission === "default") {
+                Notification.requestPermission().then((p) => setNotifDenied(p === "denied"));
+              } else {
+                setNotifDenied(!("Notification" in window) || Notification.permission === "denied");
+              }
+            }
+            setAlertMe(on);
+          }} className="accent-emerald-500" /> Alert me
+        </label>
+        {alertMe && notifDenied && <span className="text-xs text-amber-400">Notifications blocked — beep and highlight still work.</span>}
         <label className="flex items-center gap-1.5 text-gray-400">
           <input type="checkbox" checked={watchedOnly} onChange={(e) => setWatchedOnly(e.target.checked)} className="accent-indigo-500" /> Watchlist only
         </label>
@@ -192,7 +381,7 @@ export default function EndingSoonTab({ lang }: { lang: "" | "en" | "ja" | "zh" 
               {rows.map((a, i) => {
                 const d = a.discount;
                 return (
-                  <tr key={a.url ?? i} className={`align-top hover:bg-gray-900/40 ${a.signals?.length ? "bg-emerald-950/20 " : ""}${a.watched ? "border-l-4 border-l-yellow-500" : "border-l-4 border-l-transparent"}`}>
+                  <tr key={a.url ?? i} className={`align-top hover:bg-gray-900/40 ${a.signals?.length ? "bg-emerald-950/20 " : ""}${highlighted.has(a.url ?? a.display_key) ? "ring-1 ring-emerald-400 " : ""}${a.watched ? "border-l-4 border-l-yellow-500" : "border-l-4 border-l-transparent"}`}>
                     <td className="pl-3 py-2 w-12">
                       {a.image_url ? <img src={cardThumb(a.image_url)} alt="" loading="lazy" className="w-10 h-14 object-cover rounded-sm bg-gray-800" /> : <span className="block w-10 h-14 rounded-sm bg-gray-800/60" />}
                     </td>
@@ -214,7 +403,7 @@ export default function EndingSoonTab({ lang }: { lang: "" | "en" | "ja" | "zh" 
                       )}
                       {a.url && <a href={a.url} target="_blank" rel="noreferrer" className="text-[11px] text-indigo-300 hover:underline">open auction ↗</a>}
                     </td>
-                    <td className="px-3 py-2 text-right tabular-nums text-gray-300 whitespace-nowrap">{endsIn(a.ends_at, now)}</td>
+                    <td className="px-3 py-2 text-right tabular-nums text-gray-300 whitespace-nowrap"><Countdown iso={a.ends_at} now={now} /></td>
                     <td className="px-3 py-2 text-right tabular-nums">
                       <div className="text-gray-100">{money(a.bid_cents)} <span className="text-gray-500">· {a.bids} bid{a.bids === 1 ? "" : "s"}</span></div>
                       <div className="text-[10px] text-gray-500">{money(a.all_in_cents)} all-in · read {ago(a.bid_seen_at, now)}</div>
@@ -251,12 +440,30 @@ export default function EndingSoonTab({ lang }: { lang: "" | "en" | "ja" | "zh" 
                     <td className="px-3 py-2 text-right tabular-nums">
                       {a.max_bid_at_margin_cents != null && (
                         <>
-                          <div className="text-green-400 font-medium" title={`Keeps your ${margin}% margin`}>{money(a.max_bid_at_margin_cents)}</div>
-                          <div className="text-[10px] text-gray-500" title="Pays exactly the value all-in">{money(a.max_bid_at_value_cents)} at value</div>
+                          <div className="flex items-center justify-end gap-1">
+                            <span className="text-green-400 font-medium" title={`Keeps your ${margin}% margin`}>{money(a.max_bid_at_margin_cents)}</span>
+                            <CopyBtn cents={a.max_bid_at_margin_cents} />
+                          </div>
+                          {a.max_bid_at_value_cents != null && (
+                            <div className="flex items-center justify-end gap-1 text-[10px]">
+                              <span className="text-gray-500" title="Pays exactly the value all-in">{money(a.max_bid_at_value_cents)} at value</span>
+                              <CopyBtn cents={a.max_bid_at_value_cents} />
+                            </div>
+                          )}
                         </>
                       )}
-                      {a.max_bid_for_mint_cents != null && <div className="text-[10px] text-emerald-300/90" title={`Stays ${pct(rules?.mint_gap)} under the cost to make`}>{money(a.max_bid_for_mint_cents)} vs make</div>}
-                      {a.max_bid_for_flip_cents != null && <div className="text-[10px] text-sky-300/90" title={`Keeps the ${pct(rules?.flip_margin)} flip margin`}>{money(a.max_bid_for_flip_cents)} to flip</div>}
+                      {a.max_bid_for_mint_cents != null && (
+                        <div className="flex items-center justify-end gap-1 text-[10px]">
+                          <span className="text-emerald-300/90" title={`Stays ${pct(rules?.mint_gap)} under the cost to make`}>{money(a.max_bid_for_mint_cents)} vs make</span>
+                          <CopyBtn cents={a.max_bid_for_mint_cents} />
+                        </div>
+                      )}
+                      {a.max_bid_for_flip_cents != null && (
+                        <div className="flex items-center justify-end gap-1 text-[10px]">
+                          <span className="text-sky-300/90" title={`Keeps the ${pct(rules?.flip_margin)} flip margin`}>{money(a.max_bid_for_flip_cents)} to flip</span>
+                          <CopyBtn cents={a.max_bid_for_flip_cents} />
+                        </div>
+                      )}
                       {a.max_bid_at_margin_cents == null && a.max_bid_for_mint_cents == null && a.max_bid_for_flip_cents == null && "—"}
                     </td>
                   </tr>

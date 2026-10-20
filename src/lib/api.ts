@@ -781,6 +781,7 @@ export interface AnalysisSettings {
   miss_floor_cgc_cents: number;
   miss_floor_psa_cents: number;
   auto_prep?: AutoPrepRules;
+  snipe?: SnipeRules;
   out_of_print_months: number;
   crack_psa9_to_cgc10_rate: number;
   crack_cgc10_to_psa10_rate: number;
