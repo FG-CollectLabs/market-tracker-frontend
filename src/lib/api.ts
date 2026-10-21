@@ -850,6 +850,12 @@ export interface MakeRow {
   break_even_cents: number;
   gap_pct: number; // market / cost to make - 1
   make: GradingEV;
+  // This week's Fanatics auctions of this grade.
+  auctions_this_week: number;
+  auction_bids: number;
+  auction_low_cents?: number; // lowest current bid (hammer)
+  expected_all_in_cents?: number; // the usual close for this week's supply
+  max_bid_under_make_cents?: number; // most to bid and pay no more than the cost to make, all-in
 }
 
 export function fetchMakeVsMarket(): Promise<{ count: number; rows: MakeRow[]; formula: string; settings: Record<string, unknown> }> {
@@ -1020,8 +1026,10 @@ export interface Deal {
   timing_provisional?: boolean;
   fair?: FairValue;
   action: BuyAction;
-  margin: number;
+  margin: number; // Buy Now deals: net resale at market ÷ the ask − 1
   market_cents: number;
+  ask_cents?: number; // Buy Now deals: the listed price
+  cost_to_make_cents?: number; // Buy Now deals on a 10: what grading for one costs
 }
 
 function analysisQS(o?: { targetMargin?: number; exitFeePct?: number }): URLSearchParams {

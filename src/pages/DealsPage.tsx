@@ -3,7 +3,9 @@ import { Link, useSearchParams } from "react-router-dom";
 import AuctionDealsTab from "../components/AuctionDealsTab";
 import MakeVsMarketTab from "../components/MakeVsMarketTab";
 import EndingSoonTab from "../components/EndingSoonTab";
-import { fetchDeals, fetchFindings, type AgentFinding, type Deal } from "../lib/api";
+import { fetchDeals, fetchFindings, type AgentFinding, type AnalysisSettings, type Deal } from "../lib/api";
+import { HelpDot } from "../components/HelpTip";
+import { PrepLegend, PrepTags, prepRowClass, usePrepMarks } from "../components/PrepMarks";
 import { formatCents } from "../lib/roi";
 import { ACTION_STYLE } from "../components/BuyingGuide";
 import { Spinner, ErrorMsg } from "../components/Spinner";
@@ -27,6 +29,37 @@ const TAB_BLURB: Record<string, string> = {
   buy_raw_to_grade_cgc: "Raw cards worth grading with CGC (Pristine upside counted): EV after fees at the public gem rate.",
   buy_psa10: "PSA 10s that cost less than grading for one.",
 };
+
+// What "Max" and "Margin" mean on each tab, and how they're worked out.
+function maxHelp(kind: string, st: AnalysisSettings | null) {
+  const fee = st ? `${(st.exit_fee_pct * 100).toFixed(2).replace(/\.?0+$/, "")}%` : "the selling fee";
+  const m = st ? `${Math.round(st.target_margin * 100)}%` : "your target margin";
+  switch (kind) {
+    case "buy_now":
+      return (
+        <>
+          <div className="font-semibold text-gray-100">Max: the most to pay for the Buy Now and still make your {m} margin reselling it</div>
+          <div className="my-1.5 rounded bg-gray-900 px-2 py-1 font-mono text-[11px] text-gray-200">max = market × (1 − {fee} selling fee) ÷ (1 + {m} margin)</div>
+          <p>It's a resale cap, <span className="text-gray-100">not</span> the cost to make one by grading. Market is the card's value from recent sold prices (the Market column); the fee is the resale fee (eBay's, in Settings as exit fee).</p>
+          <p className="mt-1">A listing shows here when its price (the ask) is at or under the max. For a 10, the cost to make one by grading is shown under the max to compare: an ask under both is cheaper than reselling needs and cheaper than grading for it.</p>
+        </>
+      );
+    case "buy_raw_to_grade":
+    case "buy_raw_to_grade_cgc":
+      return <><div className="font-semibold text-gray-100">Max: the most to pay for a raw copy and still clear your minimum grading return</div><p>From the grading EV at the public gem rate: fees, shipping, sourcing and time included. Break-even below it is where grading nets $0.</p></>;
+    case "buy_psa10":
+      return <><div className="font-semibold text-gray-100">Max: the highest Fanatics hammer bid that keeps your {m} margin</div><p>max all-in = market × (1 − {fee}) ÷ (1 + {m}), then ÷ (1 + buyer's premium) and rounded down to whole dollars.</p></>;
+    default:
+      return <><div className="font-semibold text-gray-100">Max: the most to pay that keeps your {m} margin</div></>;
+  }
+}
+
+function marginHelp(kind: string) {
+  if (kind === "buy_now") return <><div className="font-semibold text-gray-100">Margin at the ask</div><div className="my-1.5 rounded bg-gray-900 px-2 py-1 font-mono text-[11px] text-gray-200">margin = market × (1 − selling fee) ÷ ask − 1</div><p>What you'd make buying at the listed price and reselling at market.</p></>;
+  if (kind === "buy_psa10") return <><div className="font-semibold text-gray-100">How much cheaper the 10 is than grading for one</div><p>The grading return turned around: the more grading loses, the better buying the slab is.</p></>;
+  if (kind.startsWith("buy_raw")) return <><div className="font-semibold text-gray-100">Grading return</div><p>Expected profit after every cost ÷ the cost of a graded copy, at the public gem rate.</p></>;
+  return <><div className="font-semibold text-gray-100">Margin</div><p>Resale after fees ÷ what you'd pay − 1.</p></>;
+}
 
 const KIND_LABEL: Record<string, string> = {
   bid_auction: "Bid",
@@ -93,6 +126,8 @@ function OpportunitiesTab({ kind, lang }: { kind: string; lang: "" | "en" | "ja"
   }, []);
   const [target, setTarget] = useState<number | null>(null); // null = saved setting
   const [deals, setDeals] = useState<Deal[] | null>(null);
+  const [st, setSt] = useState<AnalysisSettings | null>(null);
+  const marks = usePrepMarks();
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
@@ -101,6 +136,7 @@ function OpportunitiesTab({ kind, lang }: { kind: string; lang: "" | "en" | "ja"
     fetchDeals({ kind, afterHype, lang: lang || undefined, targetMargin: target == null ? undefined : target / 100, limit: 200 })
       .then((r) => {
         setDeals(r.deals);
+        setSt(r.settings);
         if (target == null) setTarget(Math.round(r.settings.target_margin * 100));
       })
       .catch((e: Error) => setError(e.message));
@@ -120,6 +156,7 @@ function OpportunitiesTab({ kind, lang }: { kind: string; lang: "" | "en" | "ja"
           <input type="number" min={0} max={200} step={5} value={target ?? ""} onChange={(e) => setTarget(Number(e.target.value) || 0)}
             className="w-14 bg-gray-900 border border-gray-700 rounded px-1.5 py-0.5 text-gray-200 font-mono" />%
         </label>
+        {marks.on && <PrepLegend day={marks.day} />}
       </div>
       {error && <ErrorMsg msg={error} />}
       {!deals && !error && <Spinner />}
@@ -132,15 +169,15 @@ function OpportunitiesTab({ kind, lang }: { kind: string; lang: "" | "en" | "ja"
                 <th className="text-left px-3 py-2 font-medium" colSpan={2}>Card</th>
                 <th className="text-left px-3 py-2 font-medium">Do</th>
                 <th className="text-left px-3 py-2 font-medium">Why</th>
-                <th className="text-right px-3 py-2 font-medium">Max</th>
+                <th className="text-right px-3 py-2 font-medium">Max<HelpDot help={maxHelp(kind, st)} /></th>
                 <th className="text-right px-3 py-2 font-medium">Market</th>
                 <th className="text-left px-3 py-2 font-medium" title="Fair range of the 10: cost to make one by grading x how cards of the same desirability trade">Fair range</th>
-                <th className="text-right px-3 py-2 font-medium">Margin</th>
+                <th className="text-right px-3 py-2 font-medium">{kind === "buy_now" ? "Margin at ask" : "Margin"}<HelpDot help={marginHelp(kind)} /></th>
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-800/70">
               {deals.map((d, i) => (
-                <tr key={i} className="align-top hover:bg-gray-900/40">
+                <tr key={i} className={`align-top hover:bg-gray-900/40 ${marks.on ? prepRowClass(marks.entries(d.display_key), marks.watched.has(d.display_key), d.action.grade ?? "") : ""}`}>
                   <td className="pl-3 py-2 w-14">
                     <Link to={`/cards/${encodeURIComponent(d.display_key)}`} className="group relative block">
                       {d.image_url ? (
@@ -157,6 +194,7 @@ function OpportunitiesTab({ kind, lang }: { kind: string; lang: "" | "en" | "ja"
                   <td className="px-3 py-2 whitespace-nowrap">
                     <Link to={`/cards/${encodeURIComponent(d.display_key)}`} className="text-gray-100 hover:text-indigo-300">{d.name}</Link>
                     <div className="text-[11px] text-gray-500 font-mono">{d.set_code.replace(/^jp-/, "JP ").replace(/^cn-/, "CN ").toUpperCase()}</div>
+                    {marks.on && <PrepTags entries={marks.entries(d.display_key)} watched={marks.watched.has(d.display_key)} grade={d.action.grade ?? ""} />}
                     {d.months_since_release != null && (
                       <div className="text-[11px] text-gray-500 mt-0.5">
                         month {Math.floor(d.months_since_release)}
@@ -184,7 +222,18 @@ function OpportunitiesTab({ kind, lang }: { kind: string; lang: "" | "en" | "ja"
                     ))}
                   </td>
                   <td className="px-3 py-2 text-right tabular-nums text-gray-100">
-                    {d.action.max_cents != null ? formatCents(d.action.max_cents) : "—"}
+                    <span title={kind === "buy_now" && st && d.action.max_cents != null && d.market_cents
+                      ? `${formatCents(d.market_cents)} market × (1 − ${(st.exit_fee_pct * 100).toFixed(2)}% fee) ÷ (1 + ${Math.round(st.target_margin * 100)}% margin) = ${formatCents(d.action.max_cents)}`
+                      : undefined} className={kind === "buy_now" ? "cursor-help border-b border-dotted border-gray-500" : ""}>
+                      {d.action.max_cents != null ? formatCents(d.action.max_cents) : "—"}
+                    </span>
+                    {d.ask_cents != null && <div className="text-[10px] text-gray-300" title="The listed Buy Now price">ask {formatCents(d.ask_cents)}</div>}
+                    {d.cost_to_make_cents != null && (
+                      <div className={`text-[10px] ${d.ask_cents != null && d.ask_cents < d.cost_to_make_cents ? "text-green-400" : "text-gray-500"}`}
+                        title="What it costs to make this 10 by grading raw copies (Market vs cost to make tab)">
+                        cost to make {formatCents(d.cost_to_make_cents)}{d.ask_cents != null && d.ask_cents < d.cost_to_make_cents ? " · ask under it" : ""}
+                      </div>
+                    )}
                     {d.action.metrics?.break_even_cents != null && (
                       <div className="text-[10px] text-gray-500" title="Never pay this much: grading nets $0 here">break-even {formatCents(d.action.metrics.break_even_cents)}</div>
                     )}

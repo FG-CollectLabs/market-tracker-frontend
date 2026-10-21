@@ -5,6 +5,7 @@ import { useSession } from "../lib/auth";
 import { formatCents } from "../lib/roi";
 import { cardThumb } from "../lib/thumb";
 import { HelpDot } from "./HelpTip";
+import { PickBox, PrepLegend, PrepSelectBar, prepRowClass, usePicks, usePrepMarks } from "./PrepMarks";
 import { Spinner, ErrorMsg } from "./Spinner";
 
 // Ending soon: every live Fanatics auction closing in the next few hours,
@@ -224,6 +225,9 @@ export default function EndingSoonTab({ lang }: { lang: "" | "en" | "ja" | "zh" 
   const highlightTimers = useRef<number[]>([]);
   const [now, setNow] = useState(Date.now());
   const [tick, setTick] = useState(0);
+  const marks = usePrepMarks();
+  const picks = usePicks();
+  const pickOf = (a: EndingAuction) => ({ display_key: a.display_key, grade: a.grade, name: a.name, max_cents: a.max_bid_at_margin_cents });
 
   // A different window or "Snipes only" isn't news: start a new alert baseline.
   useEffect(() => {
@@ -361,12 +365,14 @@ export default function EndingSoonTab({ lang }: { lang: "" | "en" | "ja" | "zh" 
         </select>
         <button onClick={() => setTick((t) => t + 1)} className="px-2 py-1 rounded border border-gray-700 text-gray-300 hover:text-white">Reload</button>
         <span className="text-gray-500">{rows.length} of {data.count} · oldest bid read {ago(oldest, now)}</span>
+        {marks.on && <PrepLegend day={marks.day} />}
       </div>
       {rows.length === 0 ? <p className="text-sm text-gray-500">No auctions match in the next {hours} h.</p> : (
         <div className="overflow-x-auto rounded-lg border border-gray-800">
           <table className="w-full text-sm">
             <thead className="bg-gray-900/60 text-gray-400 text-xs">
               <tr>
+                {marks.on && <th className="pl-3 py-2 w-6" />}
                 <th className="text-left px-3 py-2 font-medium" colSpan={2}>Card</th>
                 <th className="text-right px-3 py-2 font-medium">Ends in</th>
                 <th className="text-right px-3 py-2 font-medium">Current bid<HelpDot help={`The highest bid when last read, and what you'd pay at it with the ${premium}% buyer's premium.`} /></th>
@@ -381,7 +387,13 @@ export default function EndingSoonTab({ lang }: { lang: "" | "en" | "ja" | "zh" 
               {rows.map((a, i) => {
                 const d = a.discount;
                 return (
-                  <tr key={a.url ?? i} className={`align-top hover:bg-gray-900/40 ${a.signals?.length ? "bg-emerald-950/20 " : ""}${highlighted.has(a.url ?? a.display_key) ? "ring-1 ring-emerald-400 " : ""}${a.watched ? "border-l-4 border-l-yellow-500" : "border-l-4 border-l-transparent"}`}>
+                  <tr key={a.url ?? i} className={`align-top hover:bg-gray-900/40 ${a.signals?.length ? "bg-emerald-950/20 " : ""}${highlighted.has(a.url ?? a.display_key) ? "ring-1 ring-emerald-400 " : ""}${marks.inPrep(a.display_key, a.grade) ? prepRowClass(marks.entries(a.display_key), a.watched, a.grade) : a.watched ? "border-l-4 border-l-yellow-500" : "border-l-4 border-l-transparent"}`}>
+                    {marks.on && (
+                      <td className="pl-3 py-2 w-6">
+                        <PickBox checked={picks.has(a)} onChange={(on) => picks.toggle(pickOf(a), on)} disabled={marks.inPrep(a.display_key, a.grade)}
+                          title={marks.inPrep(a.display_key, a.grade) ? "Already in this Sunday's prep" : "Select to add to Buying prep"} />
+                      </td>
+                    )}
                     <td className="pl-3 py-2 w-12">
                       {a.image_url ? <img src={cardThumb(a.image_url)} alt="" loading="lazy" className="w-10 h-14 object-cover rounded-sm bg-gray-800" /> : <span className="block w-10 h-14 rounded-sm bg-gray-800/60" />}
                     </td>
@@ -473,6 +485,7 @@ export default function EndingSoonTab({ lang }: { lang: "" | "en" | "ja" | "zh" 
           </table>
         </div>
       )}
+      <PrepSelectBar picks={picks.list} inPrep={marks.inPrep} onClear={picks.clear} onDone={marks.reload} maxLabel="the bid-up-to figure that keeps your margin" />
     </div>
   );
 }

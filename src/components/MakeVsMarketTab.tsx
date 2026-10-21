@@ -3,7 +3,8 @@ import { Link } from "react-router-dom";
 import { fetchMakeVsMarket, type MakeRow } from "../lib/api";
 import { formatCents } from "../lib/roi";
 import { cardThumb } from "../lib/thumb";
-import HelpTip from "./HelpTip";
+import HelpTip, { HelpDot } from "./HelpTip";
+import { PickBox, PrepLegend, PrepSelectBar, PrepTags, prepRowClass, usePicks, usePrepMarks } from "./PrepMarks";
 import { Spinner, ErrorMsg } from "./Spinner";
 
 // Market vs cost to make: what each tracked PSA 10 / CGC 10 sells for
@@ -52,14 +53,18 @@ export default function MakeVsMarketTab({ lang }: { lang: "" | "en" | "ja" | "zh
   const [grader, setGrader] = useState<"" | "psa" | "cgc">("");
   const [under, setUnder] = useState(true);
   const [minSales, setMinSales] = useState(3);
+  const [auctionsOnly, setAuctionsOnly] = useState(false);
+  const marks = usePrepMarks();
+  const picks = usePicks();
+  const pickOf = (r: MakeRow) => ({ display_key: r.display_key, grade: r.grade, name: r.name, max_cents: r.max_bid_under_make_cents });
   useEffect(() => {
     fetchMakeVsMarket().then(setData).catch((e: Error) => setError(e.message));
   }, []);
   const rows = useMemo(() => (data?.rows ?? []).filter((r) =>
     (!grader || r.grade.startsWith(grader)) &&
     (!lang || lang === (r.set_code.startsWith("jp-") ? "ja" : r.set_code.startsWith("cn-") ? "zh" : "en")) &&
-    (!under || r.gap_pct < 0) &&
-    r.sales_90d >= minSales), [data, grader, lang, under, minSales]);
+    (!under || r.gap_pct < 0) && (!auctionsOnly || r.auctions_this_week > 0) &&
+    r.sales_90d >= minSales), [data, grader, lang, under, minSales, auctionsOnly]);
   if (error) return <ErrorMsg msg={error} />;
   if (!data) return <Spinner />;
   return (
@@ -89,18 +94,29 @@ export default function MakeVsMarketTab({ lang }: { lang: "" | "en" | "ja" | "zh
           <input type="number" min={0} value={minSales} onChange={(e) => setMinSales(Math.max(0, Number(e.target.value) || 0))}
             className="w-14 bg-gray-900 border border-gray-700 rounded px-1.5 py-0.5 text-gray-200" /> sales in 90 days
         </label>
+        <label className="flex items-center gap-1.5 text-gray-400" title="Only cards with Fanatics auctions closing in the next 7 days, to put on Buying prep">
+          <input type="checkbox" checked={auctionsOnly} onChange={(e) => setAuctionsOnly(e.target.checked)} className="accent-indigo-500" />
+          Has auctions this week
+        </label>
         <span className="text-gray-500">{rows.length} of {data.count}</span>
+        {marks.on && <PrepLegend day={marks.day} />}
       </div>
       {rows.length === 0 ? <p className="text-sm text-gray-500">Nothing matches.</p> : (
         <div className="overflow-x-auto rounded-lg border border-gray-800">
           <table className="w-full text-sm">
             <thead className="bg-gray-900/60 text-gray-400 text-xs">
               <tr>
+                {marks.on && <th className="pl-3 py-2 w-6" title="Select cards with auctions this week to add to Buying prep" />}
                 <th className="text-left px-3 py-2 font-medium" colSpan={2}>Card</th>
                 <th className="text-right px-3 py-2 font-medium" title="The market value the model uses, and where it comes from">Sells for</th>
                 <th className="text-right px-3 py-2 font-medium">Cost to make</th>
                 <th className="text-right px-3 py-2 font-medium" title="Sells for ÷ cost to make − 1. Negative: cheaper to buy than to grade for one.">vs cost</th>
                 <th className="text-right px-3 py-2 font-medium" title="Cheapest live Buy Now (Fanatics or eBay)">Cheapest Buy Now</th>
+                <th className="text-right px-3 py-2 font-medium">This week's auctions<HelpDot help={<>
+                  <div className="font-semibold text-gray-100">Fanatics auctions of this grade closing in the next 7 days</div>
+                  <p>The count, the lowest current bid, and the usual close for this week's supply (all-in, from the auction model).</p>
+                  <p className="mt-1"><span className="text-gray-100">Bid up to</span> = the most to bid and still pay no more than the cost to make, all-in: cost to make ÷ (1 + buyer's premium), rounded down to whole dollars. It's what the checkbox puts on Buying prep as your max.</p>
+                </>} /></th>
                 <th className="text-right px-3 py-2 font-medium" title="Gem rate (Pristine share for CGC) from the population report">10 rate</th>
                 <th className="text-right px-3 py-2 font-medium" title="Raw market price used for the copies you'd grade">Raw</th>
               </tr>
@@ -109,7 +125,14 @@ export default function MakeVsMarketTab({ lang }: { lang: "" | "en" | "ja" | "zh
               {rows.map((r) => {
                 const m = r.make;
                 return (
-                  <tr key={r.display_key + r.grade} className="align-top hover:bg-gray-900/40">
+                  <tr key={r.display_key + r.grade} className={`align-top hover:bg-gray-900/40 ${marks.on ? prepRowClass(marks.entries(r.display_key), marks.watched.has(r.display_key), r.grade) : ""}`}>
+                    {marks.on && (
+                      <td className="pl-3 py-2 w-6">
+                        <PickBox checked={picks.has(r)} onChange={(on) => picks.toggle(pickOf(r), on)}
+                          disabled={r.auctions_this_week === 0 || marks.inPrep(r.display_key, r.grade)}
+                          title={r.auctions_this_week === 0 ? "No auctions this week" : marks.inPrep(r.display_key, r.grade) ? "Already in this Sunday's prep" : "Select to add to Buying prep"} />
+                      </td>
+                    )}
                     <td className="pl-3 py-2 w-12">
                       {r.image_url ? <img src={cardThumb(r.image_url)} alt="" loading="lazy" className="w-10 h-14 object-cover rounded-sm bg-gray-800" /> : <span className="block w-10 h-14 rounded-sm bg-gray-800/60" />}
                     </td>
@@ -121,6 +144,7 @@ export default function MakeVsMarketTab({ lang }: { lang: "" | "en" | "ja" | "zh
                         {r.months_since_release != null && <span className="ml-1.5">month {Math.round(r.months_since_release)}</span>}
                         {!r.in_print && <span className="ml-1.5 text-sky-300">out of print</span>}
                       </div>
+                      {marks.on && <PrepTags entries={marks.entries(r.display_key)} watched={marks.watched.has(r.display_key)} grade={r.grade} />}
                     </td>
                     <td className="px-3 py-2 text-right tabular-nums">
                       <div className="text-gray-100">{money(r.market.cents)}</div>
@@ -142,6 +166,18 @@ export default function MakeVsMarketTab({ lang }: { lang: "" | "en" | "ja" | "zh
                       ) : <span className="text-gray-600">none listed</span>}
                     </td>
                     <td className="px-3 py-2 text-right tabular-nums text-gray-300">
+                      {r.auctions_this_week > 0 ? (
+                        <>
+                          <div className="text-gray-100">{r.auctions_this_week} closing</div>
+                          <div className="text-[10px] text-gray-500">
+                            {r.auction_low_cents != null ? `low bid ${money(r.auction_low_cents)}` : "no bids"}{r.auction_bids ? ` · ${r.auction_bids} bids` : ""}
+                          </div>
+                          {r.expected_all_in_cents != null && <div className="text-[10px] text-gray-500">usually closes ~{money(r.expected_all_in_cents)} all-in</div>}
+                          {r.max_bid_under_make_cents != null && <div className="text-[10px] text-green-400" title="Most to bid and pay no more than the cost to make, all-in">bid up to {money(r.max_bid_under_make_cents)}</div>}
+                        </>
+                      ) : <span className="text-gray-600">none</span>}
+                    </td>
+                    <td className="px-3 py-2 text-right tabular-nums text-gray-300">
                       {(m.p10 * 100).toFixed(1)}%
                       {m.p_top != null && <div className="text-[10px] text-gray-500">+{(m.p_top * 100).toFixed(1)}% Pristine</div>}
                     </td>
@@ -153,6 +189,7 @@ export default function MakeVsMarketTab({ lang }: { lang: "" | "en" | "ja" | "zh
           </table>
         </div>
       )}
+      <PrepSelectBar picks={picks.list} inPrep={marks.inPrep} onClear={picks.clear} onDone={marks.reload} maxLabel="the bid-up-to figure (pays no more than the cost to make)" />
     </div>
   );
 }
