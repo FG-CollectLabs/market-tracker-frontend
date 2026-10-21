@@ -24,7 +24,7 @@ const GRADE_LABEL: Record<string, string> = {
 
 const SOURCE_LABEL: Record<string, string> = { fanatics: "Fanatics", ebay: "eBay" };
 
-type SortKey = "pressure" | "edge" | "live";
+type SortKey = "pressure" | "surge" | "edge" | "live";
 
 const Formula = ({ children }: { children: React.ReactNode }) => (
   <div className="my-1.5 rounded bg-gray-900 px-2 py-1 font-mono text-[11px] text-gray-200">{children}</div>
@@ -32,13 +32,23 @@ const Formula = ({ children }: { children: React.ReactNode }) => (
 
 // The active sort in one line, shown under the buttons.
 const SORT_LINE: Record<SortKey, string> = {
-  pressure: "Sorted by pressure = auctions closing this week ÷ copies that usually sell a week (every channel). 2× heavy, 3×+ a dump: closes tend to come in low.",
+  pressure: "Sorted by pressure vs sales = auctions closing this week ÷ copies that usually sell a week (every channel). 2× heavy, 3×+ a dump: closes tend to come in low.",
+  surge: "Sorted by listing surge = Fanatics auctions this week ÷ how many it usually lists a week. A spike in supply against its own history, whatever the demand.",
   edge: "Sorted by edge = (resale after fees − projected close) ÷ projected close, weighted by confidence: the profit buying at this week's expected close and reselling.",
   live: "Sorted by the number of copies closing this week (raw volume, not adjusted for how fast the card sells).",
 };
 
 // What each sort means and how it's worked out (hover the buttons).
 const SORT_HELP: Record<SortKey, React.ReactNode> = {
+  surge: (
+    <>
+      <div className="font-semibold text-gray-100">Biggest surge: far more copies listed than this card usually has</div>
+      <Formula>surge = Fanatics auctions this week ÷ Fanatics auctions listed a week (usual)</Formula>
+      <p>Usual listed = its weekly Fanatics auctions over the last 12 weeks, counted from the first week it was auctioned (so a new card isn't averaged over weeks it didn't exist), floored at 1. Fanatics weekly auctions always close, so closes = listings.</p>
+      <p className="mt-1">Pressure asks "more than buyers take?"; surge asks "more than usual?". A card can surge without pressure (it sells fast) or have pressure without a surge (always oversupplied). Both high is the likeliest lowball week.</p>
+      <p className="mt-1 text-gray-500">"new" = first week on auction: no baseline yet. Example: usually 2 a week, 8 up now → 4.0×.</p>
+    </>
+  ),
   pressure: (
     <>
       <div className="font-semibold text-gray-100">Most pressure: more copies up than buyers usually take</div>
@@ -334,7 +344,7 @@ export default function AuctionDealsTab({ lang }: { lang: "" | "en" | "ja" | "zh
   const shown = useMemo(() => {
     if (!rows) return [];
     const xs = rows.filter((d) => (!dumpsOnly || (d.pressure ?? 0) >= 2) && (prepFilter === "" || (prepFilter === "in") === marks.inPrep(d.display_key, d.grade)));
-    const key = (d: AuctionDeal) => (sort === "pressure" ? d.pressure ?? 0 : sort === "edge" ? d.edge_calc?.adjusted_pct ?? -9 : d.live_auctions);
+    const key = (d: AuctionDeal) => (sort === "pressure" ? d.pressure ?? 0 : sort === "surge" ? d.listing_surge ?? 0 : sort === "edge" ? d.edge_calc?.adjusted_pct ?? -9 : d.live_auctions);
     return [...xs].sort((a, b) => key(b) - key(a));
   }, [rows, sort, dumpsOnly, prepFilter, marks]);
 
@@ -350,10 +360,10 @@ export default function AuctionDealsTab({ lang }: { lang: "" | "en" | "ja" | "zh
       <div className="flex flex-wrap items-center gap-3 text-sm">
         {/* No overflow-hidden here: it clipped the help boxes. */}
         <div className="inline-flex rounded border border-gray-700">
-          {([["pressure", "Most pressure"], ["edge", "Biggest edge"], ["live", "Most auctions"]] as const).map(([k, label], i) => (
+          {([["pressure", "Most pressure"], ["surge", "Biggest surge"], ["edge", "Biggest edge"], ["live", "Most auctions"]] as const).map(([k, label], i) => (
             <HelpTip key={k} help={SORT_HELP[k]}>
               <button onClick={() => setSort(k)}
-                className={`px-3 py-1 ${i === 0 ? "rounded-l" : i === 2 ? "rounded-r" : ""} ${sort === k ? "bg-indigo-700 text-white" : "bg-gray-900 text-gray-400 hover:text-gray-200"}`}>
+                className={`px-3 py-1 ${i === 0 ? "rounded-l" : i === 3 ? "rounded-r" : ""} ${sort === k ? "bg-indigo-700 text-white" : "bg-gray-900 text-gray-400 hover:text-gray-200"}`}>
                 {label} <span className="text-[10px] opacity-60">?</span>
               </button>
             </HelpTip>
@@ -392,7 +402,8 @@ export default function AuctionDealsTab({ lang }: { lang: "" | "en" | "ja" | "zh
                 )}
                 <th className="text-left px-3 py-2 font-medium" colSpan={2}>Card</th>
                 <th className="text-left px-3 py-2 font-medium">Live this week</th>
-                <th className="text-right px-3 py-2 font-medium">Pressure<HelpDot help={SORT_HELP.pressure} /></th>
+                <th className="text-right px-3 py-2 font-medium">Pressure<HelpDot help={SORT_HELP.pressure} /><div className="text-[10px] font-normal text-gray-500">vs sales</div></th>
+                <th className="text-right px-3 py-2 font-medium">Surge<HelpDot help={SORT_HELP.surge} /><div className="text-[10px] font-normal text-gray-500">vs usual listings</div></th>
                 <th className="px-3 py-2 font-medium" title="Fanatics auctions closed per week, last 12 weeks">12 weeks</th>
                 <th className="text-right px-3 py-2 font-medium">Edge<HelpDot help={SORT_HELP.edge} /></th>
                 <th className="text-right px-3 py-2 font-medium" title="How far this card's own auction closes (usual weekly close, all-in) run under what it sells for on eBay or Fanatics Buy Now (the lower of the two). Needs 2+ weeks of its own closes.">Auction vs BIN/eBay</th>
@@ -452,6 +463,12 @@ export default function AuctionDealsTab({ lang }: { lang: "" | "en" | "ja" | "zh
                           sells {d.usual_per_week.toFixed(1)}/wk{d.usual_fanatics_auctions_per_week != null ? ` (${d.usual_fanatics_auctions_per_week.toFixed(1)})` : ""}
                         </div>
                       </td>
+                      <td className={`px-3 py-2 text-right tabular-nums font-medium ${pressureStyle(d.listing_surge)}`}>
+                        {d.listing_surge != null ? `${d.listing_surge.toFixed(1)}×` : d.first_listed_week ? <span className="text-sky-300 text-xs" title="First week on Fanatics auction in the last 12: no baseline">new</span> : "—"}
+                        <div className="text-[10px] font-normal text-gray-500" title="Fanatics auctions listed a week, from its first auctioned week">
+                          {d.first_listed_week ? "no history" : `lists ${d.usual_listed_per_week.toFixed(1)}/wk`}
+                        </div>
+                      </td>
                       <td className="px-3 py-2"><WeekBars d={d} /></td>
                       <td className="px-3 py-2 text-right tabular-nums text-gray-300">
                         <EdgeCell e={d.edge_calc} />
@@ -485,7 +502,7 @@ export default function AuctionDealsTab({ lang }: { lang: "" | "en" | "ja" | "zh
                     </tr>
                     {open === id && (
                       <tr>
-                        <td colSpan={marks.on ? 12 : 11} className="p-0"><Detail d={d} entries={entries} onSaved={marks.reload} /></td>
+                        <td colSpan={marks.on ? 13 : 12} className="p-0"><Detail d={d} entries={entries} onSaved={marks.reload} /></td>
                       </tr>
                     )}
                   </Fragment>
