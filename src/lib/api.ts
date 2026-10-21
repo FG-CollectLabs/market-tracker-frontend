@@ -1383,7 +1383,10 @@ export interface AuctionDeal {
   next_week_auctions: number;
   usual_per_week: number;
   usual_fanatics_auctions_per_week?: number;
-  pressure?: number;
+  pressure?: number; // live ÷ copies sold a week (every channel)
+  usual_listed_per_week: number; // Fanatics auctions listed a week, from its first auctioned week
+  listing_surge?: number; // this week's Fanatics auctions ÷ usual listed
+  first_listed_week?: boolean; // never auctioned in the last 12 weeks: no baseline
   listings?: AuctionListing[];
   value?: { cents: number; source: string; basis?: { method: string; sales_count: number; note: string; pricecharting_cents?: number } };
   expected_hammer_cents?: number;
