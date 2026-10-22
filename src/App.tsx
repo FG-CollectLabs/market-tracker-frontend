@@ -14,6 +14,8 @@ import RoadmapPage from "./pages/RoadmapPage";
 import WatchlistPage from "./pages/WatchlistPage";
 import AutomationPage from "./pages/AutomationPage";
 import { SignIn } from "./components/SignIn";
+import { Mark } from "./brand/Mark";
+import { COMPANY_NAME, PRODUCT_NAME } from "./brand/brand";
 
 function Nav() {
   const linkCls = ({ isActive }: { isActive: boolean }) =>
@@ -23,8 +25,12 @@ function Nav() {
 
   return (
     <nav className="h-12 border-b border-gray-800 px-6 flex items-center gap-6 sticky top-0 bg-gray-950 z-30 print:hidden">
-      <NavLink to="/" className="font-bold text-white tracking-tight text-sm shrink-0">
-        Market Tracker
+      <NavLink to="/" className="flex items-center gap-2 shrink-0" title={`${PRODUCT_NAME} · ${COMPANY_NAME}`}>
+        <Mark height={32} />
+        <span className="flex flex-col leading-none">
+          <span className="font-bold text-white tracking-tight text-sm">{PRODUCT_NAME}</span>
+          <span className="mt-0.5 text-[8px] font-semibold tracking-[0.2em] text-gray-400 uppercase">{COMPANY_NAME}</span>
+        </span>
       </NavLink>
       <NavLink to="/" end className={linkCls}>
         Sets
