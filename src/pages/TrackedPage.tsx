@@ -1,4 +1,4 @@
-import { Fragment, createContext, useContext, useEffect, useMemo, useState } from "react";
+import { Fragment, createContext, useCallback, useContext, useEffect, useMemo, useState } from "react";
 import WatchButton from "../components/WatchButton";
 import { CardMarketLinks } from "../components/MarketLinks";
 import { PhaseChip, SetTimingSummary, TargetChips, cardWindow, phaseOfWindow, tierOf } from "../components/BuyWindows";
@@ -20,6 +20,7 @@ import {
   fetchSet,
   fetchSettings,
   fetchTracked,
+  recheckSetSource,
   type CardSale,
   type CardSalesWeek,
   type CardSupplySnapshot,
@@ -219,31 +220,78 @@ const SOURCE_LABELS: Record<string, string> = {
   cgc_pop: "CGC gem rate",
 };
 
-function FreshnessStrip({ sources }: { sources: Record<string, SourceFreshness> }) {
+const RECHECK_NOTE: Record<string, string> = {
+  pricecharting: "Re-scrape this set's PriceCharting prices (raw, PSA, CGC) now: a few minutes.",
+  psa_pop: "Re-read this set's PSA pop report (gem rates) now: a few minutes.",
+  cgc_pop: "Re-read this set's CGC pop report (gem rates) now: a few minutes.",
+  fanatics: "Refresh sold history and live listings for this set's tracked cards now: about 6 s a card.",
+};
+
+// One source's card: how fresh its data is, and "recheck now" (queued ahead
+// of the schedule; one set's page only, not eBay).
+function FreshnessStrip({ sources, code, onChange }: { sources: Record<string, SourceFreshness>; code?: string; onChange: () => void }) {
   const order = ["pricecharting", "psa_pop", "cgc_pop", "ebay", "fanatics"];
+  const session = useSession();
+  const [busy, setBusy] = useState<string | null>(null);
+  const [err, setErr] = useState<Record<string, string>>({});
+  const open = order.some((s) => sources[s]?.recheck && ["queued", "running"].includes(sources[s].recheck!.status));
+  // While a recheck is queued or running, reload every 20 s to follow it.
+  useEffect(() => {
+    if (!open) return;
+    const t = setInterval(onChange, 20_000);
+    return () => clearInterval(t);
+  }, [open, onChange]);
+  const recheck = async (src: string) => {
+    if (!code) return;
+    setBusy(src);
+    setErr((e) => ({ ...e, [src]: "" }));
+    try {
+      await recheckSetSource(code, src);
+      onChange();
+    } catch (e) {
+      setErr((x) => ({ ...x, [src]: (e as Error).message }));
+    } finally {
+      setBusy(null);
+    }
+  };
   return (
     <div className="flex flex-wrap gap-3 mb-5">
       {order.map((src) => {
         const f = sources[src];
         if (!f) return null;
+        const rc = f.recheck;
+        const running = rc && (rc.status === "queued" || rc.status === "running");
         return (
           <div
             key={src}
             className={`rounded-lg border px-3 py-2 text-xs ${
               f.stale ? "border-red-900/70 bg-red-950/30" : "border-gray-800 bg-gray-900/40"
             }`}
-            title={
-              f.last_run_at
-                ? `Last run ${new Date(f.last_run_at).toLocaleString()} (${f.last_run_status})`
-                : "No ingest runs recorded"
-            }
+            title={[
+              f.last_run_at ? `Last run ${new Date(f.last_run_at).toLocaleString()} (${f.last_run_status})` : "No ingest runs recorded",
+              `Stale after ${f.stale_after_days} days${src === "psa_pop" || src === "cgc_pop" ? " (gem rates: 8 days in a set's first 3 months, 30 to a year, 90 after: they only move while a set is new)" : ""}`,
+            ].join("\n")}
           >
             <div className="flex items-center gap-2">
               <span className="font-medium text-gray-200">{SOURCE_LABELS[src] ?? src}</span>
               {f.stale && <span className="text-red-400 font-semibold">stale</span>}
               {f.last_run_status === "failed" && <span className="text-red-400">last run failed</span>}
+              {session && f.recheckable && code && (
+                <button onClick={() => recheck(src)} disabled={!!running || busy === src} title={RECHECK_NOTE[src]}
+                  className="ml-auto px-1.5 rounded border border-gray-700 text-gray-300 hover:text-white hover:border-indigo-500 disabled:opacity-50 print:hidden">
+                  {busy === src ? "…" : "↻ Recheck"}
+                </button>
+              )}
             </div>
             <div className="text-gray-500 mt-0.5">newest data: {ago(f.latest_data_at)}</div>
+            {rc && (
+              <div className={`mt-0.5 ${rc.status === "failed" ? "text-red-400" : running ? "text-indigo-300" : rc.status === "done" ? "text-green-400/90" : "text-gray-500"}`}
+                title={rc.error ?? undefined}>
+                {rc.status === "queued" ? "recheck queued…" : rc.status === "running" ? "rechecking now…" : rc.status === "done" ? `rechecked ${ago(rc.finished_at)}` : `recheck ${rc.status}`}
+              </div>
+            )}
+            {!f.recheckable && src === "ebay" && code && <div className="mt-0.5 text-gray-600" title="eBay sold data comes from the weekly scraper run (paid per run, not per set)">weekly only</div>}
+            {err[src] && <div className="mt-0.5 text-red-400">{err[src]}</div>}
           </div>
         );
       })}
@@ -926,12 +974,14 @@ export default function TrackedPage() {
   const [signalFilter, setSignalFilter] = useState<"" | "grade" | "buy10">("");
   const [groupBy, setGroupBy] = useState<GroupBy>("");
 
+  const [dataTick, setDataTick] = useState(0);
+  const reloadData = useCallback(() => setDataTick((t) => t + 1), []);
   useEffect(() => {
     setError(null);
     fetchTracked({ windowDays, set: code })
       .then(setData)
       .catch((e: Error) => setError(e.message));
-  }, [windowDays, code]);
+  }, [windowDays, code, dataTick]);
 
   useEffect(() => {
     setSetName(null);
@@ -1076,7 +1126,7 @@ export default function TrackedPage() {
         </div>
       </div>
 
-      {data && <FreshnessStrip sources={data.sources} />}
+      {data && <FreshnessStrip sources={data.sources} code={code} onChange={reloadData} />}
 
       {setWin && (
         <div className="mb-4">

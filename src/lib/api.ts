@@ -466,6 +466,25 @@ export interface SourceFreshness {
   last_run_at: string | null;
   last_run_status: string | null;
   stale: boolean;
+  stale_after_days: number; // gem rates: by the set's age (8 / 30 / 90 days)
+  recheckable: boolean; // "recheck now" exists (one set's page; not eBay)
+  recheck?: RecheckStatus; // the latest one, last 3 days
+}
+
+export interface RecheckStatus {
+  job_id: number;
+  status: "queued" | "running" | "done" | "failed" | "cancelled";
+  queued_at: string;
+  finished_at?: string;
+  error?: string;
+}
+
+// Queue one source of one set ahead of its schedule (an open recheck is
+// returned instead of a second).
+export function recheckSetSource(code: string, source: string): Promise<{ recheck: RecheckStatus; already: boolean }> {
+  return adminFetch(`/v1/admin/sets/${encodeURIComponent(code)}/recheck`, {
+    method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ source }),
+  });
 }
 
 export interface TrackedResponse {
