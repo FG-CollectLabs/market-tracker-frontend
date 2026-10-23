@@ -6,6 +6,7 @@ import EndingSoonTab from "../components/EndingSoonTab";
 import { fetchDeals, fetchFindings, type AgentFinding, type AnalysisSettings, type Deal } from "../lib/api";
 import { HelpDot } from "../components/HelpTip";
 import { PrepLegend, PrepTags, prepRowClass, usePrepMarks } from "../components/PrepMarks";
+import { SELL_SPEED_HELP, SellSpeedCell } from "../components/SellSpeed";
 import { formatCents } from "../lib/roi";
 import { ACTION_STYLE } from "../components/BuyingGuide";
 import { Spinner, ErrorMsg } from "../components/Spinner";
@@ -173,6 +174,9 @@ function OpportunitiesTab({ kind, lang }: { kind: string; lang: "" | "en" | "ja"
                 <th className="text-right px-3 py-2 font-medium">Market</th>
                 <th className="text-left px-3 py-2 font-medium" title="Fair range of the 10: cost to make one by grading x how cards of the same desirability trade">Fair range</th>
                 <th className="text-right px-3 py-2 font-medium">{kind === "buy_now" ? "Margin at ask" : "Margin"}<HelpDot help={marginHelp(kind)} /></th>
+                {kind !== "buy_raw_to_grade" && kind !== "buy_raw_to_grade_cgc" && (
+                  <th className="text-right px-3 py-2 font-medium">Resells in<HelpDot help={SELL_SPEED_HELP} /></th>
+                )}
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-800/70">
@@ -244,6 +248,9 @@ function OpportunitiesTab({ kind, lang }: { kind: string; lang: "" | "en" | "ja"
                   <td className="px-3 py-2 text-right tabular-nums text-gray-400">{d.market_cents ? formatCents(d.market_cents) : "—"}</td>
                   <td className="px-3 py-2 min-w-[9rem]">{d.fair?.high_cents ? <FairBar f={d.fair} compact /> : <span className="text-gray-600">—</span>}</td>
                   <td className="px-3 py-2 text-right tabular-nums text-green-400">{`${d.margin > 0 ? "+" : ""}${(d.margin * 100).toFixed(0)}%`}</td>
+                  {kind !== "buy_raw_to_grade" && kind !== "buy_raw_to_grade_cgc" && (
+                    <td className="px-3 py-2 text-right tabular-nums"><SellSpeedCell s={d.sell_speed} /></td>
+                  )}
                 </tr>
               ))}
             </tbody>
