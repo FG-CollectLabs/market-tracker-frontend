@@ -1,5 +1,5 @@
 import { useEffect, useState, type ReactNode } from "react";
-import { fetchSettings, saveSettings, type AnalysisSettings, type Grader, type ServiceTier, type SnipeRules } from "../lib/api";
+import { fetchSettings, saveSettings, type AnalysisSettings, type Grader, type ServiceTier, type SnipeRules, type CCRules } from "../lib/api";
 import { useSession } from "../lib/auth";
 import { Spinner, ErrorMsg } from "../components/Spinner";
 
@@ -114,6 +114,12 @@ export default function SettingsPage() {
   const set = (patch: Partial<AnalysisSettings>) => {
     setSaved(null);
     setS((cur) => (cur ? { ...cur, ...patch } : cur));
+  };
+
+  const setCC = (patch: Partial<CCRules>) => {
+    const base = s?.collector_crypt ?? { buyer_fee_pct: 0.02, redeem_pct: 0.03, redeem_flat_cents: 1500, resale_fee_pct: 0.15,
+      resale_ship_cents: 500, alert_min_margin: 0.25, alert_min_profit_cents: 2500, alert_min_sales: 3 };
+    set({ collector_crypt: { ...base, ...patch } });
   };
 
   const setSnipe = (patch: Partial<SnipeRules>) => {
@@ -289,6 +295,35 @@ export default function SettingsPage() {
         </Field>
         <Field label="Buy Now flip" hint="flag 'Buy Now flip' when relisting nets at least this margin after the selling fee">
           <Pct value={s.snipe?.flip_margin ?? 0.3} onChange={(v) => setSnipe({ flip_margin: v })} />
+        </Field>
+      </section>
+
+      <h2 className="text-xs font-semibold uppercase tracking-wide text-gray-500">Collector Crypt</h2>
+      <section className="rounded-lg border border-gray-800 bg-gray-900 px-4 py-2 divide-y divide-gray-800">
+        <Field label="Buyer fee" hint="marketplace royalty on the purchase">
+          <Pct value={s.collector_crypt?.buyer_fee_pct ?? 0.02} onChange={(v) => setCC({ buyer_fee_pct: v })} />
+        </Field>
+        <Field label="Redemption fee" hint="share of the card's price charged to redeem it out of the vault">
+          <Pct value={s.collector_crypt?.redeem_pct ?? 0.03} onChange={(v) => setCC({ redeem_pct: v })} />
+        </Field>
+        <Field label="Redemption shipping" hint="shipping + insurance from the vault to your door, per card">
+          <Money cents={s.collector_crypt?.redeem_flat_cents ?? 1500} onChange={(v) => setCC({ redeem_flat_cents: v })} />
+        </Field>
+        <Field label="eBay fees" hint="final value + payment fees when you resell it">
+          <Pct value={s.collector_crypt?.resale_fee_pct ?? 0.15} onChange={(v) => setCC({ resale_fee_pct: v })} />
+        </Field>
+        <Field label="eBay shipping" hint="shipping the slab to your eBay buyer">
+          <Money cents={s.collector_crypt?.resale_ship_cents ?? 500} onChange={(v) => setCC({ resale_ship_cents: v })} />
+        </Field>
+        <Field label="Alert: margin" hint="Discord alert when profit ÷ all-in cost is at least this">
+          <Pct value={s.collector_crypt?.alert_min_margin ?? 0.25} onChange={(v) => setCC({ alert_min_margin: v })} />
+        </Field>
+        <Field label="Alert: profit" hint="and the profit is at least this much">
+          <Money cents={s.collector_crypt?.alert_min_profit_cents ?? 2500} onChange={(v) => setCC({ alert_min_profit_cents: v })} />
+        </Field>
+        <Field label="Alert: sales behind the value" hint="and our value rests on at least this many recent sales (fewer = a guess)">
+          <input type="number" min={0} value={s.collector_crypt?.alert_min_sales ?? 3} className={`${inputCls} w-16`}
+            onChange={(e) => setCC({ alert_min_sales: Math.max(0, Math.floor(Number(e.target.value) || 0)) })} />
         </Field>
       </section>
 
