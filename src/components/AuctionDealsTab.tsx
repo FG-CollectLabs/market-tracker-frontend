@@ -2,6 +2,7 @@ import { Fragment, useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import { fetchAuctionDeals, saveBidPlan, type AuctionDeal, type EdgeCalc } from "../lib/api";
 import { PhaseChip } from "./BuyWindows";
+import { SELL_SPEED_HELP, SellSpeedCell } from "./SellSpeed";
 import HelpTip, { HelpDot } from "./HelpTip";
 import { useSession } from "../lib/auth";
 import { PREP, PickBox, PrepLegend, PrepSelectBar, PrepTags, prepRowClass, usePicks, usePrepMarks, type PrepEntry, type PrepKind } from "./PrepMarks";
@@ -408,6 +409,7 @@ export default function AuctionDealsTab({ lang }: { lang: "" | "en" | "ja" | "zh
                 <th className="text-right px-3 py-2 font-medium">Edge<HelpDot help={SORT_HELP.edge} /></th>
                 <th className="text-right px-3 py-2 font-medium" title="How far this card's own auction closes (usual weekly close, all-in) run under what it sells for on eBay or Fanatics Buy Now (the lower of the two). Needs 2+ weeks of its own closes.">Auction vs BIN/eBay</th>
                 <th className="text-right px-3 py-2 font-medium" title="What you'd net reselling through the better of eBay and Fanatics Buy Now; projected close under it">Resale (net)</th>
+                <th className="text-right px-3 py-2 font-medium">Resells in<HelpDot help={SELL_SPEED_HELP} /></th>
                 <th className="text-right px-3 py-2 font-medium" title="Max hammer bid that clears your target margin (all-in under it)">Snipe ≤</th>
                 <th className="text-right px-3 py-2 font-medium" title="Grading EV: what this grade must sell for to cover making it at the public gem rate">Breakeven</th>
                 <th className="text-right px-3 py-2 font-medium" title="First 10 sales' average, carried along the release curve to today">Launch → now</th>
@@ -483,6 +485,7 @@ export default function AuctionDealsTab({ lang }: { lang: "" | "en" | "ja" | "zh
                           <div className="text-[10px] text-gray-500">close ~{formatCents(d.expected_all_in_cents)}</div>
                         )}
                       </td>
+                      <td className="px-3 py-2 text-right tabular-nums"><SellSpeedCell s={d.sell_speed} /></td>
                       <td className="px-3 py-2 text-right tabular-nums text-green-400 font-medium">
                         {formatCents(d.snipe_hammer_cents)}
                         <div className="text-[10px] font-normal text-gray-500">{formatCents(d.snipe_all_in_cents)} all-in</div>
@@ -502,7 +505,7 @@ export default function AuctionDealsTab({ lang }: { lang: "" | "en" | "ja" | "zh
                     </tr>
                     {open === id && (
                       <tr>
-                        <td colSpan={marks.on ? 13 : 12} className="p-0"><Detail d={d} entries={entries} onSaved={marks.reload} /></td>
+                        <td colSpan={marks.on ? 14 : 13} className="p-0"><Detail d={d} entries={entries} onSaved={marks.reload} /></td>
                       </tr>
                     )}
                   </Fragment>

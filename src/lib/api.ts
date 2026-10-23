@@ -1049,6 +1049,7 @@ export interface Deal {
   market_cents: number;
   ask_cents?: number; // Buy Now deals: the listed price
   cost_to_make_cents?: number; // Buy Now deals on a 10: what grading for one costs
+  sell_speed?: SellSpeed; // graded deals: how fast a Fanatics Buy Now sells
 }
 
 function analysisQS(o?: { targetMargin?: number; exitFeePct?: number }): URLSearchParams {
@@ -1427,6 +1428,7 @@ export interface AuctionDeal {
   fanatics_bin_listings: number;
   fanatics_bin_sold_median_cents?: number;
   fanatics_bin_sold_n: number;
+  sell_speed?: SellSpeed; // relisting it as a Fanatics Buy Now: how fast it goes
   advice?: { signal: "sell_now" | "hold"; hold_months: number; reason: string };
   projection_confidence?: "low" | "medium" | "high";
   auction_discount?: AuctionDiscount;
@@ -1895,4 +1897,13 @@ export function decideWatchSuggestion(id: number, action: "accept" | "dismiss"):
 
 export function runWatchSuggestions(): Promise<{ proposed: number; added: number; updated: number; skipped_recently_dismissed: number; expired: number }> {
   return adminFetch(`/v1/admin/watch-suggestions/run`, { method: "POST" });
+}
+
+// How fast a Fanatics Buy Now of a card + grade sells.
+export interface SellSpeed {
+  bin_sold_per_week: number; // Fanatics Buy Now sales a week, 90 days
+  days_per_sale?: number; // 7 / that: the wait listed at the lowest ask
+  bin_listed: number; // live Fanatics Buy Nows
+  observed_days_listed?: number; // median days listed, sold Buy Nows we watched (a floor)
+  observed_n: number;
 }
