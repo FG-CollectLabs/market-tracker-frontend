@@ -801,6 +801,7 @@ export interface AnalysisSettings {
   miss_floor_psa_cents: number;
   auto_prep?: AutoPrepRules;
   snipe?: SnipeRules;
+  collector_crypt?: CCRules;
   out_of_print_months: number;
   crack_psa9_to_cgc10_rate: number;
   crack_cgc10_to_psa10_rate: number;
@@ -1906,4 +1907,60 @@ export interface SellSpeed {
   bin_listed: number; // live Fanatics Buy Nows
   observed_days_listed?: number; // median days listed, sold Buy Nows we watched (a floor)
   observed_n: number;
+}
+
+// Collector Crypt: costs of buying there, redeeming to your door and
+// reselling on eBay, and when a listing is worth a Discord alert.
+export interface CCRules {
+  buyer_fee_pct: number;
+  redeem_pct: number;
+  redeem_flat_cents: number;
+  resale_fee_pct: number;
+  resale_ship_cents: number;
+  alert_min_margin: number;
+  alert_min_profit_cents: number;
+  alert_min_sales: number;
+}
+
+export interface CCDeal {
+  nft_address: string;
+  url: string; // the listing on Collector Crypt
+  display_key: string;
+  name: string;
+  set_code: string;
+  grade: string;
+  title: string;
+  cert_number?: string;
+  image_url?: string;
+  ask_cents: number;
+  insured_cents?: number; // Collector Crypt's own value
+  value_cents?: number; // ours
+  value_source?: string;
+  value_sales?: number;
+  cost_cents?: number; // ask + buyer fee + redemption
+  resale_net_cents?: number; // value after eBay fees and shipping
+  profit_cents?: number;
+  margin?: number;
+  discount?: number;
+  listed_at: string;
+  first_seen_at: string;
+  alerted_at?: string;
+}
+
+export interface CCStatus {
+  last_poll?: string;
+  last_poll_listings: number;
+  last_sweep?: string;
+  last_sweep_listings: number;
+  alerts_configured: boolean;
+  last_error?: string;
+  catalog_cards: number;
+}
+
+export function fetchCCDeals(o: { minMargin?: number; days?: number; limit?: number }): Promise<{ count: number; deals: CCDeal[]; status: CCStatus; settings: CCRules }> {
+  const q = new URLSearchParams();
+  if (o.minMargin != null) q.set("min_margin", String(o.minMargin));
+  if (o.days) q.set("days", String(o.days));
+  q.set("limit", String(o.limit ?? 300));
+  return get(`/v1/deals/collectorcrypt?${q}`);
 }
