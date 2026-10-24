@@ -39,7 +39,7 @@ export default function WatchlistPage() {
   const [removeErr, setRemoveErr] = useState<{ key: string; msg: string } | null>(null);
   const [bulkRunning, setBulkRunning] = useState(false);
   const [bulkProgress, setBulkProgress] = useState<string | null>(null);
-  const [bulkResult, setBulkResult] = useState<string | null>(null);
+  const [bulkResult, setBulkResult] = useState<{ ok: boolean; text: string } | null>(null);
 
   const load = useCallback(() => {
     fetchWatchlist().then((r) => setItems(r.items)).catch((e: Error) => setError(e.message));
@@ -47,6 +47,36 @@ export default function WatchlistPage() {
   useEffect(() => {
     if (session) load();
   }, [session, load]);
+
+  // Run one action on every selected card, one at a time; a failure doesn't
+  // stop the rest. The confirm says when some selected cards aren't shown by
+  // the current filters (selected before a filter changed).
+  const runBulk = async (doing: string, done: string, note: string, act: (key: string) => Promise<unknown>) => {
+    const list = [...picked];
+    const shownKeys = new Set(filtered.map((i) => i.display_key));
+    const hidden = list.filter((k) => !shownKeys.has(k)).length;
+    const verb = doing === "Removing" ? "Remove" : "Clear strategies on";
+    if (!window.confirm(`${verb} ${list.length} cards${hidden ? ` (${hidden} not shown by the current filters)` : ""}? ${note}`)) return;
+    setBulkRunning(true);
+    setBulkResult(null);
+    const failed: string[] = [];
+    for (let i = 0; i < list.length; i++) {
+      setBulkProgress(`${doing} ${i + 1} / ${list.length}…`);
+      try {
+        await act(list[i]);
+      } catch {
+        failed.push(items?.find((it) => it.display_key === list[i])?.name ?? list[i]);
+      }
+    }
+    watchChanged();
+    setPicked(new Set());
+    load();
+    setBulkRunning(false);
+    setBulkProgress(null);
+    setBulkResult(failed.length === 0
+      ? { ok: true, text: `${done} ${list.length}` }
+      : { ok: false, text: `${done} ${list.length - failed.length}; ${failed.length} failed: ${failed.join(", ")}` });
+  };
 
   // Targets a card keeps under the target / strategy filters.
   const shownTargets = useCallback((it: WatchItem): WatchTarget[] => {
@@ -188,60 +218,14 @@ export default function WatchlistPage() {
           <div className="flex flex-wrap items-center gap-2">
             <button
               disabled={picked.size === 0 || bulkRunning}
-              onClick={async () => {
-                if (!window.confirm(`Remove ${picked.size} cards from the watchlist? Their strategies are removed too.`)) return;
-                setBulkRunning(true);
-                setBulkProgress(null);
-                setBulkResult(null);
-                const list = [...picked];
-                const failed: string[] = [];
-                for (let i = 0; i < list.length; i++) {
-                  const k = list[i];
-                  setBulkProgress(`Removing ${i + 1} / ${list.length}…`);
-                  try {
-                    await unwatchCard(k);
-                  } catch (e) {
-                    const card = items?.find((it) => it.display_key === k);
-                    failed.push(card ? `${card.name}` : k);
-                  }
-                }
-                watchChanged();
-                setPicked(new Set());
-                load();
-                setBulkRunning(false);
-                setBulkProgress(null);
-                setBulkResult(failed.length === 0 ? `Removed ${list.length}` : `Removed ${list.length - failed.length}; ${failed.length} failed: ${failed.join(", ")}`);
-              }}
+              onClick={() => runBulk("Removing", "Removed", "Their strategies are removed too.", unwatchCard)}
               className="text-xs px-2 py-1 rounded bg-red-800/60 text-red-200 hover:bg-red-800 border border-red-700/40 disabled:opacity-40 disabled:cursor-default"
             >
               Remove {picked.size} from watchlist
             </button>
             <button
               disabled={picked.size === 0 || bulkRunning}
-              onClick={async () => {
-                if (!window.confirm(`Clear strategies on ${picked.size} cards? Keeps the cards watched, with no strategies.`)) return;
-                setBulkRunning(true);
-                setBulkProgress(null);
-                setBulkResult(null);
-                const list = [...picked];
-                const failed: string[] = [];
-                for (let i = 0; i < list.length; i++) {
-                  const k = list[i];
-                  setBulkProgress(`Clearing ${i + 1} / ${list.length}…`);
-                  try {
-                    await putTargets(k, []);
-                  } catch (e) {
-                    const card = items?.find((it) => it.display_key === k);
-                    failed.push(card ? `${card.name}` : k);
-                  }
-                }
-                watchChanged();
-                setPicked(new Set());
-                load();
-                setBulkRunning(false);
-                setBulkProgress(null);
-                setBulkResult(failed.length === 0 ? `Cleared strategies on ${list.length}` : `Cleared on ${list.length - failed.length}; ${failed.length} failed: ${failed.join(", ")}`);
-              }}
+              onClick={() => runBulk("Clearing", "Cleared strategies on", "Keeps the cards watched, with no strategies.", (k) => putTargets(k, []))}
               className="text-xs px-2 py-1 rounded bg-gray-800 text-gray-200 hover:bg-gray-700 border border-gray-700 disabled:opacity-40 disabled:cursor-default"
             >
               Clear strategies
@@ -251,7 +235,7 @@ export default function WatchlistPage() {
       />
 
       {bulkProgress && <div className="text-xs text-gray-400 print:hidden">{bulkProgress}</div>}
-      {bulkResult && <div className="text-xs text-green-300 print:hidden">{bulkResult}</div>}
+      {bulkResult && <div className={`text-xs print:hidden ${bulkResult.ok ? "text-green-300" : "text-amber-300"}`}>{bulkResult.text}</div>}
 
       <section className="rounded-lg border border-green-900/60 bg-gray-900 p-3 break-inside-avoid print:border-gray-300 print:bg-white">
         <h2 className="text-sm font-semibold text-green-300 print:text-black mb-2">
