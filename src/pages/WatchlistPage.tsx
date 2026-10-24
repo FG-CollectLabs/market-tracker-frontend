@@ -84,7 +84,7 @@ export default function WatchlistPage() {
     const out: { it: WatchItem; t: WatchTarget; h: TargetHit; under: number }[] = [];
     for (const it of filtered)
       for (const t of shownTargets(it))
-        for (const h of t.hits ?? []) out.push({ it, t, h, under: t.max_cents ? 1 - h.all_in_cents / t.max_cents : 0 });
+        for (const h of t.hits ?? []) out.push({ it, t, h, under: h.max_cents ? 1 - h.all_in_cents / h.max_cents : 0 }); // each hit's max is for its own grade
     return out.sort((a, b) => b.under - a.under);
   }, [filtered, shownTargets]);
 
@@ -202,7 +202,7 @@ export default function WatchlistPage() {
                     </td>
                     <td className="py-1 pr-2 text-right">{usd(h.price_cents)}</td>
                     <td className="py-1 pr-2 text-right font-medium">{usd(h.all_in_cents)}</td>
-                    <td className="py-1 pr-2 text-right">{usd(t.max_cents)}</td>
+                    <td className="py-1 pr-2 text-right">{usd(h.max_cents)}</td>
                     <td className="py-1 text-right text-green-300 print:text-black">{Math.round(under * 100)}%</td>
                   </tr>
                 ))}

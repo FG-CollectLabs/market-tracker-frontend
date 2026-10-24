@@ -1,6 +1,6 @@
 import { Fragment, useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
-import { fetchAuctionDeals, saveBidPlan, type AuctionDeal, type EdgeCalc } from "../lib/api";
+import { fetchAuctionDeals, fetchCardSales, saveBidPlan, type AuctionDeal, type CardSale, type EdgeCalc } from "../lib/api";
 import { PhaseChip } from "./BuyWindows";
 import { SELL_SPEED_HELP, SellSpeedCell } from "./SellSpeed";
 import HelpTip, { HelpDot } from "./HelpTip";
@@ -121,7 +121,19 @@ function WeekBars({ d }: { d: AuctionDeal }) {
 // Auction closes vs the price it sells for elsewhere.
 function DiscountCell({ d }: { d: AuctionDeal }) {
   const x = d.auction_discount;
-  if (!x) return <span className="text-gray-700" title="Needs 2+ weeks of its own auction closes and 3+ eBay or Buy Now sales">—</span>;
+  if (!x) {
+    // Say which half is missing: the card's own auction closes, or the
+    // eBay / Buy Now sales to compare them with.
+    const e = d.edge_calc;
+    const weeks = e?.method === "card_history" ? e.usual_weeks : 0;
+    const sold = Math.max(e?.resale.ebay_sales ?? 0, e?.resale.fanatics_buy_now_sales ?? 0);
+    const missing = [weeks < 2 ? `${weeks} of 2 weeks of its own auction closes` : "", sold < 3 ? `${sold} of 3 eBay / Buy Now sales` : ""].filter(Boolean);
+    return (
+      <span className="text-gray-600 text-[10px] leading-tight" title="Needs 2+ weeks of this card's own Fanatics auction closes and 3+ eBay or Fanatics Buy Now sales of the grade. Click the row for its recent sales.">
+        needs {missing.join(" and ") || "more data"}
+      </span>
+    );
+  }
   const ch = x.ref_channel === "ebay" ? "eBay" : "Buy Now";
   const color = x.pct >= 0.25 ? "text-green-400" : x.pct >= 0.1 ? "text-green-300/80" : x.pct >= 0 ? "text-gray-300" : "text-amber-300";
   const title = [
@@ -233,6 +245,46 @@ function AddToBidList({ d, entries, onSaved }: { d: AuctionDeal; entries: PrepEn
   );
 }
 
+const SALE_CHANNEL: Record<string, string> = { auction: "Fanatics auction", bin: "Fanatics Buy Now", best_offer: "Fanatics offer" };
+
+// The grade's latest sales on every channel: what it actually went for.
+function RecentSales({ d }: { d: AuctionDeal }) {
+  const [sales, setSales] = useState<CardSale[] | null>(null);
+  const [err, setErr] = useState<string | null>(null);
+  useEffect(() => {
+    let live = true;
+    fetchCardSales(d.display_key)
+      .then((r) => live && setSales(r.sales.filter((x) => x.grade_key === d.grade).sort((a, b) => b.sold_at.localeCompare(a.sold_at)).slice(0, 12)))
+      .catch((e: Error) => live && setErr(e.message));
+    return () => { live = false; };
+  }, [d.display_key, d.grade]);
+  return (
+    <div className="md:col-span-3">
+      <div className="text-gray-200 font-medium mb-1">Recent sales · {GRADE_LABEL[d.grade] ?? d.grade} <span className="font-normal text-gray-500">(all-in: what buyers paid)</span></div>
+      {err && <div className="text-red-400">{err}</div>}
+      {!sales && !err && <div className="text-gray-500">Loading…</div>}
+      {sales && sales.length === 0 && <div className="text-gray-500">No recorded sales of this grade.</div>}
+      {sales && sales.length > 0 && (
+        <table className="w-full tabular-nums">
+          <thead className="text-gray-500">
+            <tr><th className="text-left font-normal">Sold</th><th className="text-left font-normal">Where</th><th className="text-right font-normal">All-in</th><th className="text-left font-normal pl-3">Listing</th></tr>
+          </thead>
+          <tbody>
+            {sales.map((x) => (
+              <tr key={x.id} className="text-gray-300">
+                <td>{x.sold_at.slice(0, 10)}</td>
+                <td>{x.source === "fanatics" ? SALE_CHANNEL[x.sale_type ?? ""] ?? "Fanatics" : x.source === "ebay" ? "eBay" : x.source}</td>
+                <td className="text-right text-gray-100">{formatCents(x.all_in_cents)}</td>
+                <td className="pl-3 max-w-md truncate">{x.url ? <a href={x.url} target="_blank" rel="noreferrer" className="text-indigo-300 hover:underline">{x.title_raw ?? "listing"}</a> : <span className="text-gray-500">{x.title_raw ?? ""}</span>}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      )}
+    </div>
+  );
+}
+
 function Detail({ d, entries, onSaved }: { d: AuctionDeal; entries: PrepEntry[]; onSaved: () => void }) {
   return (
     <div className="grid gap-4 md:grid-cols-3 text-xs text-gray-400 p-3 bg-gray-950/60">
@@ -240,6 +292,7 @@ function Detail({ d, entries, onSaved }: { d: AuctionDeal; entries: PrepEntry[];
         <MarketLinkRow links={d.links} />
         <AddToBidList d={d} entries={entries} onSaved={onSaved} />
       </div>
+      <RecentSales d={d} />
       {d.edge_calc && <div className="md:col-span-2"><EdgeWorking e={d.edge_calc} /></div>}
       {d.edge_calc && <ResaleWorking e={d.edge_calc} />}
       <div>
