@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
-import { BUY_TARGETS, setTargets, watchSetTier, type BuyTarget, type SetWindow, type SetWindows } from "../lib/api";
+import { BUY_TARGETS, STRATEGY_FOR_GRADE, setTargets, watchSetTier, type BuyTarget, type SetWindow, type SetWindows } from "../lib/api";
 import { useSession } from "../lib/auth";
 import { onWatchChange, watchChanged, watchedCards } from "./WatchButton";
 
@@ -12,9 +12,13 @@ export const TIER_LABEL: Record<string, string> = {
   all: "All tracked", ir: "IR tier", sir: "SIR tier", ultra: "Full art / UR", gold: "Gold / hyper", gallery: "TG / GG", promo: "Promos",
 };
 export const WGRADE_LABEL: Record<string, string> = { raw: "Raw", "psa-10": "PSA 10", "cgc-10": "CGC 10" };
-const GRADES: BuyTarget[] = ["raw", "psa-10", "cgc-10"];
-// Targets without a buy window of their own, behind the chips' "+" menu.
-const MORE: BuyTarget[] = ["psa-9", "psa-low", "cgc-10-pristine", "cgc-9", "cgc-low"];
+// The grades with buy windows, and the strategy chip for each.
+const GRADES = ["raw", "psa-10", "cgc-10"] as const;
+const CHIPS: { strategy: BuyTarget; grade: (typeof GRADES)[number] }[] = [
+  { strategy: "raw_grade", grade: "raw" }, { strategy: "psa_10", grade: "psa-10" }, { strategy: "cgc_10", grade: "cgc-10" },
+];
+// Strategies without a buy window of their own, behind the chips' "+" menu.
+const MORE: BuyTarget[] = ["raw_invest", "regrade"];
 const TARGET_LABEL = Object.fromEntries(BUY_TARGETS.map((t) => [t.key, t.label])) as Record<BuyTarget, string>;
 
 const pct = (v: number) => `${v > 0 ? "+" : ""}${Math.round(v * 100)}%`;
@@ -134,7 +138,7 @@ export function TargetChips({ displayKey, set, tier }: { displayKey: string; set
     const next = targets.includes(g) ? targets.filter((x) => x !== g) : [...targets, g];
     setBusy(true);
     try {
-      await setTargets(displayKey, next.includes("raw") ? "grade" : next.length ? "invest" : "watch", next);
+      await setTargets(displayKey, next.includes("raw_grade") ? "grade" : next.length ? "invest" : "watch", next);
       setT(next);
       watchChanged();
     } finally {
@@ -143,15 +147,15 @@ export function TargetChips({ displayKey, set, tier }: { displayKey: string; set
   };
   return (
     <span className="inline-flex gap-0.5 print:hidden">
-      {GRADES.map((g) => {
-        const w = cardWindow(set, g, tier);
+      {CHIPS.map(({ strategy: g, grade }) => {
+        const w = cardWindow(set, grade, tier);
         const on = targets.includes(g);
         const base = w ? windowStyle(w) : "bg-gray-800/60 text-gray-500 border-gray-700/50";
         return (
           <button key={g} disabled={busy} onClick={() => toggle(g)}
-            title={`${on ? "Targeted: click to remove" : "Target"} ${WGRADE_LABEL[g]}${w ? ` · ${actionLabel(w)}: ${w.headline}` : ""}`}
+            title={`${on ? "Targeted: click to remove" : "Target"} ${TARGET_LABEL[g]}${w ? ` · ${actionLabel(w)}: ${w.headline}` : ""}`}
             className={`px-1 rounded border text-[10px] leading-4 ${base} ${on ? "ring-1 ring-yellow-300 font-semibold" : "opacity-70 hover:opacity-100"}`}>
-            {on ? "★ " : ""}{WGRADE_LABEL[g]}
+            {on ? "★ " : ""}{WGRADE_LABEL[grade]}
           </button>
         );
       })}
@@ -162,7 +166,7 @@ export function TargetChips({ displayKey, set, tier }: { displayKey: string; set
         </button>
       ))}
       <span className="relative">
-        <button onClick={() => setMore((v) => !v)} title="More buy targets: PSA 9, PSA 8 & below, CGC Pristine 10, CGC 9, CGC 8.5 & below. Set prices on the Watchlist page."
+        <button onClick={() => setMore((v) => !v)} title="More strategies: Raw to invest (raw + graded under 10), Regrade 9s (any 9 / 9.5). Set prices on the Watchlist page."
           className="px-1 rounded border border-gray-700/50 text-[10px] leading-4 text-gray-500 hover:text-gray-200">+</button>
         {more && (
           <span className="absolute z-30 left-0 top-5 flex flex-col gap-0.5 rounded border border-gray-700 bg-gray-950 p-1 shadow-xl">
@@ -229,7 +233,7 @@ function WatchTierButton({ set, w }: { set: SetWindows; w: SetWindow }) {
       title={`Target ${WGRADE_LABEL[w.grade]} on all ${w.cards} ${TIER_LABEL[w.tier] ?? w.tier} card${w.cards === 1 ? "" : "s"} in ${set.name}`}
       onClick={() => {
         setState("busy");
-        watchSetTier(set.code, w.tier, w.grade === "raw" ? "grade" : "invest", `${WGRADE_LABEL[w.grade]} window months ${w.from}-${w.to}`, w.grade)
+        watchSetTier(set.code, w.tier, w.grade === "raw" ? "grade" : "invest", `${WGRADE_LABEL[w.grade]} window months ${w.from}-${w.to}`, STRATEGY_FOR_GRADE[w.grade])
           .then((r) => { setState("done"); setMsg(`${r.watched} watched`); watchChanged(); })
           .catch((e: Error) => { setState("error"); setMsg(e.message); });
       }}

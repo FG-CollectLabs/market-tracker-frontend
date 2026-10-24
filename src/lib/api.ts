@@ -1199,8 +1199,13 @@ export interface WatchItem {
   hits?: number;
 }
 
-export function fetchWatchlist(keysOnly = false): Promise<{ count: number; items: WatchItem[] }> {
-  return adminFetch(`/v1/admin/watchlist${keysOnly ? "?keys_only=1" : ""}`);
+// showPassed: also list the hits you passed on (with their review).
+export function fetchWatchlist(keysOnly = false, showPassed = false): Promise<{ count: number; items: WatchItem[] }> {
+  const q = new URLSearchParams();
+  if (keysOnly) q.set("keys_only", "1");
+  if (showPassed) q.set("show_passed", "1");
+  const qs = q.toString();
+  return adminFetch(`/v1/admin/watchlist${qs ? `?${qs}` : ""}`);
 }
 
 export function setAutoFanatics(displayKey: string, on: boolean): Promise<unknown> {
@@ -1486,18 +1491,31 @@ export function fetchSetWindows(lang?: "en" | "ja" | "zh"): Promise<{ band: numb
   return get(`/v1/analysis/set-windows${lang ? `?lang=${lang}` : ""}`);
 }
 
-// Watchlist buy categories: raw (to grade) or the slab to buy.
-export type BuyTarget = "raw" | "psa-10" | "psa-9" | "psa-low" | "cgc-10" | "cgc-10-pristine" | "cgc-9" | "cgc-low";
-export const BUY_TARGETS: { key: BuyTarget; label: string }[] = [
-  { key: "raw", label: "Raw to grade" }, { key: "psa-10", label: "PSA 10" }, { key: "psa-9", label: "PSA 9" },
-  { key: "psa-low", label: "PSA 8 & below" }, { key: "cgc-10", label: "CGC 10" }, { key: "cgc-10-pristine", label: "CGC Pristine 10" },
-  { key: "cgc-9", label: "CGC 9 / 9.5" }, { key: "cgc-low", label: "CGC 8.5 & below" },
+// Watchlist buy strategies, each a set of grades (see watch_targets on the
+// backend). A price rule prices each copy by its own grade's market.
+export type BuyTarget = "raw_grade" | "raw_invest" | "cgc_10" | "psa_10" | "regrade";
+export const BUY_TARGETS: { key: BuyTarget; label: string; grades: string; hint: string }[] = [
+  { key: "raw_grade", label: "Raw to grade", grades: "raw", hint: "Raw copies to send in for grading" },
+  { key: "raw_invest", label: "Raw to invest", grades: "raw + graded under 10", hint: "Raw copies and every graded copy under 10 (PSA 9, CGC 9.5, BGS 8.5, ...), to hold" },
+  { key: "cgc_10", label: "CGC 10", grades: "CGC 10 + Pristine", hint: "CGC Gem Mint 10 and Pristine 10, each priced against its own market" },
+  { key: "psa_10", label: "PSA 10", grades: "PSA 10", hint: "PSA 10" },
+  { key: "regrade", label: "Regrade 9s", grades: "any 9 / 9.5", hint: "PSA, CGC, BGS, SGC, TAG and ACE 9s and 9.5s, to crack and regrade" },
 ];
+// The strategy for a single grade (set-page buttons, buy windows).
+export const STRATEGY_FOR_GRADE: Record<string, BuyTarget> = { raw: "raw_grade", "psa-10": "psa_10", "cgc-10": "cgc_10", "cgc-10-pristine": "cgc_10", "psa-9": "regrade", "cgc-9": "regrade" };
+// The price rules each strategy can use.
+export const RULES_FOR: Record<BuyTarget, RuleKind[]> = {
+  raw_grade: ["max_raw", "pct_market", "fixed"],
+  raw_invest: ["pct_market", "fixed"],
+  cgc_10: ["pct_market", "cost_to_make", "fixed"],
+  psa_10: ["pct_market", "cost_to_make", "fixed"],
+  regrade: ["pct_market", "fixed"],
+};
 
 // Buy targets with a price rule (see watch_targets on the backend).
 export type RuleKind = "pct_market" | "cost_to_make" | "max_raw" | "fixed";
 export const RULE_KINDS: { key: RuleKind; label: string; hint: string }[] = [
-  { key: "pct_market", label: "% of market", hint: "A share of that grade's market price (8 & below: of the raw price)" },
+  { key: "pct_market", label: "% of market", hint: "A share of each copy's own grade market (a PSA 8 against PSA 8 sales; grades without enough sales fall back to raw, 9s to the PSA 9)" },
   { key: "cost_to_make", label: "≤ cost to make a 10", hint: "At or under what a 10 costs to make by grading raw copies (PSA 10, CGC 10)" },
   { key: "max_raw", label: "≤ max raw to grade", hint: "Raw at or under the most you can pay and still clear your grading return bar" },
   { key: "fixed", label: "Fixed $", hint: "A price you set" },
@@ -1505,14 +1523,36 @@ export const RULE_KINDS: { key: RuleKind; label: string; hint: string }[] = [
 export type Channels = "any" | "auction" | "buy_now";
 
 export interface TargetHit {
-  source: string;
+  source: string; // fanatics, ebay
+  listing_id: string;
   grade_key: string;
   kind: "buy_now" | "auction";
-  price_cents: number;
-  all_in_cents: number;
+  price_cents: number; // ask, or current bid
+  all_in_cents: number; // Fanatics auction: bid + buyer's premium
+  max_cents: number; // the target's max for this copy's grade
+  bids?: number; // auctions
   title: string;
   url?: string;
-  ends_at?: string;
+  ends_at?: string; // auctions
+  review?: HitReview;
+}
+
+// Your pass or note on a hit (one listing).
+export interface HitReview {
+  status: "pass" | "note";
+  note?: string;
+  price_cents?: number; // the price when reviewed
+  reviewed_at: string;
+}
+
+// Pass on a hit (hidden from then on) or keep a note on it.
+export function reviewHit(h: { source: string; listing_id: string; display_key: string; status: "pass" | "note"; note?: string; price_cents?: number }): Promise<{ saved: boolean }> {
+  return adminFetch(`/v1/admin/watch-hits/review`, { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify(h) });
+}
+
+// Undo a pass, or drop the note.
+export function clearHitReview(source: string, listingId: string): Promise<{ deleted: number }> {
+  return adminFetch(`/v1/admin/watch-hits/review`, { method: "DELETE", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ source, listing_id: listingId }) });
 }
 
 export interface WatchTarget {
@@ -1528,6 +1568,7 @@ export interface WatchTarget {
   max_cents?: number;
   rule_text?: string;
   hits?: TargetHit[];
+  passed_hits?: number; // hits you passed on (listed only with show_passed)
 }
 
 export interface WatchPreset {
@@ -1920,6 +1961,7 @@ export interface CCRules {
   alert_min_margin: number;
   alert_min_profit_cents: number;
   alert_min_sales: number;
+  alert_min_under_bin: number; // all-in cost at least this far under the cheapest Buy Now elsewhere
 }
 
 export interface CCDeal {
@@ -1942,6 +1984,9 @@ export interface CCDeal {
   profit_cents?: number;
   margin?: number;
   discount?: number;
+  fanatics_bin_low_cents?: number; // cheapest live Fanatics Buy Now
+  ebay_bin_low_cents?: number; // cheapest plausible live eBay Buy Now
+  under_bin?: number; // 1 - all-in cost / the cheaper of the two
   listed_at: string;
   first_seen_at: string;
   alerted_at?: string;

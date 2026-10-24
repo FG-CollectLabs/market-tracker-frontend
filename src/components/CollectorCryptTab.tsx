@@ -70,7 +70,7 @@ export default function CollectorCryptTab({ lang }: { lang: "" | "en" | "ja" | "
       <p className="text-sm text-gray-500 max-w-4xl">
         Slabs on <a href="https://collectorcrypt.com/marketplace/cards" target="_blank" rel="noreferrer" className="text-indigo-300 hover:underline">Collector Crypt</a> listed
         under what they sell for: buy there, redeem to your door, resell on eBay. Every new listing is checked within about 2 minutes;
-        one that clears {pct(r.alert_min_margin)} margin and {money(r.alert_min_profit_cents)} profit on a value with {r.alert_min_sales}+ sales is sent to Discord.
+        one that clears {pct(r.alert_min_margin)} margin and {money(r.alert_min_profit_cents)} profit on a value with {r.alert_min_sales}+ sales, and costs at least {pct(r.alert_min_under_bin ?? 0.1)} less all-in than the cheapest Buy Now on Fanatics or eBay, is sent to Discord.
         Check the slab and cert before buying: the value is ours, the listing is theirs.
       </p>
       <div className={`flex flex-wrap items-center gap-x-3 gap-y-1 rounded-lg border px-3 py-2 text-xs ${st.last_error ? "border-red-900/70 bg-red-950/30" : "border-gray-800 bg-gray-900/40"}`}>
@@ -120,6 +120,7 @@ export default function CollectorCryptTab({ lang }: { lang: "" | "en" | "ja" | "
                 <th className="text-right px-3 py-2 font-medium">Ask</th>
                 <th className="text-right px-3 py-2 font-medium">Worth<HelpDot help="Our value for this card and grade (Pricing API: recent sales, all-in) and the sales behind it; Collector Crypt's own insured value below." /></th>
                 <th className="text-right px-3 py-2 font-medium">Under value</th>
+                <th className="text-right px-3 py-2 font-medium">Cheapest Buy Now<HelpDot help="The cheapest live Buy Now for this card and grade on Fanatics or eBay (eBay asks under a fifth of value left out as wrong matches), and how far under it the all-in cost here is. A card that's as cheap elsewhere isn't a Collector Crypt deal." /></th>
                 <th className="text-right px-3 py-2 font-medium">All-in cost<HelpDot help="The ask plus the buyer fee, the redemption fee and redemption shipping to your door." /></th>
                 <th className="text-right px-3 py-2 font-medium">eBay net</th>
                 <th className="text-right px-3 py-2 font-medium">Profit</th>
@@ -153,6 +154,23 @@ export default function CollectorCryptTab({ lang }: { lang: "" | "en" | "ja" | "
                     </td>
                     <td className={`px-3 py-2 text-right tabular-nums font-semibold ${(d.discount ?? 0) >= 0.3 ? "text-green-400" : (d.discount ?? 0) >= 0.1 ? "text-green-300/80" : "text-gray-400"}`}>
                       {d.discount != null ? `${Math.round(d.discount * 100)}%` : "—"}
+                    </td>
+                    <td className="px-3 py-2 text-right tabular-nums">
+                      {(() => {
+                        const f = d.fanatics_bin_low_cents, e = d.ebay_bin_low_cents;
+                        const low = f != null && (e == null || f <= e) ? { c: f, src: "Fanatics" } : e != null ? { c: e, src: "eBay" } : null;
+                        if (!low) return <span className="text-gray-600">none listed</span>;
+                        const u = d.under_bin ?? 0;
+                        return (
+                          <>
+                            <div className="text-gray-200">{money(low.c)}</div>
+                            <div className="text-[10px] text-gray-500">{low.src}</div>
+                            <div className={`text-[10px] ${u >= r.alert_min_under_bin ? "text-green-400" : u >= 0 ? "text-gray-400" : "text-red-400"}`}>
+                              {u >= 0 ? `${Math.round(u * 100)}% under it` : `${Math.round(-u * 100)}% over it`}
+                            </div>
+                          </>
+                        );
+                      })()}
                     </td>
                     <td className="px-3 py-2 text-right tabular-nums text-gray-300">{money(d.cost_cents)}</td>
                     <td className="px-3 py-2 text-right tabular-nums text-gray-300">{money(d.resale_net_cents)}</td>

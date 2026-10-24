@@ -118,7 +118,7 @@ export default function SettingsPage() {
 
   const setCC = (patch: Partial<CCRules>) => {
     const base = s?.collector_crypt ?? { buyer_fee_pct: 0.02, redeem_pct: 0.03, redeem_flat_cents: 1500, resale_fee_pct: 0.15,
-      resale_ship_cents: 500, alert_min_margin: 0.25, alert_min_profit_cents: 2500, alert_min_sales: 3 };
+      resale_ship_cents: 500, alert_min_margin: 0.25, alert_min_profit_cents: 2500, alert_min_sales: 3, alert_min_under_bin: 0.1 };
     set({ collector_crypt: { ...base, ...patch } });
   };
 
@@ -320,6 +320,9 @@ export default function SettingsPage() {
         </Field>
         <Field label="Alert: profit" hint="and the profit is at least this much">
           <Money cents={s.collector_crypt?.alert_min_profit_cents ?? 2500} onChange={(v) => setCC({ alert_min_profit_cents: v })} />
+        </Field>
+        <Field label="Alert: under the cheapest Buy Now" hint="and the all-in cost is at least this far under the cheapest live Buy Now on Fanatics or eBay (none listed: passes)">
+          <Pct value={s.collector_crypt?.alert_min_under_bin ?? 0.1} onChange={(v) => setCC({ alert_min_under_bin: v })} />
         </Field>
         <Field label="Alert: sales behind the value" hint="and our value rests on at least this many recent sales (fewer = a guess)">
           <input type="number" min={0} value={s.collector_crypt?.alert_min_sales ?? 3} className={`${inputCls} w-16`}
