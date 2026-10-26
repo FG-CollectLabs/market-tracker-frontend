@@ -40,6 +40,7 @@ export default function WatchlistPage() {
   const [bulkRunning, setBulkRunning] = useState(false);
   const [bulkProgress, setBulkProgress] = useState<string | null>(null);
   const [bulkResult, setBulkResult] = useState<{ ok: boolean; text: string } | null>(null);
+  const [expanded, setExpanded] = useState<Set<string>>(new Set());
 
   const load = useCallback(() => {
     fetchWatchlist().then((r) => setItems(r.items)).catch((e: Error) => setError(e.message));
@@ -120,6 +121,8 @@ export default function WatchlistPage() {
         for (const h of t.hits ?? []) out.push({ it, t, h, under: h.max_cents ? 1 - h.all_in_cents / h.max_cents : 0 }); // each hit's max is for its own grade
     return out.sort((a, b) => b.under - a.under);
   }, [filtered, shownTargets]);
+
+  const bestHits = useMemo(() => hits.slice(0, 8), [hits]);
 
   const sets = useMemo(() => {
     const m = new Map<string, string>();
@@ -239,44 +242,25 @@ export default function WatchlistPage() {
 
       <section className="rounded-lg border border-green-900/60 bg-gray-900 p-3 break-inside-avoid print:border-gray-300 print:bg-white">
         <h2 className="text-sm font-semibold text-green-300 print:text-black mb-2">
-          Hits <span className="font-normal text-gray-500">{hits.length} live listings at or under a target price</span>
+          Best hits <span className="font-normal text-gray-500">{bestHits.length} of {hits.length} listings most under their max</span>
         </h2>
-        {hits.length === 0 ? (
+        {bestHits.length === 0 ? (
           <p className="text-xs text-gray-500">Nothing listed under your prices right now. Targets without a price rule never hit; give them one.</p>
         ) : (
-          <div className="overflow-x-auto lg:overflow-visible">
-            <table className="w-full text-xs tabular-nums">
-              <thead className="text-gray-500">
-                <tr>
-                  <th className="text-left py-1 pr-2 font-medium sticky top-12 left-0 bg-gray-900 z-20 print:static">Card</th>
-                  <th className="text-left py-1 pr-2 font-medium sticky top-12 bg-gray-900 z-10 print:static">Target</th>
-                  <th className="text-left py-1 pr-2 font-medium sticky top-12 bg-gray-900 z-10 print:static">Listing</th>
-                  <th className="text-right py-1 pr-2 font-medium sticky top-12 bg-gray-900 z-10 print:static" title="Ask, or current bid">Price</th>
-                  <th className="text-right py-1 pr-2 font-medium sticky top-12 bg-gray-900 z-10 print:static" title="What you'd pay now: auction bids plus the buyer's premium">All-in</th>
-                  <th className="text-right py-1 pr-2 font-medium sticky top-12 bg-gray-900 z-10 print:static">Your max</th>
-                  <th className="text-right py-1 font-medium sticky top-12 bg-gray-900 z-10 print:static">Under by</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-gray-800 print:divide-gray-200 text-gray-300 print:text-black">
-                {hits.map(({ it, t, h, under }, i) => (
-                  <tr key={i} className="align-top">
-                    <td className="py-1 pr-2 sticky left-0 bg-gray-900 z-10 print:static">
-                      <Link to={`/cards/${encodeURIComponent(it.display_key)}`} className="text-gray-100 hover:text-indigo-300 print:text-black">{it.name}</Link>
-                      <span className="text-gray-500"> #{it.number} · {it.set_name}</span>
-                    </td>
-                    <td className="py-1 pr-2">{TARGET_LABEL[t.target]}{t.buy_all && <span className="text-yellow-300/90"> · every copy</span>}</td>
-                    <td className="py-1 pr-2 max-w-md">
-                      <span className="text-gray-500">{h.source} {h.kind === "auction" ? `auction${h.ends_at ? ` · ${endsIn(h.ends_at)}` : ""}` : "Buy Now"} · {h.grade_key.toUpperCase()} · </span>
-                      {h.url ? <a href={h.url} target="_blank" rel="noreferrer" className="text-indigo-300 hover:text-indigo-200">{h.title}</a> : h.title}
-                    </td>
-                    <td className="py-1 pr-2 text-right">{usd(h.price_cents)}</td>
-                    <td className="py-1 pr-2 text-right font-medium">{usd(h.all_in_cents)}</td>
-                    <td className="py-1 pr-2 text-right">{usd(h.max_cents)}</td>
-                    <td className="py-1 text-right text-green-300 print:text-black">{Math.round(under * 100)}%</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2">
+            {bestHits.map(({ it, h, under }, i) => (
+              <button key={i} onClick={() => setExpanded((s) => { const n = new Set(s); n.has(it.display_key) ? n.delete(it.display_key) : n.add(it.display_key); return n; })} className="text-left rounded border border-gray-800 bg-gray-950 p-2 hover:border-indigo-500 hover:bg-gray-900 transition-colors print:hidden">
+                <div className="flex gap-2 items-start">
+                  <img src={h.image_url ? cardThumb(h.image_url) : undefined} alt="" className="w-10 h-14 object-cover rounded-sm shrink-0 bg-gray-800" />
+                  <div className="min-w-0">
+                    <Link to={`/cards/${encodeURIComponent(it.display_key)}`} className="text-xs font-semibold text-gray-100 hover:text-indigo-300 block truncate">{it.name}</Link>
+                    <div className="text-[10px] text-gray-500">{h.source === "fanatics" ? "Fanatics" : "eBay"} · {h.kind === "auction" ? "auction" : "Buy Now"} · {h.grade_key.toUpperCase()}</div>
+                    <div className="text-[10px] text-gray-300 mt-0.5">{usd(h.all_in_cents)} / max {usd(h.max_cents)} · <span className="text-green-300">{Math.round(under * 100)}% under</span></div>
+                  </div>
+                </div>
+                <div className="text-[10px] text-amber-300/80 mt-1">{expanded.has(it.display_key) ? "Click to close" : "Click to expand"}</div>
+              </button>
+            ))}
           </div>
         )}
       </section>
@@ -334,19 +318,24 @@ export default function WatchlistPage() {
                       </td>
                       <td className="py-1.5 pr-2 min-w-[16rem]">
                         {ts.length === 0 && <span className="text-gray-600">Watching only</span>}
-                        {ts.map((t) => (
-                          <div key={t.target} title={t.rule_text}>
-                            <span className="text-gray-200">{TARGET_LABEL[t.target]}</span>{" "}
-                            {t.max_cents != null ? (
-                              <span className="text-yellow-300/90 print:text-black">≤ {usd(t.max_cents)}</span>
-                            ) : (
-                              <span className="text-gray-600">no price</span>
-                            )}
-                            {t.buy_all && <span className="text-gray-500"> · every copy</span>}
-                            {t.channels !== "any" && <span className="text-gray-500"> · {t.channels === "auction" ? "auctions" : "Buy Now"}</span>}
-                            {(t.hits?.length ?? 0) > 0 && <span className="ml-1 px-1 rounded bg-green-900/60 text-green-300 text-[10px]">{t.hits!.length} hit{t.hits!.length > 1 ? "s" : ""}</span>}
-                          </div>
-                        ))}
+                        <div className="flex flex-wrap gap-1 items-center">
+                          {ts.map((t) => (
+                            <button
+                              key={t.target}
+                              onClick={() => setExpanded((s) => { const n = new Set(s); n.has(it.display_key) ? n.delete(it.display_key) : n.add(it.display_key); return n; })}
+                              title={t.gate ? t.gate : t.rule_text}
+                              className={`inline-flex items-center gap-0.5 rounded px-1.5 py-0.5 text-[11px] ${t.gate ? "bg-amber-900/40 text-amber-200 border border-amber-700/40" : "bg-gray-950 border border-gray-700 text-gray-200 hover:border-indigo-400 hover:text-white"} print:hidden`}
+                            >
+                              <span className="font-medium">{TARGET_LABEL[t.target]}</span>
+                              {t.gate ? <span>paused</span> : t.max_cents != null ? <span className="text-yellow-300/90">≤ {usd(t.max_cents)}</span> : <span className="text-gray-500">no price</span>}
+                            </button>
+                          ))}
+                          {(ts.some((t) => (t.hits?.length ?? 0) > 0) || ts.length === 0) && (
+                            <span className={`text-[10px] px-1 rounded ${ts.some((t) => (t.hits?.length ?? 0) > 0) ? "bg-green-900/60 text-green-300" : "bg-gray-800 text-gray-500"}`}>
+                              {ts.reduce((sum, t) => sum + (t.hits?.length ?? 0), 0)} listings
+                            </span>
+                          )}
+                        </div>
                         <button onClick={() => setEditing(editing === it.display_key ? null : it.display_key)}
                           className="text-[11px] text-indigo-300 hover:text-indigo-200 print:hidden">
                           {editing === it.display_key ? "Close" : "Edit targets"}
@@ -376,6 +365,42 @@ export default function WatchlistPage() {
                       <tr className="print:hidden">
                         <td colSpan={12} className="py-2">
                           <TargetEditor displayKey={it.display_key} initial={it.targets_detail ?? []} onSaved={load} onClose={() => setEditing(null)} />
+                        </td>
+                      </tr>
+                    )}
+                    {expanded.has(it.display_key) && (
+                      <tr className="print:hidden">
+                        <td colSpan={12} className="py-2 bg-gray-850">
+                          <div className="rounded-lg border border-gray-700 bg-gray-900 p-2 space-y-2">
+                            <div className="flex items-center justify-between">
+                              <h3 className="text-xs font-semibold text-gray-200">This card's listings</h3>
+                              <button onClick={() => setExpanded((s) => { const n = new Set(s); n.delete(it.display_key); return n; })} className="text-xs text-gray-400 hover:text-white">Close</button>
+                            </div>
+                            <div className="divide-y divide-gray-800">
+                              {(it.targets_detail ?? []).flatMap((t) => (t.hits ?? []).map((h) => ({ ...h, target: t, it }))).sort((a, b) => (b.max_cents ? 1 - b.all_in_cents / b.max_cents : 0) - (a.max_cents ? 1 - a.all_in_cents / a.max_cents : 0)).map((h, idx) => (
+                                <div key={idx} className="py-2 text-xs flex items-start gap-2">
+                                  <img src={h.image_url ? cardThumb(h.image_url) : undefined} alt="" className="w-12 h-16 object-cover rounded-sm shrink-0 bg-gray-800" />
+                                  <div className="min-w-0">
+                                    <div className="flex items-center gap-1 text-[11px]">
+                                      <span className="text-[10px] px-1 rounded bg-gray-800 text-gray-300">{h.source === "fanatics" ? "Fanatics" : "eBay"}</span>
+                                      <span className={`text-[10px] px-1 rounded ${h.kind === "auction" ? "bg-amber-900/40 text-amber-200" : "bg-emerald-900/40 text-emerald-200"}`}>{h.kind === "auction" ? `auction${h.ends_at ? ` · ${endsIn(h.ends_at)}` : ""}` : "Buy Now"}</span>
+                                      <span className="text-gray-500">· {h.grade_key.toUpperCase()}</span>
+                                    </div>
+                                    <a href={h.url} target="_blank" rel="noreferrer" className="text-indigo-300 hover:text-indigo-200 text-xs block truncate">{h.title}</a>
+                                    <div className="text-[11px] text-gray-400 mt-0.5">
+                                      {usd(h.price_cents)} price · {usd(h.all_in_cents)} all-in · max {usd(h.max_cents)} · <span className="text-green-300">{Math.round((h.max_cents ? 1 - h.all_in_cents / h.max_cents : 0) * 100)}% under</span>
+                                    </div>
+                                    {h.kind === "auction" && (
+                                      <div className="text-[10px] text-gray-500 mt-0.5">
+                                        {h.bids != null ? `${h.bids} bid${h.bids === 1 ? "" : "s"}` : "No bids"} · ends in {endsIn(h.ends_at) || "—"}
+                                      </div>
+                                    )}
+                                  </div>
+                                </div>
+                              ))}
+                              {it.targets_detail?.flatMap((t) => (t.hits ?? [])).length === 0 && <p className="text-xs text-gray-500">No live listings for this card.</p>}
+                            </div>
+                          </div>
                         </td>
                       </tr>
                     )}
