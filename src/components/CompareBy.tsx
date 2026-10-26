@@ -1,5 +1,5 @@
 import { useMemo, useState } from "react";
-import type { CurveLang, ReleaseCurves } from "../lib/api";
+import { TRAINER_BUCKETS, type CurveLang, type ReleaseCurves } from "../lib/api";
 import { LineChart, Legend, SERIES, type LineSeries } from "./HistoryCharts";
 
 // Compare release curves and returns across groups of one dimension: how
@@ -16,8 +16,8 @@ const DIMS: { key: string; label: string; hint: string; buckets: { key: string; 
     buckets: [{ key: "artist:top", label: "Top" }, { key: "artist:a", label: "A" }, { key: "artist:b", label: "B" }, { key: "artist:c", label: "C" }, { key: "artist:unranked", label: "Unranked" }],
   },
   {
-    key: "trainer", label: "Trainers", hint: "Trainer cards (no Pokémon on them) by trainer popularity; 'other' includes items and stadiums. Ballpark list, editable.",
-    buckets: [{ key: "trainer:s", label: "S-tier trainers" }, { key: "trainer:a", label: "A-tier trainers" }, { key: "trainer:other", label: "Other trainers" }],
+    key: "trainer", label: "Trainers", hint: "Trainer cards (no Pokémon on them) by who they show: waifu (chased as characters) or aura (cool, villains, rivals), each ranked S / A / B; 'other' is generic NPCs, items and stadiums. Edit the lists on the Rankings page.",
+    buckets: TRAINER_BUCKETS.map((b) => ({ key: `trainer:${b.key}`, label: b.label })),
   },
   {
     key: "scarcity", label: "Scarcity", hint: "Packs to pull a specific copy = pull-rate estimate for its tier x cards of that tier in the set; quartiles, 4 = scarcest. Pull rates are community estimates.",

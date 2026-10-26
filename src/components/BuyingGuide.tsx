@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
-import { fetchCardAnalysis, type ActionMetrics, type BuyAction, type CardAnalysis, type Strategy, type FairValue, type GradeAnalysis, type GradingEV, type Lifecycle } from "../lib/api";
+import { fetchCardAnalysis, TRAINER_BUCKETS, type ActionMetrics, type BuyAction, type CardAnalysis, type Strategy, type FairValue, type GradeAnalysis, type GradingEV, type Lifecycle } from "../lib/api";
 import { formatCents } from "../lib/roi";
 import { AsOf } from "./AsOf";
 import { Spinner, ErrorMsg } from "./Spinner";
@@ -256,7 +256,8 @@ export const STANCE: Record<Strategy["stance"], { label: string; cls: string }> 
 
 const BASIS_LABEL = (c: string) =>
   ({ ir: "IR tier", sir: "SIR tier", ultra: "full-art tier", gold: "gold tier", gallery: "gallery" } as Record<string, string>)[c] ??
-  c.replace("poke:", "Pokémon tier ").replace("artist:", "artist tier ").replace("trainer:", "trainer tier ").replace(/ (top|a|b|c|s)$/, (m) => m.toUpperCase());
+  (c.startsWith("trainer:") ? `${TRAINER_BUCKETS.find((b) => `trainer:${b.key}` === c)?.label ?? c.slice(8)} trainers` :
+    c.replace("poke:", "Pokémon tier ").replace("artist:", "artist tier ").replace(/ (top|a|b|c|s)$/, (m) => m.toUpperCase()));
 
 // Where capital should go on this card: the stance, the steps with their
 // price lines, and the appreciation projection behind it.

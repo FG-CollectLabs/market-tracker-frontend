@@ -10,6 +10,7 @@ import BuyWindowsPage from "./pages/BuyWindowsPage";
 import BuyingPrepPage from "./pages/BuyingPrepPage";
 import TimingPage from "./pages/TimingPage";
 import SettingsPage from "./pages/SettingsPage";
+import RankingsPage from "./pages/RankingsPage";
 import RoadmapPage from "./pages/RoadmapPage";
 import WatchlistPage from "./pages/WatchlistPage";
 import AutomationPage from "./pages/AutomationPage";
@@ -53,6 +54,9 @@ function Nav() {
       <NavLink to="/settings" className={linkCls}>
         Settings
       </NavLink>
+      <NavLink to="/rankings" className={linkCls}>
+        Rankings
+      </NavLink>
       <NavLink to="/automation" className={linkCls}>
         Automation
       </NavLink>
@@ -77,6 +81,7 @@ export default function App() {
             <Route path="/windows" element={<BuyWindowsPage />} />
             <Route path="/timing" element={<TimingPage />} />
             <Route path="/settings" element={<SettingsPage />} />
+            <Route path="/rankings" element={<RankingsPage />} />
             <Route path="/developer" element={<RoadmapPage />} />
             <Route path="/roadmap" element={<RoadmapPage />} />
             <Route path="/watchlist" element={<WatchlistPage />} />

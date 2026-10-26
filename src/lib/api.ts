@@ -942,7 +942,7 @@ export interface CurvePoint {
   sets: number;
 }
 
-export type CurveCategory = "all" | "ir" | "sir" | "ultra" | "gold" | "gallery" | "promo" | string; // or a factor bucket: poke:top, artist:a, trainer:s, scarcity:4
+export type CurveCategory = "all" | "ir" | "sir" | "ultra" | "gold" | "gallery" | "promo" | string; // or a factor bucket: poke:top, artist:a, trainer:waifu_s, scarcity:4
 export type CurveGrade = "raw" | "psa-10" | "psa-9" | "cgc-10" | "cgc-10-pristine" | "cgc-7-9" | "premium";
 export type CurveLang = "en" | "ja" | "all";
 
@@ -2043,3 +2043,50 @@ export function fetchCCDeals(o: { minMargin?: number; days?: number; limit?: num
   q.set("limit", String(o.limit ?? 300));
   return get(`/v1/deals/collectorcrypt?${q}`);
 }
+
+// Rankings: Pokémon, artist and trainer tiers (GET /v1/rankings; edits via
+// PUT / DELETE /v1/admin/rankings).
+export interface RankList {
+  top: string[] | null;
+  tiers: { a: string[] | null; b: string[] | null; c: string[] | null };
+}
+export interface TrainerTierLists {
+  s: string[] | null;
+  a: string[] | null;
+  b: string[] | null;
+}
+export interface RankingLists {
+  pokemon: RankList;
+  artists: RankList;
+  trainers: { waifu: TrainerTierLists; aura: TrainerTierLists };
+}
+export interface RankingsResponse {
+  lists: RankingLists;
+  defaults: RankingLists;
+  edited: boolean;
+  updated_at?: string;
+  updated_by?: string;
+  species: { slug: string; name: string; dex: number }[];
+  // Tracked cards per entry: pokemon by slug, artists and trainers by lower-case name.
+  cards: { pokemon: Record<string, number>; artists: Record<string, number>; trainers: Record<string, number> };
+  unlisted: { artists: { name: string; cards: number }[]; trainers: { name: string; cards: number }[] };
+}
+
+export function fetchRankings(): Promise<RankingsResponse> {
+  return get("/v1/rankings");
+}
+
+export function saveRankings(l: RankingLists): Promise<RankingsResponse> {
+  return adminFetch("/v1/admin/rankings", { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify(l) });
+}
+
+export function resetRankings(): Promise<RankingsResponse> {
+  return adminFetch("/v1/admin/rankings", { method: "DELETE" });
+}
+
+// Trainer factor buckets (trainer:<key>), best first.
+export const TRAINER_BUCKETS: { key: string; label: string }[] = [
+  { key: "waifu_s", label: "Waifu S" }, { key: "waifu_a", label: "Waifu A" }, { key: "waifu_b", label: "Waifu B" },
+  { key: "aura_s", label: "Aura S" }, { key: "aura_a", label: "Aura A" }, { key: "aura_b", label: "Aura B" },
+  { key: "other", label: "Other trainers" },
+];
