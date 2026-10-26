@@ -32,6 +32,9 @@ export default function WatchlistPage() {
   const [preset, setPreset] = useState("");
   const [setCode, setSetCode] = useState("");
   const [onlyHits, setOnlyHits] = useState(false);
+  const [hitKind, setHitKind] = useState<"all" | "auction" | "buy_now">("all");
+  const [hitSource, setHitSource] = useState<"all" | "fanatics" | "ebay">("all");
+  const [hitSort, setHitSort] = useState<"under" | "ending" | "cheapest">("under");
   const [q, setQ] = useState("");
   const [editing, setEditing] = useState<string | null>(null);
   const [showPassed, setShowPassed] = useState(false);
@@ -53,6 +56,13 @@ export default function WatchlistPage() {
   const load = useCallback((passed = showPassed) => {
     fetchWatchlist(false, passed).then((r) => setItems(r.items)).catch((e: Error) => setError(e.message));
   }, [showPassed]);
+  // Refresh countdown timer for auction hits
+  const [tick, setTick] = useState(0);
+  useEffect(() => {
+    const interval = setInterval(() => setTick((t) => t + 1), 1000);
+    return () => clearInterval(interval);
+  }, []);
+
   useEffect(() => {
     if (session) load();
   }, [session, load]);
@@ -91,14 +101,34 @@ export default function WatchlistPage() {
     return [...m.values()];
   }, [filtered]);
 
-  // Every live listing at or under a target price, best discount first.
+  // Every live listing at or under a target price, with filters and sort.
   const hits = useMemo(() => {
     const out: { it: WatchItem; t: WatchTarget; h: TargetHit; under: number }[] = [];
     for (const it of filtered)
       for (const t of shownTargets(it))
-        for (const h of t.hits ?? []) out.push({ it, t, h, under: h.max_cents ? 1 - h.all_in_cents / h.max_cents : 0 }); // each hit's max is for its own grade
-    return out.sort((a, b) => b.under - a.under);
-  }, [filtered, shownTargets]);
+        for (const h of t.hits ?? []) {
+          if (hitKind !== "all" && h.kind !== hitKind) continue;
+          if (hitSource !== "all" && h.source !== hitSource) continue;
+          out.push({ it, t, h, under: h.max_cents ? 1 - h.all_in_cents / h.max_cents : 0 });
+        }
+    if (hitSort === "ending") {
+      out.sort((a, b) => {
+        if (a.h.ends_at && b.h.ends_at) {
+          const da = new Date(a.h.ends_at).getTime();
+          const db = new Date(b.h.ends_at).getTime();
+          if (da !== db) return da - db;
+        }
+        if (a.h.ends_at && !b.h.ends_at) return -1;
+        if (!a.h.ends_at && b.h.ends_at) return 1;
+        return b.under - a.under;
+      });
+    } else if (hitSort === "cheapest") {
+      out.sort((a, b) => a.h.all_in_cents - b.h.all_in_cents);
+    } else {
+      out.sort((a, b) => b.under - a.under);
+    }
+    return out;
+  }, [filtered, shownTargets, hitKind, hitSource, hitSort, tick]);
 
   const sets = useMemo(() => {
     const m = new Map<string, string>();
@@ -191,6 +221,19 @@ export default function WatchlistPage() {
           >
             {showPassed ? "Hide passed" : `Show passed (${filtered.reduce((sum, it) => sum + (it.targets_detail ?? []).reduce((s, t) => s + (t.passed_hits ?? 0), 0), 0)})`}
           </button>
+          <span className="text-xs text-gray-400 ml-1">Kind:</span>
+          {(["all", "buy_now", "auction"] as const).map((k) => (
+            <button key={k} onClick={() => setHitKind(k)} className={`text-[11px] px-1.5 py-0.5 rounded border ${hitKind === k ? "bg-indigo-600 text-white border-indigo-500" : "bg-gray-950 border-gray-700 text-gray-300 hover:text-white"} print:hidden`}>{k === "all" ? "All" : k === "buy_now" ? "Buy Now" : "Auctions"}</button>
+          ))}
+          <span className="text-xs text-gray-400 ml-1">Source:</span>
+          {(["all", "fanatics", "ebay"] as const).map((s) => (
+            <button key={s} onClick={() => setHitSource(s)} className={`text-[11px] px-1.5 py-0.5 rounded border ${hitSource === s ? "bg-indigo-600 text-white border-indigo-500" : "bg-gray-950 border-gray-700 text-gray-300 hover:text-white"} print:hidden`}>{s === "all" ? "All" : s === "fanatics" ? "Fanatics" : "eBay"}</button>
+          ))}
+          <select value={hitSort} onChange={(e) => setHitSort(e.target.value as typeof hitSort)} className={`${sel} text-[11px] ml-1`}>
+            <option value="under">Most under max</option>
+            <option value="ending">Ending soonest</option>
+            <option value="cheapest">Cheapest</option>
+          </select>
         </div>
         {hits.length === 0 ? (
           <p className="text-xs text-gray-500">Nothing listed under your prices right now. Targets without a price rule never hit; give them one.</p>
@@ -226,11 +269,20 @@ export default function WatchlistPage() {
                       </td>
                       <td className="py-1 pr-2 max-w-md">
                         <div className="flex items-center gap-1 text-[11px]">
-                          <span className="text-[10px] px-1 rounded bg-gray-800 text-gray-300">{h.source}</span>
-                          <span className="text-gray-500">{h.kind === "auction" ? `auction${h.ends_at ? ` · ${endsIn(h.ends_at)}` : ""}` : "Buy Now"}</span>
+                          <span className="text-[10px] px-1 rounded bg-gray-800 text-gray-300">{h.source === "fanatics" ? "Fanatics" : "eBay"}</span>
+                          <span className={`text-[10px] px-1 rounded ${h.kind === "auction" ? "bg-amber-900/40 text-amber-200" : "bg-emerald-900/40 text-emerald-200"}`}>{h.kind === "auction" ? `auction${h.ends_at ? ` · ${endsIn(h.ends_at)}` : ""}` : "Buy Now"}</span>
                           <span className="text-gray-500">· {h.grade_key.toUpperCase()}</span>
                         </div>
                         {h.url ? <a href={h.url} target="_blank" rel="noreferrer" className="text-indigo-300 hover:text-indigo-200 text-xs block truncate">{h.title}</a> : <span className="text-xs block truncate">{h.title}</span>}
+                        {h.kind === "auction" && (
+                          <div className={`text-[10px] mt-0.5 ${(() => {
+                            if (!h.ends_at) return "text-gray-400";
+                            const mins = (new Date(h.ends_at).getTime() - Date.now()) / 60000;
+                            return mins < 5 ? "text-red-400" : "text-gray-400";
+                          })()}`}>
+                            {h.bids != null ? `${h.bids} bid${h.bids === 1 ? "" : "s"}` : "No bids"} · ends in {endsIn(h.ends_at) || "—"}
+                          </div>
+                        )}
                         {isNoted && h.review?.note && <div className="text-[11px] text-amber-200/80">{h.review.note}</div>}
                         {showPassed && isPassed && <span className="text-[10px] text-gray-400">passed</span>}
                       </td>
