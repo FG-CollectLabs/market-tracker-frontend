@@ -118,8 +118,17 @@ export function TargetEditor({ displayKey, initial, onSaved, onClose }: {
                   <label className="flex items-center gap-1 text-gray-300" title="Buy every copy at or under the price, not just one">
                     <input type="checkbox" className="accent-indigo-500" checked={r.buy_all} onChange={(e) => set(bt.key, { buy_all: e.target.checked })} /> every copy
                   </label>
+                  {bt.key === "raw_invest" && (
+                    <label className="flex items-center gap-1 text-gray-300" title="Only while the raw price is projected to rise at least this much over the next 12 months (release curve), and never while it's still falling after release. Blank: no minimum (still skips a falling card).">
+                      growth ≥
+                      <input type="number" min={0} max={500} step={5} className={`${input} w-14 text-right`}
+                        value={r.min_growth != null ? Math.round(r.min_growth * 100) : ""} placeholder="—"
+                        onChange={(e) => set(bt.key, { min_growth: e.target.value === "" ? null : Number(e.target.value) / 100 })} />%/yr
+                    </label>
+                  )}
                   {r.preset && <span className="text-[10px] text-indigo-300/80">{presets.find((p) => p.key === r.preset)?.label ?? r.preset}</span>}
                   {r.rule_text && <span className="text-gray-500 basis-full pl-6">now: {r.rule_text}</span>}
+                  {r.gate && <span className="text-amber-300/90 basis-full pl-6">paused: {r.gate}</span>}
                 </>
               )}
             </div>

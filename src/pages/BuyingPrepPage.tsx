@@ -251,27 +251,60 @@ const dollars = (c?: number) => (c == null ? "" : String(Math.floor(c / 100)));
 const SCENARIO_LABEL: Record<string, string> = { release: "At release", now: "Now", projected_low: "Projected low" };
 
 // How the cost to make a 10 was worked out, and how it moves with the raw price.
+// CGC has three outcomes (Pristine, Gem Mint 10, anything else as a 9), each
+// sold at its own price; a grade's cost to make counts what the others bring back.
 function CostBreakdown({ m }: { m: MakeTen }) {
   const keep = 1 - m.sell_fee_pct;
+  const pct = (x: number) => `${(x * 100).toFixed(x < 0.1 ? 1 : 0)}%`;
+  const plain = m.outcomes?.find((o) => o.grade.endsWith("-10")) ;
+  const others = (m.outcomes ?? []).filter((o) => o !== plain);
+  const tenLabel = m.p_pristine > 0 ? "a CGC Gem Mint 10" : `a ${m.miss_grade.replace("-9", "").toUpperCase()} 10`;
   return (
     <div className="grid gap-4 md:grid-cols-2">
       <div>
-        <div className="text-gray-200 font-medium mb-1">Cost to make a 10: {formatCents(m.breakeven_10_cents)}</div>
+        <div className="text-gray-200 font-medium mb-1">
+          Cost to make {tenLabel}: {formatCents(m.breakeven_10_cents)}
+          {m.breakeven_pristine_cents != null && <span className="ml-3">· a Pristine: {formatCents(m.breakeven_pristine_cents)}</span>}
+        </div>
         <table className="tabular-nums">
           <tbody>
             <tr><td className="pr-4">Raw (ungraded) price</td><td className="text-right text-gray-200">{formatCents(m.raw_cents)}</td></tr>
             <tr><td className="pr-4">Grading fee ({m.route})</td><td className="text-right text-gray-200">{formatCents(m.grading_fee_cents)}</td></tr>
             <tr><td className="pr-4">Shipping and insurance</td><td className="text-right text-gray-200">{formatCents(m.shipping_cents)}</td></tr>
             <tr><td className="pr-4 text-gray-200">One submission</td><td className="text-right text-gray-100">{formatCents(m.submission_cents)}</td></tr>
-            <tr><td className="pr-4" title={m.gem_scope}>Gem rate (10 or better, {m.gem_source} pop)</td><td className="text-right text-gray-200">{Math.round(m.p10 * 100)}%</td></tr>
-            <tr><td className="pr-4">A miss ({m.miss_grade}) is worth</td><td className="text-right text-gray-200">{formatCents(m.miss_value_cents)} <span className="text-gray-500">({m.miss_value_source})</span></td></tr>
-            <tr><td className="pr-4">Lost on each miss</td><td className="text-right text-gray-200">{formatCents(m.loss_per_miss_cents)}</td></tr>
             {m.sell_fee_pct > 0 && <tr><td className="pr-4">Selling fee</td><td className="text-right text-gray-200">{Math.round(m.sell_fee_pct * 100)}%</td></tr>}
           </tbody>
         </table>
-        <div className="text-gray-500 mt-1">
-          = ({formatCents(m.submission_cents)} − {Math.round(m.p_miss * 100)}% × {formatCents(Math.round(m.miss_value_cents * keep))}) ÷ {Math.round(m.p10 * 100)}%{m.sell_fee_pct > 0 ? ` ÷ ${keep.toFixed(2)}` : ""}
-        </div>
+        {(m.outcomes?.length ?? 0) > 0 && (
+          <table className="tabular-nums mt-2">
+            <thead className="text-gray-500">
+              <tr>
+                <th className="text-left font-normal pr-4" title={m.gem_scope}>How it comes back ({m.gem_source} pop)</th>
+                <th className="text-right font-normal pr-4">Odds</th>
+                <th className="text-right font-normal pr-4">Worth</th>
+                <th className="text-right font-normal">Brings back</th>
+              </tr>
+            </thead>
+            <tbody>
+              {m.outcomes.map((o) => (
+                <tr key={o.grade}>
+                  <td className="pr-4">{o.label}</td>
+                  <td className="text-right pr-4 text-gray-200">{pct(o.share)}</td>
+                  <td className="text-right pr-4 text-gray-200" title={o.source}>
+                    {formatCents(o.value_cents)} <span className="text-gray-500 text-[10px]">{o.source.length > 28 ? o.source.slice(0, 26) + "…" : o.source}</span>
+                  </td>
+                  <td className="text-right text-gray-300">{formatCents(o.net_cents)}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )}
+        {plain && (
+          <div className="text-gray-500 mt-1">
+            = ({formatCents(m.submission_cents)}{others.map((o) => ` − ${formatCents(o.net_cents)}`).join("")}) ÷ {pct(plain.share)}{m.sell_fee_pct > 0 ? ` ÷ ${keep.toFixed(2)}` : ""}
+            <span className="ml-1">(each other outcome sold at its price, per copy of {tenLabel.replace(/^an? /, "")}){m.breakeven_10_cents === m.miss_value_cents ? "; the other outcomes cover the submission, so it's the 9's price" : ""}</span>
+          </div>
+        )}
       </div>
       {m.scenarios.length > 0 && (
         <div>
@@ -289,7 +322,7 @@ function CostBreakdown({ m }: { m: MakeTen }) {
               ))}
             </tbody>
           </table>
-          <div className="text-gray-500 mt-1">Same gem rate, fee and miss value; only the raw price changes. Release = its first two months; projected low = the release curve's bottom.</div>
+          <div className="text-gray-500 mt-1">Same odds, fee and outcome prices; only the raw price changes. Release = its first two months; projected low = the release curve's bottom.</div>
         </div>
       )}
     </div>
@@ -415,7 +448,9 @@ function PlanRow({ p, premium, kind, onChange }: { p: BidPlan; premium: number; 
           {d?.breakeven_cents != null ? <span className="text-gray-200">{formatCents(d.breakeven_cents)}</span> : <span className="text-gray-600">—</span>}
           {d?.make_ten ? (
             <>
-              <div className="text-gray-500">{Math.round(d.make_ten.p10 * 100)}% gem · raw {formatCents(d.make_ten.raw_cents)}</div>
+              <div className="text-gray-500">
+                {d.make_ten.p_pristine > 0 ? `${Math.round(d.make_ten.p_pristine * 100)}% pristine · ${Math.round(d.make_ten.p_gem * 100)}% 10` : `${Math.round((d.make_ten.p_gem || d.make_ten.p10) * 100)}% gem`} · raw {formatCents(d.make_ten.raw_cents)}
+              </div>
               {d.make_ten.scenarios.length > 1 && (
                 <div className="text-gray-500">{d.make_ten.scenarios.map((sc) => formatCents(sc.breakeven_10_cents)).join(" → ")}</div>
               )}

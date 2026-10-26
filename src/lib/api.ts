@@ -1534,19 +1534,34 @@ export interface TargetHit {
   title: string;
   url?: string;
   ends_at?: string; // auctions
+  image_url?: string; // the listing's main photo (eBay)
+  image_count?: number; // photos on it; 1 on a raw listing = the back isn't shown
   review?: HitReview;
 }
 
 // Your pass or note on a hit (one listing).
 export interface HitReview {
   status: "pass" | "note";
+  reason?: HitReason;
   note?: string;
   price_cents?: number; // the price when reviewed
   reviewed_at: string;
 }
 
 // Pass on a hit (hidden from then on) or keep a note on it.
-export function reviewHit(h: { source: string; listing_id: string; display_key: string; status: "pass" | "note"; note?: string; price_cents?: number }): Promise<{ saved: boolean }> {
+// Why a hit was set aside: a false positive (a case, the wrong card), damaged
+// (not gradable), the wrong variant, not interested, other. no_back_photo is
+// set by an automatic photo check.
+export type HitReason = "false_positive" | "damaged" | "wrong_variant" | "not_interested" | "other" | "no_back_photo";
+export const HIT_REASONS: { key: Exclude<HitReason, "no_back_photo">; label: string; hint: string }[] = [
+  { key: "false_positive", label: "Not this card", hint: "An accessory (acrylic case, sleeve), a lot, or a different card" },
+  { key: "damaged", label: "Damaged", hint: "Dent, crease, scratch: not gradable" },
+  { key: "wrong_variant", label: "Wrong variant", hint: "Listed as this card but it's a lesser version (not the SIR, a reverse holo, ...)" },
+  { key: "not_interested", label: "Not interested", hint: "Fine, just not buying it" },
+  { key: "other", label: "Other", hint: "Say why in the note" },
+];
+
+export function reviewHit(h: { source: string; listing_id: string; display_key: string; status: "pass" | "note"; reason?: HitReason; note?: string; price_cents?: number }): Promise<{ saved: boolean }> {
   return adminFetch(`/v1/admin/watch-hits/review`, { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify(h) });
 }
 
@@ -1569,13 +1584,15 @@ export interface WatchTarget {
   rule_text?: string;
   hits?: TargetHit[];
   passed_hits?: number; // hits you passed on (listed only with show_passed)
+  min_growth?: number | null; // raw_invest: only while raw is projected to grow this much over 12 months (0.15)
+  gate?: string; // raw_invest: why it shows no hits right now (still falling, growth under the minimum)
 }
 
 export interface WatchPreset {
   key: string;
   label: string;
   description: string;
-  targets: { target: BuyTarget; rule_kind: RuleKind; rule_value?: number; buy_all: boolean; channels: Channels }[];
+  targets: { target: BuyTarget; rule_kind: RuleKind; rule_value?: number; buy_all: boolean; channels: Channels; min_growth?: number }[];
 }
 
 export function fetchWatchPresets(): Promise<{ presets: WatchPreset[] }> {
@@ -1583,7 +1600,7 @@ export function fetchWatchPresets(): Promise<{ presets: WatchPreset[] }> {
 }
 
 export function putTargets(displayKey: string, targets: WatchTarget[]): Promise<unknown> {
-  const body = targets.map(({ target, rule_kind, rule_value, buy_all, channels, preset, note }) => ({ target, rule_kind: rule_kind || null, rule_value: rule_value ?? null, buy_all, channels, preset: preset ?? null, note: note ?? null }));
+  const body = targets.map(({ target, rule_kind, rule_value, buy_all, channels, preset, note, min_growth }) => ({ target, rule_kind: rule_kind || null, rule_value: rule_value ?? null, buy_all, channels, preset: preset ?? null, note: note ?? null, min_growth: min_growth ?? null }));
   return adminFetch(`/v1/admin/watchlist/${encodeURIComponent(displayKey)}/targets`, {
     method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ targets: body }),
   });
@@ -1686,17 +1703,23 @@ export interface MarketLinks {
 
 export interface MakeTen {
   submission_cents: number;
-  p10: number;
-  p_miss: number;
+  p10: number; // 10 or better (Pristine included)
+  p_gem: number; // the plain 10: CGC Gem Mint 10, PSA 10
+  p_pristine: number; // CGC: Pristine 10 (0 for PSA)
+  p_miss: number; // the rest, counted as 9s
   miss_grade: string;
   miss_value_cents: number;
   miss_value_source: string;
   loss_per_miss_cents: number;
   sell_fee_pct: number;
   cost_per_10_cents: number;
-  breakeven_10_cents: number;
+  breakeven_10_cents: number; // the plain 10's (CGC: Gem Mint 10, counting the Pristines at their price)
   current_10_cents: number;
   margin_pct?: number;
+  pristine_value_cents?: number; // CGC: a Pristine's price in the math
+  pristine_value_source?: string;
+  breakeven_pristine_cents?: number; // CGC: what a Pristine must sell for
+  outcomes: MakeOutcome[];
   reason: string;
   raw_cents: number;
   grading_fee_cents: number;
@@ -1705,6 +1728,17 @@ export interface MakeTen {
   gem_source: string;
   gem_scope: string;
   scenarios: { label: "release" | "now" | "projected_low"; raw_cents: number; submission_cents: number; breakeven_10_cents: number; note?: string }[];
+}
+
+// One way a submission comes back: its odds, price and what it brings back
+// per card sent (after the selling fee).
+export interface MakeOutcome {
+  grade: string; // cgc-10-pristine, cgc-10, cgc-9 (the rest), psa-10, psa-9
+  label: string;
+  share: number;
+  value_cents: number;
+  source: string;
+  net_cents: number;
 }
 
 export function fetchCardLinks(displayKey: string, grade: string): Promise<MarketLinks> {
