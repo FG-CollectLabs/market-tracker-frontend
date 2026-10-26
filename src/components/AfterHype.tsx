@@ -1,5 +1,5 @@
 import { useMemo, useState } from "react";
-import type { CurveLang, ReleaseCurves, WindowRow } from "../lib/api";
+import { TRAINER_BUCKETS, type CurveLang, type ReleaseCurves, type WindowRow } from "../lib/api";
 
 // After the hype: what buying at month 4 (or at the curve's bottom) and
 // holding returns a year, by card category: rarity tier, Pokémon tier,
@@ -16,7 +16,7 @@ const GROUPS: { key: string; label: string; cats: { key: string; label: string }
   },
   { key: "poke", label: "Pokémon tier", cats: [["poke:top", "Top"], ["poke:a", "A"], ["poke:b", "B"], ["poke:c", "C"], ["poke:unranked", "Unranked"]].map(([key, label]) => ({ key, label })) },
   { key: "artist", label: "Artist tier", cats: [["artist:top", "Top"], ["artist:a", "A"], ["artist:b", "B"], ["artist:c", "C"], ["artist:unranked", "Unranked"]].map(([key, label]) => ({ key, label })) },
-  { key: "trainer", label: "Trainers", cats: [["trainer:s", "S-tier"], ["trainer:a", "A-tier"], ["trainer:other", "Other"]].map(([key, label]) => ({ key, label })) },
+  { key: "trainer", label: "Trainers", cats: TRAINER_BUCKETS.map((b) => ({ key: `trainer:${b.key}`, label: b.label })) },
   { key: "scarcity", label: "Scarcity", cats: [["scarcity:1", "Most common"], ["scarcity:2", "Common"], ["scarcity:3", "Scarce"], ["scarcity:4", "Scarcest"]].map(([key, label]) => ({ key, label })) },
 ];
 
