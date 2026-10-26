@@ -1,6 +1,6 @@
 import { Fragment, useCallback, useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
-import { BUY_TARGETS, fetchWatchlist, putTargets, unwatchCard, type BuyTarget, type TargetHit, type WatchItem, type WatchIntent, type WatchTarget } from "../lib/api";
+import { BUY_TARGETS, HIT_REASONS, clearHitReview, fetchWatchlist, putTargets, reviewHit, unwatchCard, type BuyTarget, type TargetHit, type WatchItem, type WatchIntent, type WatchTarget } from "../lib/api";
 import { useSession } from "../lib/auth";
 import { STANCE } from "../components/BuyingGuide";
 import { CardPrepButtons, PresetBar, TARGET_LABEL, TargetEditor, usePresets } from "../components/WatchTargets";
@@ -41,10 +41,16 @@ export default function WatchlistPage() {
   const [bulkProgress, setBulkProgress] = useState<string | null>(null);
   const [bulkResult, setBulkResult] = useState<{ ok: boolean; text: string } | null>(null);
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
+  const [showPassed, setShowPassed] = useState(false);
+  const [noteEditing, setNoteEditing] = useState<Record<string, boolean>>({});
+  const [noteText, setNoteText] = useState<Record<string, string>>({});
+  const [asideReason, setAsideReason] = useState<Record<string, string>>({});
+  const [undoHit, setUndoHit] = useState<{ source: string; listing_id: string; display_key: string } | null>(null);
+  const [hitErrors, setHitErrors] = useState<Record<string, string>>({});
 
-  const load = useCallback(() => {
-    fetchWatchlist().then((r) => setItems(r.items)).catch((e: Error) => setError(e.message));
-  }, []);
+  const load = useCallback((passed?: boolean) => {
+    fetchWatchlist(false, passed ?? showPassed).then((r) => setItems(r.items)).catch((e: Error) => setError(e.message));
+  }, [showPassed]);
   useEffect(() => {
     if (session) load();
   }, [session, load]);
@@ -241,9 +247,17 @@ export default function WatchlistPage() {
       {bulkResult && <div className={`text-xs print:hidden ${bulkResult.ok ? "text-green-300" : "text-amber-300"}`}>{bulkResult.text}</div>}
 
       <section className="rounded-lg border border-green-900/60 bg-gray-900 p-3 break-inside-avoid print:border-gray-300 print:bg-white">
-        <h2 className="text-sm font-semibold text-green-300 print:text-black mb-2">
-          Best hits <span className="font-normal text-gray-500">{bestHits.length} of {hits.length} listings most under their max</span>
-        </h2>
+        <div className="flex items-center justify-between mb-2">
+          <h2 className="text-sm font-semibold text-green-300 print:text-black">
+            Best hits <span className="font-normal text-gray-500">{bestHits.length} of {hits.length} listings most under their max</span>
+          </h2>
+          <button
+            onClick={() => { const next = !showPassed; setShowPassed(next); load(next); }}
+            className="text-xs px-2 py-0.5 rounded border border-gray-700 text-gray-300 hover:text-white print:hidden"
+          >
+            {showPassed ? "Hide set-aside" : `Show set-aside (${filtered.reduce((sum, it) => sum + (it.targets_detail ?? []).reduce((s, t) => s + (t.passed_hits ?? 0), 0), 0)})`}
+          </button>
+        </div>
         {bestHits.length === 0 ? (
           <p className="text-xs text-gray-500">Nothing listed under your prices right now. Targets without a price rule never hit; give them one.</p>
         ) : (
@@ -387,14 +401,91 @@ export default function WatchlistPage() {
                                       <span className="text-gray-500">· {h.grade_key.toUpperCase()}</span>
                                     </div>
                                     <a href={h.url} target="_blank" rel="noreferrer" className="text-indigo-300 hover:text-indigo-200 text-xs block truncate">{h.title}</a>
-                                    <div className="text-[11px] text-gray-400 mt-0.5">
-                                      {usd(h.price_cents)} price · {usd(h.all_in_cents)} all-in · max {usd(h.max_cents)} · <span className="text-green-300">{Math.round((h.max_cents ? 1 - h.all_in_cents / h.max_cents : 0) * 100)}% under</span>
-                                    </div>
-                                    {h.kind === "auction" && (
-                                      <div className="text-[10px] text-gray-500 mt-0.5">
-                                        {h.bids != null ? `${h.bids} bid${h.bids === 1 ? "" : "s"}` : "No bids"} · ends in {endsIn(h.ends_at) || "—"}
-                                      </div>
-                                    )}
+                                     <div className="text-[11px] text-gray-400 mt-0.5">
+                                       {usd(h.price_cents)} price · {usd(h.all_in_cents)} all-in · max {usd(h.max_cents)} · <span className="text-green-300">{Math.round((h.max_cents ? 1 - h.all_in_cents / h.max_cents : 0) * 100)}% under</span>
+                                     </div>
+                                     {h.kind === "auction" && (
+                                       <div className="text-[10px] text-gray-500 mt-0.5">
+                                         {h.bids != null ? `${h.bids} bid${h.bids === 1 ? "" : "s"}` : "No bids"} · ends in {endsIn(h.ends_at) || "—"}
+                                       </div>
+                                     )}
+                                     <div className="flex gap-1 mt-1 print:hidden">
+                                        <button
+                                          onClick={() => {
+                                            const hitKey = `${h.source}:${h.listing_id}`;
+                                            const choice = window.prompt(`Set aside reason (Not this card / Damaged / Wrong variant / Not interested / Other) or note:`);
+                                            if (!choice) return;
+                                            const matched = HIT_REASONS.find((r) => r.label.toLowerCase().includes(choice.toLowerCase()) || r.key === choice);
+                                            const reason = matched ? matched.key : choice;
+                                            setAsideReason({ ...asideReason, [hitKey]: reason });
+                                            reviewHit({ source: h.source, listing_id: h.listing_id, display_key: it.display_key, status: "pass", reason: reason as any, price_cents: h.all_in_cents }).then(() => load()).catch((e) => setHitErrors({ ...hitErrors, [hitKey]: (e as Error).message }));
+                                          }}
+                                         className="text-[10px] px-1.5 py-0.5 rounded bg-gray-800 text-gray-300 hover:text-white border border-gray-700"
+                                       >Set aside ▾</button>
+                                        {!noteEditing[`${h.source}:${h.listing_id}`] && (
+                                          <button onClick={() => { setNoteEditing({ ...noteEditing, [`${h.source}:${h.listing_id}`]: true }); setNoteText({ ...noteText, [`${h.source}:${h.listing_id}`]: h.review?.note ?? "" }); }} className="text-[10px] px-1.5 py-0.5 rounded border border-amber-700/60 text-amber-200 hover:text-amber-100">Note</button>
+                                        )}
+                                     </div>
+                                      {noteEditing[`${h.source}:${h.listing_id}`] && (
+                                        <div className="flex gap-1 mt-1 print:hidden">
+                                          <input
+                                            autoFocus
+                                            value={noteText[`${h.source}:${h.listing_id}`] ?? ""}
+                                            onChange={(e) => setNoteText({ ...noteText, [`${h.source}:${h.listing_id}`]: e.target.value })}
+                                            maxLength={2000}
+                                            className="w-full text-[11px] bg-gray-950 border border-gray-700 rounded px-1 py-0.5 text-gray-200"
+                                          />
+                                          <button onClick={async () => {
+                                            const text = (noteText[`${h.source}:${h.listing_id}`] ?? "").trim();
+                                            const hitKeyStr = `${h.source}:${h.listing_id}`;
+                                            try {
+                                              if (text) {
+                                                await reviewHit({ source: h.source, listing_id: h.listing_id, display_key: it.display_key, status: "note", note: text, price_cents: h.all_in_cents });
+                                              } else {
+                                                await clearHitReview(h.source, h.listing_id);
+                                              }
+                                              setNoteEditing({ ...noteEditing, [`${h.source}:${h.listing_id}`]: false });
+                                              load();
+                                            } catch (e) {
+                                              setHitErrors({ ...hitErrors, [hitKeyStr]: (e as Error).message });
+                                            }
+                                          }} className="text-[10px] px-1 rounded bg-indigo-600 text-white hover:bg-indigo-500">Save</button>
+                                          <button onClick={() => setNoteEditing({ ...noteEditing, [`${h.source}:${h.listing_id}`]: false })} className="text-[10px] px-1 rounded text-gray-400 hover:text-gray-200">Cancel</button>
+                                        </div>
+                                      )}
+                                     {h.review?.status === "pass" && (
+                                       <div className="text-[10px] text-amber-200/80 mt-1">
+                                         Set aside ({asideReason[`${h.source}:${h.listing_id}`] || "—"}).
+                                         <button
+                                           onClick={async () => {
+                                             const keyStr = `${h.source}:${h.listing_id}`;
+                                             try {
+                                               await clearHitReview(h.source, h.listing_id);
+                                               setUndoHit({ source: h.source, listing_id: h.listing_id, display_key: it.display_key });
+                                               setTimeout(() => setUndoHit(null), 5000);
+                                               load();
+                                             } catch (e) {
+                                               setHitErrors({ ...hitErrors, [keyStr]: (e as Error).message });
+                                             }
+                                           }}
+                                           className="underline hover:text-white ml-1"
+                                         >Restore</button>
+                                       </div>
+                                     )}
+                                     {undoHit && undoHit.source === h.source && undoHit.listing_id === h.listing_id && undoHit.display_key === it.display_key && (
+                                       <div className="text-[10px] text-amber-200/80 mt-0.5">
+                                         Set aside. <button onClick={async () => {
+                                           try {
+                                             await clearHitReview(h.source, h.listing_id);
+                                             setUndoHit(null);
+                                             load();
+                                           } catch (e) {
+                                             setHitErrors({ ...hitErrors, [`${h.source}:${h.listing_id}`]: (e as Error).message });
+                                           }
+                                         }} className="underline hover:text-white">Undo</button>
+                                       </div>
+                                     )}
+                                     {hitErrors[`${h.source}:${h.listing_id}`] && <div className="text-[10px] text-red-400 mt-0.5">{hitErrors[`${h.source}:${h.listing_id}`]}</div>}
                                   </div>
                                 </div>
                               ))}
