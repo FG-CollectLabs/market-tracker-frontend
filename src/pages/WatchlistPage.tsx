@@ -1,6 +1,6 @@
 import { Fragment, useCallback, useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
-import { BUY_TARGETS, fetchWatchlist, unwatchCard, type BuyTarget, type TargetHit, type WatchItem, type WatchIntent, type WatchTarget } from "../lib/api";
+import { BUY_TARGETS, fetchWatchlist, putTargets, unwatchCard, type BuyTarget, type TargetHit, type WatchItem, type WatchIntent, type WatchTarget } from "../lib/api";
 import { useSession } from "../lib/auth";
 import { STANCE } from "../components/BuyingGuide";
 import { CardPrepButtons, PresetBar, TARGET_LABEL, TargetEditor, usePresets } from "../components/WatchTargets";
@@ -37,6 +37,9 @@ export default function WatchlistPage() {
   const [picked, setPicked] = useState<Set<string>>(new Set());
   const [removing, setRemoving] = useState<string | null>(null);
   const [removeErr, setRemoveErr] = useState<{ key: string; msg: string } | null>(null);
+  const [bulkRunning, setBulkRunning] = useState(false);
+  const [bulkProgress, setBulkProgress] = useState<string | null>(null);
+  const [bulkResult, setBulkResult] = useState<{ ok: boolean; text: string } | null>(null);
 
   const load = useCallback(() => {
     fetchWatchlist().then((r) => setItems(r.items)).catch((e: Error) => setError(e.message));
@@ -44,6 +47,36 @@ export default function WatchlistPage() {
   useEffect(() => {
     if (session) load();
   }, [session, load]);
+
+  // Run one action on every selected card, one at a time; a failure doesn't
+  // stop the rest. The confirm says when some selected cards aren't shown by
+  // the current filters (selected before a filter changed).
+  const runBulk = async (doing: string, done: string, note: string, act: (key: string) => Promise<unknown>) => {
+    const list = [...picked];
+    const shownKeys = new Set(filtered.map((i) => i.display_key));
+    const hidden = list.filter((k) => !shownKeys.has(k)).length;
+    const verb = doing === "Removing" ? "Remove" : "Clear strategies on";
+    if (!window.confirm(`${verb} ${list.length} cards${hidden ? ` (${hidden} not shown by the current filters)` : ""}? ${note}`)) return;
+    setBulkRunning(true);
+    setBulkResult(null);
+    const failed: string[] = [];
+    for (let i = 0; i < list.length; i++) {
+      setBulkProgress(`${doing} ${i + 1} / ${list.length}…`);
+      try {
+        await act(list[i]);
+      } catch {
+        failed.push(items?.find((it) => it.display_key === list[i])?.name ?? list[i]);
+      }
+    }
+    watchChanged();
+    setPicked(new Set());
+    load();
+    setBulkRunning(false);
+    setBulkProgress(null);
+    setBulkResult(failed.length === 0
+      ? { ok: true, text: `${done} ${list.length}` }
+      : { ok: false, text: `${done} ${list.length - failed.length}; ${failed.length} failed: ${failed.join(", ")}` });
+  };
 
   // Targets a card keeps under the target / strategy filters.
   const shownTargets = useCallback((it: WatchItem): WatchTarget[] => {
@@ -165,8 +198,44 @@ export default function WatchlistPage() {
         </label>
       </div>
 
+      <div className="flex flex-wrap items-center gap-2 print:hidden">
+        <label className="flex items-center gap-1.5 text-sm text-gray-300 cursor-pointer select-none">
+          <input
+            type="checkbox"
+            className="accent-indigo-500"
+            checked={filtered.length > 0 && filtered.every((i) => picked.has(i.display_key))}
+            onChange={(e) => {
+              if (e.target.checked) setPicked(new Set(filtered.map((i) => i.display_key)));
+              else setPicked(new Set());
+            }}
+          />
+          {filtered.length > 0 && filtered.every((i) => picked.has(i.display_key)) ? "Clear selection" : `Select all ${filtered.length} shown`}
+        </label>
+      </div>
+
       <PresetBar keys={[...picked]} onClear={() => setPicked(new Set())} onApplied={load}
-        extra={<button onClick={() => setPicked(new Set(filtered.map((i) => i.display_key)))} className="text-xs text-gray-400 hover:text-gray-200">Select all {filtered.length} shown</button>} />
+        extra={
+          <div className="flex flex-wrap items-center gap-2">
+            <button
+              disabled={picked.size === 0 || bulkRunning}
+              onClick={() => runBulk("Removing", "Removed", "Their strategies are removed too.", unwatchCard)}
+              className="text-xs px-2 py-1 rounded bg-red-800/60 text-red-200 hover:bg-red-800 border border-red-700/40 disabled:opacity-40 disabled:cursor-default"
+            >
+              Remove {picked.size} from watchlist
+            </button>
+            <button
+              disabled={picked.size === 0 || bulkRunning}
+              onClick={() => runBulk("Clearing", "Cleared strategies on", "Keeps the cards watched, with no strategies.", (k) => putTargets(k, []))}
+              className="text-xs px-2 py-1 rounded bg-gray-800 text-gray-200 hover:bg-gray-700 border border-gray-700 disabled:opacity-40 disabled:cursor-default"
+            >
+              Clear strategies
+            </button>
+          </div>
+        }
+      />
+
+      {bulkProgress && <div className="text-xs text-gray-400 print:hidden">{bulkProgress}</div>}
+      {bulkResult && <div className={`text-xs print:hidden ${bulkResult.ok ? "text-green-300" : "text-amber-300"}`}>{bulkResult.text}</div>}
 
       <section className="rounded-lg border border-green-900/60 bg-gray-900 p-3 break-inside-avoid print:border-gray-300 print:bg-white">
         <h2 className="text-sm font-semibold text-green-300 print:text-black mb-2">
