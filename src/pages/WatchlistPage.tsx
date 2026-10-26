@@ -1,6 +1,6 @@
 import { Fragment, useCallback, useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
-import { BUY_TARGETS, fetchWatchlist, unwatchCard, type BuyTarget, type TargetHit, type WatchItem, type WatchIntent, type WatchTarget } from "../lib/api";
+import { BUY_TARGETS, clearHitReview, fetchWatchlist, reviewHit, unwatchCard, type BuyTarget, type TargetHit, type WatchItem, type WatchIntent, type WatchTarget } from "../lib/api";
 import { useSession } from "../lib/auth";
 import { STANCE } from "../components/BuyingGuide";
 import { CardPrepButtons, PresetBar, TARGET_LABEL, TargetEditor, usePresets } from "../components/WatchTargets";
@@ -34,6 +34,11 @@ export default function WatchlistPage() {
   const [onlyHits, setOnlyHits] = useState(false);
   const [q, setQ] = useState("");
   const [editing, setEditing] = useState<string | null>(null);
+  const [showPassed, setShowPassed] = useState(false);
+  const [noteEditing, setNoteEditing] = useState<Record<string, string>>({});
+  const [noteText, setNoteText] = useState<Record<string, string>>({});
+  const [undoHit, setUndoHit] = useState<{ source: string; listing_id: string; display_key: string } | null>(null);
+  const [hitErrors, setHitErrors] = useState<Record<string, string>>({});
   const [picked, setPicked] = useState<Set<string>>(new Set());
   const [removing, setRemoving] = useState<string | null>(null);
   const [removeErr, setRemoveErr] = useState<{ key: string; msg: string } | null>(null);
@@ -45,9 +50,9 @@ export default function WatchlistPage() {
     return () => window.removeEventListener("keydown", onKey);
   }, [editing]);
 
-  const load = useCallback(() => {
-    fetchWatchlist().then((r) => setItems(r.items)).catch((e: Error) => setError(e.message));
-  }, []);
+  const load = useCallback((passed = showPassed) => {
+    fetchWatchlist(false, passed).then((r) => setItems(r.items)).catch((e: Error) => setError(e.message));
+  }, [showPassed]);
   useEffect(() => {
     if (session) load();
   }, [session, load]);
@@ -176,9 +181,17 @@ export default function WatchlistPage() {
         extra={<button onClick={() => setPicked(new Set(filtered.map((i) => i.display_key)))} className="text-xs text-gray-400 hover:text-gray-200">Select all {filtered.length} shown</button>} />
 
       <section className="rounded-lg border border-green-900/60 bg-gray-900 p-3 break-inside-avoid print:border-gray-300 print:bg-white">
-        <h2 className="text-sm font-semibold text-green-300 print:text-black mb-2">
-          Hits <span className="font-normal text-gray-500">{hits.length} live listings at or under a target price</span>
-        </h2>
+        <div className="flex items-center justify-between mb-2">
+          <h2 className="text-sm font-semibold text-green-300 print:text-black">
+            Hits <span className="font-normal text-gray-500">{hits.length} live listings at or under a target price</span>
+          </h2>
+          <button
+            onClick={() => { const next = !showPassed; setShowPassed(next); load(next); }}
+            className="text-xs px-2 py-0.5 rounded border border-gray-700 text-gray-300 hover:text-white print:hidden"
+          >
+            {showPassed ? "Hide passed" : `Show passed (${filtered.reduce((sum, it) => sum + (it.targets_detail ?? []).reduce((s, t) => s + (t.passed_hits ?? 0), 0), 0)})`}
+          </button>
+        </div>
         {hits.length === 0 ? (
           <p className="text-xs text-gray-500">Nothing listed under your prices right now. Targets without a price rule never hit; give them one.</p>
         ) : (
@@ -196,23 +209,131 @@ export default function WatchlistPage() {
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-800 print:divide-gray-200 text-gray-300 print:text-black">
-                {hits.map(({ it, t, h, under }, i) => (
-                  <tr key={i} className="align-top">
-                    <td className="py-1 pr-2 sticky left-0 bg-gray-900 z-10 print:static">
-                      <Link to={`/cards/${encodeURIComponent(it.display_key)}`} className="text-gray-100 hover:text-indigo-300 print:text-black">{it.name}</Link>
-                      <span className="text-gray-500"> #{it.number} · {it.set_name}</span>
-                    </td>
-                    <td className="py-1 pr-2">{TARGET_LABEL[t.target]}{t.buy_all && <span className="text-yellow-300/90"> · every copy</span>}</td>
-                    <td className="py-1 pr-2 max-w-md">
-                      <span className="text-gray-500">{h.source} {h.kind === "auction" ? `auction${h.ends_at ? ` · ${endsIn(h.ends_at)}` : ""}` : "Buy Now"} · {h.grade_key.toUpperCase()} · </span>
-                      {h.url ? <a href={h.url} target="_blank" rel="noreferrer" className="text-indigo-300 hover:text-indigo-200">{h.title}</a> : h.title}
-                    </td>
-                    <td className="py-1 pr-2 text-right">{usd(h.price_cents)}</td>
-                    <td className="py-1 pr-2 text-right font-medium">{usd(h.all_in_cents)}</td>
-                    <td className="py-1 pr-2 text-right">{usd(h.max_cents)}</td>
-                    <td className="py-1 text-right text-green-300 print:text-black">{Math.round(under * 100)}%</td>
-                  </tr>
-                ))}
+                {hits.map(({ it, t, h, under }, i) => {
+                  const hitId = `${h.source}:${h.listing_id}`;
+                  const isPassed = h.review?.status === "pass";
+                  const isNoted = h.review?.status === "note";
+                  const noteKey = `${it.display_key}:${h.source}:${h.listing_id}`;
+                  return (
+                    <tr key={i} className={`align-top ${showPassed && isPassed ? "opacity-50" : ""}`}>
+                      <td className="py-1 pr-2 sticky left-0 bg-gray-900 z-10 print:static">
+                        <Link to={`/cards/${encodeURIComponent(it.display_key)}`} className="text-gray-100 hover:text-indigo-300 print:text-black block truncate">{it.name}</Link>
+                        <span className="text-gray-500 text-[11px]">#{it.number} · {it.set_name}</span>
+                      </td>
+                      <td className="py-1 pr-2 whitespace-nowrap">
+                        <span className="text-gray-200">{TARGET_LABEL[t.target]}</span>
+                        {t.buy_all && <span className="text-yellow-300/90"> · every copy</span>}
+                      </td>
+                      <td className="py-1 pr-2 max-w-md">
+                        <div className="flex items-center gap-1 text-[11px]">
+                          <span className="text-[10px] px-1 rounded bg-gray-800 text-gray-300">{h.source}</span>
+                          <span className="text-gray-500">{h.kind === "auction" ? `auction${h.ends_at ? ` · ${endsIn(h.ends_at)}` : ""}` : "Buy Now"}</span>
+                          <span className="text-gray-500">· {h.grade_key.toUpperCase()}</span>
+                        </div>
+                        {h.url ? <a href={h.url} target="_blank" rel="noreferrer" className="text-indigo-300 hover:text-indigo-200 text-xs block truncate">{h.title}</a> : <span className="text-xs block truncate">{h.title}</span>}
+                        {isNoted && h.review?.note && <div className="text-[11px] text-amber-200/80">{h.review.note}</div>}
+                        {showPassed && isPassed && <span className="text-[10px] text-gray-400">passed</span>}
+                      </td>
+                      <td className="py-1 pr-2 text-right text-xs">{usd(h.price_cents)}</td>
+                      <td className="py-1 pr-2 text-right font-medium text-xs">{usd(h.all_in_cents)}</td>
+                      <td className="py-1 pr-2 text-right text-xs">{usd(h.max_cents)}</td>
+                      <td className="py-1 text-right text-xs">{Math.round(under * 100)}%</td>
+                      <td className="py-1 text-xs">
+                        <div className="flex gap-1 print:hidden">
+                          {!showPassed && (
+                            <button
+                              onClick={async () => {
+                                try {
+                                  await reviewHit({ source: h.source, listing_id: h.listing_id, display_key: it.display_key, status: "pass", price_cents: h.all_in_cents });
+                                  setUndoHit({ source: h.source, listing_id: h.listing_id, display_key: it.display_key });
+                                  setTimeout(() => setUndoHit(null), 5000);
+                                  load();
+                                } catch (e) {
+                                  setHitErrors({ ...hitErrors, [hitId]: (e as Error).message });
+                                }
+                              }}
+                              className="text-[10px] px-1.5 py-0.5 rounded bg-gray-800 text-gray-300 hover:text-white border border-gray-700"
+                            >Pass</button>
+                          )}
+                          {!showPassed && !isNoted && (
+                            <button
+                              onClick={() => { setNoteEditing({ ...noteEditing, [noteKey]: "editing" }); setNoteText({ ...noteText, [noteKey]: h.review?.note ?? "" }); }}
+                              className="text-[10px] px-1.5 py-0.5 rounded border border-amber-700/60 text-amber-200 hover:text-amber-100"
+                            >Note</button>
+                          )}
+                          {!showPassed && isNoted && (
+                            <button
+                              onClick={() => { setNoteEditing({ ...noteEditing, [noteKey]: "editing" }); setNoteText({ ...noteText, [noteKey]: h.review?.note ?? "" }); }}
+                              className="text-[10px] px-1.5 py-0.5 rounded bg-amber-900/30 text-amber-200 border border-amber-700/40 hover:border-amber-500"
+                            >Edit note</button>
+                          )}
+                        </div>
+                        {!showPassed && noteEditing[noteKey] === "editing" && (
+                          <div className="flex items-center gap-1">
+                            <input
+                              autoFocus
+                              value={noteText[noteKey] ?? ""}
+                              onChange={(e) => setNoteText({ ...noteText, [noteKey]: e.target.value })}
+                              maxLength={2000}
+                              className="w-full text-[11px] bg-gray-950 border border-gray-700 rounded px-1 py-0.5 text-gray-200"
+                            />
+                            <button
+                              onClick={async () => {
+                                const text = (noteText[noteKey] ?? "").trim();
+                                try {
+                                  if (text) {
+                                    await reviewHit({ source: h.source, listing_id: h.listing_id, display_key: it.display_key, status: "note", note: text, price_cents: h.all_in_cents });
+                                  } else {
+                                    await clearHitReview(h.source, h.listing_id);
+                                  }
+                                  setNoteEditing({ ...noteEditing, [noteKey]: "" });
+                                  load();
+                                } catch (e) {
+                                  setHitErrors({ ...hitErrors, [hitId]: (e as Error).message });
+                                }
+                              }}
+                              className="text-[10px] px-1 rounded bg-indigo-600 text-white hover:bg-indigo-500"
+                            >Save</button>
+                            <button
+                              onClick={() => { setNoteEditing({ ...noteEditing, [noteKey]: "" }); }}
+                              className="text-[10px] px-1 rounded text-gray-400 hover:text-gray-200"
+                            >Cancel</button>
+                          </div>
+                        )}
+                        {showPassed && isPassed && (
+                          <button
+                            onClick={async () => {
+                              try {
+                                await clearHitReview(h.source, h.listing_id);
+                                load(showPassed);
+                              } catch (e) {
+                                setHitErrors({ ...hitErrors, [hitId]: (e as Error).message });
+                              }
+                            }}
+                            className="text-[10px] px-1.5 py-0.5 rounded bg-gray-800 text-gray-300 hover:text-white border border-gray-700"
+                          >Undo pass</button>
+                        )}
+                        {undoHit && undoHit.source === h.source && undoHit.listing_id === h.listing_id && undoHit.display_key === it.display_key && (
+                          <div className="text-[10px] text-amber-200/80 mt-0.5">
+                            Passed. <button
+                              onClick={async () => {
+                                try {
+                                  await clearHitReview(h.source, h.listing_id);
+                                  setUndoHit(null);
+                                  load();
+                                } catch (e) {
+                                  setHitErrors({ ...hitErrors, [hitId]: (e as Error).message });
+                                }
+                              }}
+                              className="underline hover:text-white"
+                            >Undo</button>
+                          </div>
+                        )}
+                        {hitErrors[hitId] && <div className="text-[10px] text-red-400 mt-0.5">{hitErrors[hitId]}</div>}
+                      </td>
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
           </div>
