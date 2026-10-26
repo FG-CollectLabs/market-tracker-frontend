@@ -38,6 +38,13 @@ export default function WatchlistPage() {
   const [removing, setRemoving] = useState<string | null>(null);
   const [removeErr, setRemoveErr] = useState<{ key: string; msg: string } | null>(null);
 
+  useEffect(() => {
+    if (!editing) return;
+    const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") setEditing(null); };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [editing]);
+
   const load = useCallback(() => {
     fetchWatchlist().then((r) => setItems(r.items)).catch((e: Error) => setError(e.message));
   }, []);
@@ -264,23 +271,37 @@ export default function WatchlistPage() {
                         {it.note && <div className="text-gray-400 italic">{it.note}</div>}
                       </td>
                       <td className="py-1.5 pr-2 min-w-[16rem]">
-                        {ts.length === 0 && <span className="text-gray-600">Watching only</span>}
-                        {ts.map((t) => (
-                          <div key={t.target} title={t.rule_text}>
-                            <span className="text-gray-200">{TARGET_LABEL[t.target]}</span>{" "}
-                            {t.max_cents != null ? (
-                              <span className="text-yellow-300/90 print:text-black">≤ {usd(t.max_cents)}</span>
-                            ) : (
-                              <span className="text-gray-600">no price</span>
-                            )}
-                            {t.buy_all && <span className="text-gray-500"> · every copy</span>}
-                            {t.channels !== "any" && <span className="text-gray-500"> · {t.channels === "auction" ? "auctions" : "Buy Now"}</span>}
-                            {(t.hits?.length ?? 0) > 0 && <span className="ml-1 px-1 rounded bg-green-900/60 text-green-300 text-[10px]">{t.hits!.length} hit{t.hits!.length > 1 ? "s" : ""}</span>}
+                        {ts.length === 0 ? (
+                          <span className="text-gray-600">Watching only</span>
+                        ) : (
+                          <div className="flex flex-wrap gap-1">
+                            {ts.map((t) => (
+                              <button
+                                key={t.target}
+                                onClick={() => setEditing(it.display_key)}
+                                title={t.rule_text}
+                                className="inline-flex items-center gap-0.5 rounded px-1.5 py-0.5 text-[11px] bg-gray-950 border border-gray-700 text-gray-200 hover:border-indigo-400 hover:text-white print:hidden"
+                              >
+                                <span className="font-medium">{TARGET_LABEL[t.target]}</span>
+                                {t.max_cents != null ? (
+                                  <span className="text-yellow-300/90">≤ {usd(t.max_cents)}</span>
+                                ) : (
+                                  <span className="text-gray-500">no rule</span>
+                                )}
+                              </button>
+                            ))}
+                            <button
+                              onClick={() => setEditing(it.display_key)}
+                              title="Add or edit strategies"
+                              className="inline-flex items-center rounded px-1.5 py-0.5 text-[11px] bg-gray-950 border border-dashed border-gray-600 text-gray-400 hover:border-indigo-400 hover:text-white print:hidden"
+                            >
+                              + strategy
+                            </button>
                           </div>
-                        ))}
-                        <button onClick={() => setEditing(editing === it.display_key ? null : it.display_key)}
-                          className="text-[11px] text-indigo-300 hover:text-indigo-200 print:hidden">
-                          {editing === it.display_key ? "Close" : "Edit targets"}
+                        )}
+                        <button onClick={() => setEditing(it.display_key)}
+                          className="text-[11px] text-indigo-300 hover:text-indigo-200 print:hidden mt-1">
+                          {ts.length === 0 ? "Add targets" : "Edit targets"}
                         </button>
                         <button onClick={() => removeCard(it)}
                           disabled={removing === it.display_key}
@@ -303,13 +324,6 @@ export default function WatchlistPage() {
                       <td className="py-1.5 pr-2 text-right">{usd(p?.bid_cents)}</td>
                       <td className="py-1.5 text-right">{p?.projection != null ? `${p.projection >= 0 ? "+" : ""}${Math.round(p.projection * 100)}%` : "—"}</td>
                     </tr>
-                    {editing === it.display_key && (
-                      <tr className="print:hidden">
-                        <td colSpan={12} className="py-2">
-                          <TargetEditor displayKey={it.display_key} initial={it.targets_detail ?? []} onSaved={load} onClose={() => setEditing(null)} />
-                        </td>
-                      </tr>
-                    )}
                   </Fragment>
                 );
               })}
@@ -318,6 +332,54 @@ export default function WatchlistPage() {
           </div>
         </section>
       ))}
+
+      {/* Drawer for editing a card's strategies */}
+      {editing && (() => {
+        const ed = items?.find((i) => i.display_key === editing);
+        if (!ed) return null;
+        const edTs = ed.targets_detail ?? [];
+        const edHits = edTs.flatMap((t) => (t.hits ?? []).map((h) => h));
+        return (
+          <>
+            <div className="fixed inset-0 bg-black/60 z-30 print:hidden" onClick={() => setEditing(null)} />
+            <aside className="fixed inset-y-0 right-0 w-[32rem] max-w-full z-40 bg-gray-900 border-l border-gray-800 overflow-y-auto print:hidden shadow-2xl">
+              <div className="p-4 space-y-4">
+                <div className="flex items-center gap-3">
+                  {ed.image_url && <img src={cardThumb(ed.image_url)} alt="" className="w-12 h-16 object-cover rounded-sm shrink-0" />}
+                  <div className="min-w-0">
+                    <Link to={`/cards/${encodeURIComponent(ed.display_key)}`} className="text-sm font-semibold text-gray-100 hover:text-indigo-300 block truncate">{ed.name}</Link>
+                    <div className="text-xs text-gray-500">#{ed.number} · {ed.set_name}</div>
+                  </div>
+                  <button onClick={() => setEditing(null)} className="ml-auto text-gray-400 hover:text-white text-sm">✕</button>
+                </div>
+                <TargetEditor displayKey={ed.display_key} initial={edTs} onSaved={load} onClose={() => setEditing(null)} />
+                <div>
+                  <h3 className="text-xs font-semibold text-gray-300 mb-2">Current hits ({edHits.length})</h3>
+                  {edHits.length === 0 ? (
+                    <p className="text-xs text-gray-500">No hits on this card's targets right now.</p>
+                  ) : (
+                    <div className="divide-y divide-gray-800">
+                      {edHits.map((h, idx) => (
+                        <div key={idx} className="py-2 text-xs">
+                          <div className="flex items-center gap-1">
+                            <span className="text-[10px] px-1 rounded bg-gray-800 text-gray-300">{h.source}</span>
+                            <span className="text-[10px] text-gray-500">{h.kind === "auction" ? "auction" : "Buy Now"}</span>
+                            <span className="text-[10px] text-gray-500">· {h.grade_key.toUpperCase()}</span>
+                          </div>
+                          <a href={h.url} target="_blank" rel="noreferrer" className="text-indigo-300 hover:text-indigo-200 block truncate">{h.title}</a>
+                          <div className="text-[11px] text-gray-400">
+                            {usd(h.price_cents)} price · {usd(h.all_in_cents)} all-in · max {usd(h.max_cents)}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              </div>
+            </aside>
+          </>
+        );
+      })()}
     </div>
   );
 }
