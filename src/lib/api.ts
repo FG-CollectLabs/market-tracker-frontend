@@ -2180,3 +2180,49 @@ export const CLASS_LABELS: Record<string, string> = {
   promo_fa_guaranteed: "Promo · FA product", promo_guaranteed: "Promo · product", promo_event_fa: "Promo · FA event", promo_event: "Promo · event",
   exotic_event: "Exotic · event", exotic_promo: "Exotic · promo", exotic_chase: "Exotic · chase",
 };
+
+// Beating the S&P by set and tier (GET /v1/analysis/beat-sp).
+export interface BeatCard {
+  display_key: string;
+  name: string;
+  number: string;
+  image_url?: string;
+  price_cents: number;
+  exp_cents_24m: number;
+  exp_yearly_net: number; // the curve's, after the selling fee, held two years
+  trailing_12m?: number; // its own last year
+  score: number; // the lower of the two
+  now_vs_peak: number;
+  now_vs_release?: number;
+  confidence: string;
+}
+export interface BeatGroup {
+  tier: "S" | "A";
+  set_code: string;
+  set_name: string;
+  lang: string;
+  category: string;
+  months_since_release: number;
+  in_print: boolean;
+  past_window: boolean;
+  exp_yearly_net: number;
+  trailing_12m?: number;
+  score: number;
+  basis: "both" | "curve";
+  pumped: boolean;
+  now_vs_peak: number;
+  why: string;
+  cards: BeatCard[];
+}
+export interface BeatSP {
+  built_at: string;
+  grade: string;
+  benchmark: number;
+  sell_fee_pct: number;
+  s_threshold: number;
+  groups: BeatGroup[];
+  scored_cards: number;
+}
+export function fetchBeatSP(grade: "raw" | "psa-10", lang?: string): Promise<BeatSP> {
+  return get(`/v1/analysis/beat-sp?grade=${grade}${lang && lang !== "all" ? `&lang=${lang}` : ""}`);
+}
