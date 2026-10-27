@@ -1,0 +1,285 @@
+import { useEffect, useState, type ReactNode } from "react";
+import { HIT_REASONS, clearHitReview, reviewHit, type HitReason, type TargetHit, type WatchTarget } from "../lib/api";
+import { TARGET_LABEL } from "./WatchTargets";
+
+// The watchlist's live listings ("hits"): filters, one listing row with its
+// set-aside / note actions, the photo overlay and the strategies drawer.
+
+const usd = (c?: number | null) => (c == null ? "—" : `$${(c / 100).toFixed(2)}`);
+
+export type HitSort = "under" | "ending" | "cheapest";
+
+export interface HitFilters {
+  kind: "all" | "auction" | "buy_now";
+  source: "all" | "fanatics" | "ebay";
+  hideOnePhoto: boolean;
+  sort: HitSort;
+}
+
+export const DEFAULT_HIT_FILTERS: HitFilters = { kind: "all", source: "all", hideOnePhoto: false, sort: "under" };
+
+const FILTERS_KEY = "watchlist.filters";
+
+export function loadHitFilters(): HitFilters {
+  try {
+    const raw = localStorage.getItem(FILTERS_KEY);
+    if (raw) return { ...DEFAULT_HIT_FILTERS, ...JSON.parse(raw) };
+  } catch {
+    // private window or blocked storage: defaults
+  }
+  return DEFAULT_HIT_FILTERS;
+}
+
+export function saveHitFilters(f: HitFilters) {
+  try {
+    localStorage.setItem(FILTERS_KEY, JSON.stringify(f));
+  } catch {
+    // not remembered; fine
+  }
+}
+
+// A raw listing with a single photo can't be showing the back.
+export const onePhotoRaw = (h: TargetHit) => h.grade_key === "raw" && h.image_count === 1;
+
+const passed = (h: TargetHit) => h.review?.status === "pass";
+
+// One listing under a card, with every strategy it matched.
+export interface CardHit {
+  key: string; // source:listing_id
+  h: TargetHit;
+  targets: WatchTarget[];
+  under: number; // 1 - all-in / max (the max for this copy's grade)
+}
+
+export const hitKey = (h: { source: string; listing_id: string }) => `${h.source}:${h.listing_id}`;
+
+// A card's listings under its shown targets that pass the filters, one per
+// listing. Set-aside ones only when includePassed; `hidden` are set aside
+// locally while the save is in flight.
+export function cardHits(targets: WatchTarget[], f: HitFilters, includePassed: boolean, hidden: Set<string>): CardHit[] {
+  const m = new Map<string, CardHit>();
+  for (const t of targets)
+    for (const h of t.hits ?? []) {
+      const k = hitKey(h);
+      if (hidden.has(k) || (!includePassed && passed(h))) continue;
+      if (f.kind !== "all" && h.kind !== f.kind) continue;
+      if (f.source !== "all" && h.source !== f.source) continue;
+      if (f.hideOnePhoto && onePhotoRaw(h)) continue;
+      const under = h.max_cents ? 1 - h.all_in_cents / h.max_cents : 0;
+      const cur = m.get(k);
+      if (!cur) m.set(k, { key: k, h, targets: [t], under });
+      else {
+        cur.targets.push(t);
+        if (under > cur.under) Object.assign(cur, { h, under });
+      }
+    }
+  return sortHits([...m.values()], f.sort);
+}
+
+export function sortHits(list: CardHit[], sort: HitSort): CardHit[] {
+  const end = (x: CardHit) => (x.h.kind === "auction" && x.h.ends_at ? new Date(x.h.ends_at).getTime() : Infinity);
+  return [...list].sort((a, b) => {
+    // Set-aside rows (Show set-aside) go last.
+    if (passed(a.h) !== passed(b.h)) return passed(a.h) ? 1 : -1;
+    if (sort === "ending") return end(a) - end(b) || b.under - a.under;
+    if (sort === "cheapest") return a.h.all_in_cents - b.h.all_in_cents;
+    return b.under - a.under;
+  });
+}
+
+// Time left on an auction: 2d 4h, 3h 12m, or mm:ss under an hour.
+export function timeLeft(iso: string | undefined, now: number): { text: string; urgent: boolean; soon: boolean } | null {
+  if (!iso) return null;
+  const s = Math.floor((new Date(iso).getTime() - now) / 1000);
+  if (s <= 0) return { text: "ended", urgent: true, soon: true };
+  const d = Math.floor(s / 86400), h = Math.floor((s % 86400) / 3600), m = Math.floor((s % 3600) / 60), sec = s % 60;
+  const text = d > 0 ? `${d}d ${h}h` : h > 0 ? `${h}h ${m}m` : `${String(m).padStart(2, "0")}:${String(sec).padStart(2, "0")}`;
+  return { text, urgent: s < 300, soon: s < 3600 };
+}
+
+// The page's clock: every 30 s, every second while the soonest auction shown
+// (soonest: its end, ms) ends within the hour.
+export function useNow(soonest: number | null): number {
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    const fast = soonest != null && soonest - now < 3600_000 && soonest > now - 60_000;
+    const t = setTimeout(() => setNow(Date.now()), fast ? 1000 : 30000);
+    return () => clearTimeout(t);
+  }, [now, soonest]);
+  return now;
+}
+
+const reasonLabel = (r?: HitReason) =>
+  r === "no_back_photo" ? "No back photo · auto" : HIT_REASONS.find((x) => x.key === r)?.label ?? "Set aside";
+
+// eBay photo URLs carry their size (s-l225); ask for a large one.
+export const largePhoto = (url: string) => url.replace(/\/s-l\d+\./, "/s-l1600.");
+
+export interface Photo {
+  url: string;
+  title: string;
+  href?: string;
+}
+
+export function HitRow({ ch, displayKey, now, error, onPhoto, onSetAside, onChanged }: {
+  ch: CardHit;
+  displayKey: string;
+  now: number;
+  error?: string;
+  onPhoto: (p: Photo) => void;
+  onSetAside: (ch: CardHit, reason: HitReason, note: string) => void;
+  onChanged: () => void;
+}) {
+  const { h } = ch;
+  const [menu, setMenu] = useState(false);
+  const [asideNote, setAsideNote] = useState("");
+  const [editing, setEditing] = useState(false);
+  const [note, setNote] = useState(h.review?.note ?? "");
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+  const isPassed = passed(h);
+  const left = h.kind === "auction" ? timeLeft(h.ends_at, now) : null;
+
+  const run = async (f: () => Promise<unknown>) => {
+    setBusy(true);
+    setErr(null);
+    try {
+      await f();
+      onChanged();
+      return true;
+    } catch (e) {
+      setErr((e as Error).message);
+      return false;
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const saveNote = async () => {
+    const text = note.trim();
+    const ok = await run(() => (text
+      ? reviewHit({ source: h.source, listing_id: h.listing_id, display_key: displayKey, status: "note", note: text, price_cents: h.all_in_cents })
+      : clearHitReview(h.source, h.listing_id)));
+    if (ok) setEditing(false);
+  };
+
+  return (
+    <div className={`py-2 text-xs flex items-start gap-2 break-inside-avoid ${isPassed ? "opacity-50" : ""}`}>
+      {h.image_url ? (
+        <button onClick={() => onPhoto({ url: largePhoto(h.image_url!), title: h.title, href: h.url })} className="shrink-0 print:pointer-events-none" title="Show the photo larger">
+          <img src={h.image_url} alt="" loading="lazy" className="w-12 h-12 object-cover rounded-sm bg-gray-800" />
+        </button>
+      ) : (
+        <div className="w-12 h-12 rounded-sm bg-gray-800 shrink-0" title="No photo" />
+      )}
+      <div className="min-w-0 flex-1 space-y-0.5">
+        <div className="flex flex-wrap items-center gap-1 text-[10px]">
+          <span className="px-1 rounded bg-gray-800 text-gray-300 print:border print:border-gray-400 print:text-black">{h.source === "fanatics" ? "Fanatics" : "eBay"}</span>
+          <span className={`px-1 rounded ${h.kind === "auction" ? "bg-amber-900/40 text-amber-200" : "bg-emerald-900/40 text-emerald-200"} print:border print:border-gray-400 print:text-black`}>
+            {h.kind === "auction" ? "Auction" : "Buy Now"}
+          </span>
+          <span className="text-gray-300 font-medium print:text-black">{h.grade_key.toUpperCase()}</span>
+          <span className="text-gray-500">· {ch.targets.map((t) => TARGET_LABEL[t.target]).join(", ")}</span>
+          {onePhotoRaw(h) && <span className="px-1 rounded bg-amber-900/50 text-amber-200" title="Only one photo: the back isn't shown">1 photo</span>}
+          {isPassed && <span className="px-1 rounded border border-gray-600 text-gray-300">{reasonLabel(h.review?.reason)}</span>}
+        </div>
+        {h.url
+          ? <a href={h.url} target="_blank" rel="noreferrer" className="text-indigo-300 hover:text-indigo-200 print:text-black block truncate">{h.title}</a>
+          : <span className="text-gray-200 block truncate">{h.title}</span>}
+        {h.review?.note && !editing && <div className="text-[11px] text-amber-200/80 print:text-black">{h.review.note}</div>}
+        <div className="text-[11px] text-gray-400 tabular-nums print:text-black">
+          {h.kind === "auction" ? "Bid" : "Ask"} {usd(h.price_cents)}
+          {h.all_in_cents !== h.price_cents && <> · all-in <span className="text-gray-200 print:text-black">{usd(h.all_in_cents)}</span></>}
+          {" "}· max {usd(h.max_cents)} ·{" "}
+          <span className={ch.under >= 0 ? "text-green-300 print:text-black" : "text-red-300"}>{Math.round(ch.under * 100)}% under</span>
+          {h.kind === "auction" && (
+            <>
+              {" "}· {h.bids ?? 0} bid{h.bids === 1 ? "" : "s"}
+              {left && <> · <span className={left.urgent ? "text-red-400 font-medium" : "text-gray-200"}>{left.text}</span></>}
+            </>
+          )}
+        </div>
+
+        <div className="flex flex-wrap items-center gap-1 pt-0.5 print:hidden">
+          {isPassed ? (
+            <button disabled={busy} onClick={() => run(() => clearHitReview(h.source, h.listing_id))}
+              className="text-[10px] px-1.5 py-0.5 rounded border border-gray-700 text-gray-300 hover:text-white disabled:opacity-40">Restore</button>
+          ) : (
+            <span className="relative">
+              <button onClick={() => setMenu(!menu)} className="text-[10px] px-1.5 py-0.5 rounded border border-gray-700 text-gray-300 hover:text-white">Set aside ▾</button>
+              {menu && (
+                <div className="absolute left-0 top-full mt-1 z-30 w-64 rounded border border-gray-700 bg-gray-950 p-2 space-y-1 shadow-lg"
+                  onKeyDown={(e) => { if (e.key === "Escape") setMenu(false); }}>
+                  <input value={asideNote} onChange={(e) => setAsideNote(e.target.value)} maxLength={2000} placeholder="Note (optional)"
+                    className="w-full bg-gray-900 border border-gray-700 rounded px-1.5 py-0.5 text-[11px] text-gray-200" />
+                  {HIT_REASONS.map((r) => (
+                    <button key={r.key} title={r.hint} onClick={() => { setMenu(false); onSetAside(ch, r.key, asideNote.trim()); }}
+                      className="block w-full text-left px-1.5 py-1 rounded text-[11px] text-gray-200 hover:bg-gray-800">
+                      {r.label} <span className="text-gray-500">· {r.hint}</span>
+                    </button>
+                  ))}
+                  <button onClick={() => setMenu(false)} className="text-[10px] text-gray-500 hover:text-gray-300">Cancel</button>
+                </div>
+              )}
+            </span>
+          )}
+          {!editing && (
+            <button onClick={() => { setEditing(true); setNote(h.review?.note ?? ""); }}
+              className="text-[10px] px-1.5 py-0.5 rounded border border-gray-700 text-gray-400 hover:text-white">{h.review?.note ? "Edit note" : "Note"}</button>
+          )}
+        </div>
+        {editing && (
+          <div className="flex gap-1 pt-0.5 print:hidden">
+            <input autoFocus value={note} onChange={(e) => setNote(e.target.value)} maxLength={2000}
+              onKeyDown={(e) => { if (e.key === "Enter") saveNote(); if (e.key === "Escape") setEditing(false); }}
+              className="flex-1 bg-gray-950 border border-gray-700 rounded px-1.5 py-0.5 text-[11px] text-gray-200" />
+            <button disabled={busy} onClick={saveNote} className="text-[10px] px-1.5 rounded bg-indigo-600 text-white hover:bg-indigo-500 disabled:opacity-40">Save</button>
+            <button onClick={() => setEditing(false)} className="text-[10px] px-1 text-gray-400 hover:text-gray-200">Cancel</button>
+          </div>
+        )}
+        {(err || error) && <div className="text-[11px] text-red-400">{err || error}</div>}
+      </div>
+    </div>
+  );
+}
+
+// A photo shown large; Escape or a click closes it.
+export function PhotoOverlay({ photo, onClose }: { photo: Photo; onClose: () => void }) {
+  useEffect(() => {
+    const k = (e: KeyboardEvent) => { if (e.key === "Escape") onClose(); };
+    window.addEventListener("keydown", k);
+    return () => window.removeEventListener("keydown", k);
+  }, [onClose]);
+  return (
+    <div className="fixed inset-0 z-40 bg-black/80 flex items-center justify-center p-4 print:hidden" onClick={onClose}>
+      <div className="max-w-3xl w-full space-y-2" onClick={(e) => e.stopPropagation()}>
+        <img src={photo.url} alt={photo.title} className="max-h-[80vh] mx-auto rounded" onClick={onClose} />
+        <div className="flex items-center justify-between gap-2 text-xs">
+          <span className="text-gray-300 truncate">{photo.title}</span>
+          {photo.href && <a href={photo.href} target="_blank" rel="noreferrer" className="shrink-0 text-indigo-300 hover:text-indigo-200">Open the listing ↗</a>}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// A panel on the right over a backdrop; Escape or the backdrop closes it.
+export function Drawer({ title, onClose, children }: { title: ReactNode; onClose: () => void; children: ReactNode }) {
+  useEffect(() => {
+    const k = (e: KeyboardEvent) => { if (e.key === "Escape") onClose(); };
+    window.addEventListener("keydown", k);
+    return () => window.removeEventListener("keydown", k);
+  }, [onClose]);
+  return (
+    <div className="fixed inset-0 z-40 print:hidden">
+      <div className="absolute inset-0 bg-black/60" onClick={onClose} />
+      <aside className="fixed inset-y-0 right-0 w-[32rem] max-w-full bg-gray-950 border-l border-gray-800 overflow-y-auto p-4 space-y-3">
+        <div className="flex items-start justify-between gap-2">
+          <div className="min-w-0">{title}</div>
+          <button onClick={onClose} className="text-gray-500 hover:text-gray-200 text-sm" title="Close (Esc)">✕</button>
+        </div>
+        {children}
+      </aside>
+    </div>
+  );
+}
