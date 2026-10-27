@@ -2112,3 +2112,71 @@ export const TRAINER_BUCKETS: { key: string; label: string }[] = [
   { key: "aura_s", label: "Aura S" }, { key: "aura_a", label: "Aura A" }, { key: "aura_b", label: "Aura B" },
   { key: "other", label: "Other trainers" },
 ];
+
+// Promo and exotic classes: each gets its own release curve (GET
+// /v1/card-classes; tag / add via /v1/admin/card-classes).
+export interface CardClassInfo {
+  key: string;
+  group: "promo" | "exotic";
+  label: string;
+  hint: string;
+}
+export interface ClassedCard {
+  display_key: string;
+  name: string;
+  number: string;
+  set_code: string;
+  set_name: string;
+  lang: string;
+  image_url?: string;
+  class: string;
+  subtype?: string;
+  note?: string;
+  source_url?: string;
+  release_date?: string; // the card's own
+  set_release_date?: string;
+  price_link: boolean; // has a PriceCharting page: price history fills in weekly
+  raw_cents?: number;
+  manual: boolean;
+}
+export interface ClassEdit {
+  display_key: string;
+  class: string;
+  subtype?: string;
+  note?: string;
+  source_url?: string;
+  release_date?: string; // YYYY-MM-DD; "" clears the card's own date
+  price_link?: string; // a pricecharting.com/game/... card page
+}
+export interface CardSearchHit {
+  display_key: string;
+  set_code: string;
+  set_name: string;
+  name: string;
+  number: string;
+  finish?: string;
+  rarity?: string;
+  tracked: boolean;
+}
+
+export function fetchCardClasses(): Promise<{ classes: CardClassInfo[]; cards: ClassedCard[] }> {
+  return get("/v1/card-classes");
+}
+export function saveCardClasses(cards: ClassEdit[]): Promise<{ classes: CardClassInfo[]; cards: ClassedCard[] }> {
+  return adminFetch("/v1/admin/card-classes", { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ cards }) });
+}
+export function removeCardClass(displayKey: string): Promise<{ deleted: number }> {
+  return adminFetch(`/v1/admin/card-classes/${encodeURIComponent(displayKey)}`, { method: "DELETE" });
+}
+export function addCustomCard(c: Omit<ClassEdit, "display_key"> & { name: string; lang: string; number?: string; image_url?: string }): Promise<{ display_key: string }> {
+  return adminFetch("/v1/admin/card-classes/custom", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(c) });
+}
+export function searchCards(q: string, set = "", limit = 50): Promise<{ cards: CardSearchHit[] }> {
+  return get(`/v1/tracked/search?q=${encodeURIComponent(q)}${set ? `&set=${encodeURIComponent(set)}` : ""}&limit=${limit}`);
+}
+
+// Labels for the class curves on the Timing page.
+export const CLASS_LABELS: Record<string, string> = {
+  promo_fa_guaranteed: "Promo · FA product", promo_guaranteed: "Promo · product", promo_event_fa: "Promo · FA event", promo_event: "Promo · event",
+  exotic_event: "Exotic · event", exotic_promo: "Exotic · promo", exotic_chase: "Exotic · chase",
+};
