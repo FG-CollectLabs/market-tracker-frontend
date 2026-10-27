@@ -23,6 +23,12 @@ const DIMS: { key: string; label: string; hint: string; buckets: { key: string; 
     key: "scarcity", label: "Scarcity", hint: "Packs to pull a specific copy = pull-rate estimate for its tier x cards of that tier in the set; quartiles, 4 = scarcest. Pull rates are community estimates.",
     buckets: [{ key: "scarcity:1", label: "Most common" }, { key: "scarcity:2", label: "Common" }, { key: "scarcity:3", label: "Scarce" }, { key: "scarcity:4", label: "Scarcest" }],
   },
+  {
+    key: "pull", label: "Pull difficulty", hint: "Inside each rarity tier: easier or harder to pull than the tier's median (packs to pull that exact card, in its language). A set with three times the usual IRs makes each of its IRs harder to pull.",
+    buckets: [["ir", "IR"], ["sir", "SIR"], ["ultra", "Full art"], ["gold", "Gold"]].flatMap(([t, l]) => [
+      { key: `pull:${t}:easy`, label: `${l} easy` }, { key: `pull:${t}:hard`, label: `${l} hard` },
+    ]),
+  },
 ];
 
 const GRADES = [
@@ -35,11 +41,19 @@ const pct = (v: number) => {
   return `${r > 0 ? "+" : ""}${r === 0 ? 0 : r}%`;
 };
 
+// Past the palette, colors repeat dashed; pull difficulty pairs a tier's
+// easy (solid) and hard (dashed) in one color.
+function bucketStyle(dim: string, i: number) {
+  return dim === "pull"
+    ? { color: SERIES[Math.floor(i / 2) % SERIES.length], dashed: i % 2 === 1 }
+    : { color: SERIES[i % SERIES.length], dashed: i >= SERIES.length };
+}
+
 export default function CompareBy({ data, lang }: { data: ReleaseCurves; lang: CurveLang }) {
   const [dim, setDim] = useState(DIMS[0].key);
   const [grade, setGrade] = useState("psa-10");
   const d = DIMS.find((x) => x.key === dim)!;
-  const color = (i: number) => SERIES[i % SERIES.length];
+  const color = (i: number) => bucketStyle(dim, i).color;
 
   const { xs, series } = useMemo(() => {
     const curves = d.buckets.map((b) => data.curves.find((c) => c.category === b.key && c.grade === grade && c.lang === lang));
@@ -49,10 +63,10 @@ export default function CompareBy({ data, lang }: { data: ReleaseCurves; lang: C
       const c = curves[i];
       if (!c) return [];
       const by = new Map(c.points.map((p) => [p.month, p.change * 100]));
-      return [{ label: b.label, color: color(i), values: xs.map((m) => by.get(Number(m)) ?? null) }];
+      return [{ label: b.label, ...bucketStyle(dim, i), values: xs.map((m) => by.get(Number(m)) ?? null) }];
     });
     return { xs, series };
-  }, [data, d, grade, lang]);
+  }, [data, d, dim, grade, lang]);
 
   const rows = d.buckets.map((b, i) => ({
     b, i,

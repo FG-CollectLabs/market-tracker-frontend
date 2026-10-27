@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { Fragment, useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import {
   fetchReleaseCurves, fetchSetWindows, type CurveCategory, type CurveGrade, type CurveLang, type ReleaseCurve, type ReleaseCurves, type SetWindows,
@@ -116,14 +116,41 @@ function ReturnsFrom({ curves, picked, start }: { curves: ReleaseCurve[]; picked
 
 const WIN_GRADE: Record<string, "raw" | "psa-10" | "cgc-10"> = { raw: "raw", "psa-10": "psa-10", "psa-9": "psa-10", "cgc-10": "cgc-10", "cgc-10-pristine": "cgc-10", "cgc-7-9": "raw" };
 
+// The numbers for a set at month m on curve c: vs launch, vs the curve's
+// bottom, and the next 6 / 12 / 24 months (with the 24 as a yearly rate).
+function cycleCells(c: ReleaseCurve | undefined, m: number) {
+  const v = (r: number | null, yearly?: number) => r == null ? <span className="text-gray-600">—</span> : (
+    <>
+      <span className={r > 0 ? "text-green-400" : r < 0 ? "text-red-400" : ""}>{pct(r)}</span>
+      {yearly != null && <span className="text-gray-500"> · {pct(annualize(r, yearly))}/yr</span>}
+    </>
+  );
+  const now = c ? changeAt(c, m) : null;
+  const vsLow = c && now != null ? (1 + now) / (1 + c.bottom_change) - 1 : null;
+  return (
+    <>
+      <td className="py-1 px-2 text-right">{v(now)}</td>
+      <td className="py-1 px-2 text-right" title={c ? `The curve's low: ${pct(c.bottom_change)} vs launch, month ${c.bottom_month}` : undefined}>
+        {vsLow == null ? <span className="text-gray-600">—</span> : <span className={vsLow <= 0.03 ? "text-green-400" : vsLow <= 0.15 ? "text-amber-300" : "text-gray-300"}>{Math.abs(vsLow) <= 0.03 ? "at low" : pct(vsLow)}</span>}
+      </td>
+      <td className="py-1 px-2 text-right">{v(c ? changeBetween(c, m, m + 6) : null)}</td>
+      <td className="py-1 px-2 text-right">{v(c ? changeBetween(c, m, m + 12) : null)}</td>
+      <td className="py-1 px-2 text-right whitespace-nowrap">{v(c ? changeBetween(c, m, m + 24) : null, 24)}</td>
+    </>
+  );
+}
+
+const SET_TIERS: CurveCategory[] = ["ir", "sir", "ultra", "gold", "gallery"];
+
 // Each set's position on the curve for one tier + grade: where it is now,
-// what the curve says comes next.
-function SetCycle({ sets, curves, cat, grade }: { sets: SetWindows[]; curves: ReleaseCurve[]; cat: CurveCategory; grade: string }) {
+// what the curve says comes next. Click a set for the same per rarity tier.
+function SetCycle({ sets, curves, all, cat, grade }: { sets: SetWindows[]; curves: ReleaseCurve[]; all: ReleaseCurve[]; cat: CurveCategory; grade: string }) {
+  const [open, setOpen] = useState<string | null>(null);
   const c = curves.find((x) => x.grade === grade);
   if (!c) return <p className="text-xs text-gray-500">No {GRADE_LABEL[grade] ?? grade} curve for this tier and language.</p>;
   const rows = [...sets].sort((a, b) => a.months_since_release - b.months_since_release);
   const winOf = (s: SetWindows, g: string) => s.windows.find((w) => w.grade === g && w.tier === cat) ?? s.windows.find((w) => w.grade === g && w.tier === "all");
-  const v = (r: number | null) => r == null ? <span className="text-gray-600">—</span> : <span className={r > 0 ? "text-green-400" : r < 0 ? "text-red-400" : ""}>{pct(r)}</span>;
+  const tierCurve = (t: CurveCategory) => all.find((x) => x.grade === grade && x.category === t);
   return (
     <div className="overflow-x-auto">
       <table className="w-full text-xs tabular-nums">
@@ -134,9 +161,10 @@ function SetCycle({ sets, curves, cat, grade }: { sets: SetWindows[]; curves: Re
             <th className="text-left py-1 px-2 font-medium" title="Phase of the raw price cycle">Phase</th>
             <th className="text-left py-1 px-2 font-medium" title={`This tier's ${GRADE_LABEL[grade]} buy window`}>{GRADE_LABEL[grade]} window</th>
             <th className="text-right py-1 px-2 font-medium" title="Where the curve sits now vs launch">vs launch now</th>
+            <th className="text-right py-1 px-2 font-medium" title="Where the curve sits now vs its typical low (green: at the low)">vs expected low</th>
             <th className="text-right py-1 px-2 font-medium" title="Curve change over the next 6 months">Next 6 mo</th>
-            <th className="text-right py-1 px-2 font-medium" title="Curve change over the next 12 months">Next 12 mo</th>
-            <th className="text-right py-1 px-2 font-medium" title="Curve change over the next 24 months">Next 24 mo</th>
+            <th className="text-right py-1 px-2 font-medium" title="Curve change over the next 12 months (= the yearly rate)">Next 12 mo</th>
+            <th className="text-right py-1 px-2 font-medium" title="Curve change over the next 24 months, and per year">Next 24 mo</th>
           </tr>
         </thead>
         <tbody className="divide-y divide-gray-800 text-gray-300">
@@ -144,22 +172,40 @@ function SetCycle({ sets, curves, cat, grade }: { sets: SetWindows[]; curves: Re
             const m = Math.floor(s.months_since_release);
             const w = winOf(s, WIN_GRADE[grade] ?? "raw");
             const raw = winOf(s, "raw");
+            const isOpen = open === s.code;
+            const tiers = SET_TIERS.filter((t) => (s.tiers?.[t] ?? 0) > 0);
             return (
-              <tr key={s.code}>
-                <td className="py-1 pr-2 whitespace-nowrap">
-                  <Link to={`/browse/${encodeURIComponent(s.code)}`} className="text-gray-100 hover:text-indigo-300">{s.name}</Link>
-                  {!s.in_print && <span className="ml-1.5 text-sky-300">OOP</span>}
-                </td>
-                <td className="py-1 px-2 text-right">M{m}</td>
-                <td className="py-1 px-2"><PhaseChip phase={phaseOfWindow(raw)} title={raw?.headline} /></td>
-                <td className="py-1 px-2 whitespace-nowrap text-gray-400" title={w?.headline}>
-                  {w ? `M${w.from}–${w.to} · ${w.action === "buy" ? "in window" : w.action === "wait" ? `opens in ${w.months_to_window ?? "?"} mo` : w.action === "past" ? "past" : w.action === "watch_only" ? "watch only" : "—"}` : "—"}
-                </td>
-                <td className="py-1 px-2 text-right">{v(changeAt(c, m))}</td>
-                <td className="py-1 px-2 text-right">{v(changeBetween(c, m, m + 6))}</td>
-                <td className="py-1 px-2 text-right">{v(changeBetween(c, m, m + 12))}</td>
-                <td className="py-1 px-2 text-right">{v(changeBetween(c, m, m + 24))}</td>
-              </tr>
+              <Fragment key={s.code}>
+                <tr className={`cursor-pointer ${isOpen ? "bg-gray-800/40" : "hover:bg-gray-800/20"}`} onClick={(e) => { if (!(e.target as HTMLElement).closest("a")) setOpen(isOpen ? null : s.code); }}
+                  title="Click for each rarity tier in this set">
+                  <td className="py-1 pr-2 whitespace-nowrap">
+                    <span className="text-gray-500 mr-1">{isOpen ? "▾" : "▸"}</span>
+                    <Link to={`/browse/${encodeURIComponent(s.code)}`} className="text-gray-100 hover:text-indigo-300">{s.name}</Link>
+                    {!s.in_print && <span className="ml-1.5 text-sky-300">OOP</span>}
+                  </td>
+                  <td className="py-1 px-2 text-right">M{m}</td>
+                  <td className="py-1 px-2"><PhaseChip phase={phaseOfWindow(raw)} title={raw?.headline} /></td>
+                  <td className="py-1 px-2 whitespace-nowrap text-gray-400" title={w?.headline}>
+                    {w ? `M${w.from}–${w.to} · ${w.action === "buy" ? "in window" : w.action === "wait" ? `opens in ${w.months_to_window ?? "?"} mo` : w.action === "past" ? "past" : w.action === "watch_only" ? "watch only" : "—"}` : "—"}
+                  </td>
+                  {cycleCells(c, m)}
+                </tr>
+                {isOpen && (tiers.length === 0
+                  ? <tr><td colSpan={9} className="py-1 pl-6 text-gray-500">No tracked IR / SIR / full-art / gold / gallery cards in this set.</td></tr>
+                  : tiers.map((t) => {
+                    const tc = tierCurve(t);
+                    const tw = s.windows.find((x) => x.grade === (WIN_GRADE[grade] ?? "raw") && x.tier === t);
+                    return (
+                      <tr key={t} className="bg-gray-950/40 text-gray-400">
+                        <td className="py-1 pr-2 pl-6 whitespace-nowrap">{CAT_LABEL[t]} <span className="text-gray-600">({s.tiers[t]} cards{tc ? "" : ", no curve"})</span></td>
+                        <td className="py-1 px-2 text-right">M{m}</td>
+                        <td className="py-1 px-2" />
+                        <td className="py-1 px-2 whitespace-nowrap" title={tw?.headline}>{tw ? `M${tw.from}–${tw.to}` : "—"}</td>
+                        {cycleCells(tc, m)}
+                      </tr>
+                    );
+                  }))}
+              </Fragment>
             );
           })}
         </tbody>
@@ -331,6 +377,7 @@ export default function TimingPage() {
               <span className="text-gray-500">Slide to re-base every curve on buying at that month instead of at release.</span>
             </div>
             <LineChart weeks={price.xs} series={price.series} fmt={(v) => pct(v / 100)} axisFmt={axisPct} shadeBefore={start} markers={markers}
+              fmtAt={(v, i) => (i - start >= 6 ? `${pct(v / 100)} · ${pct(annualize(v / 100, i - start))}/yr` : pct(v / 100))}
               xLabel={(m) => `M${m}`} xTitle={(m) => `Month ${m} since release${start ? ` (${Number(m) - start >= 0 ? `${Number(m) - start} months after buying` : "before buying"})` : ""}`} />
             <ReturnsFrom curves={curves} picked={picked} start={start} />
             <p className="text-xs text-gray-500">
@@ -359,15 +406,16 @@ export default function TimingPage() {
             <div>
               <h2 className="text-sm font-semibold text-gray-100">Where sets are on the cycle · {CAT_LABEL[cat]}</h2>
               <p className="text-xs text-gray-500">
-                Each set at its current month on the {CAT_LABEL[cat]} curve: where the curve has it vs launch, and what the curve says the next 6, 12 and 24
-                months typically bring. The curve is the tier's average, not a forecast for any one card.
+                Each set at its current month on the {CAT_LABEL[cat]} curve: where the curve has it vs launch and vs its typical low, and what the curve
+                says the next 6, 12 and 24 months typically bring. Click a set to see the same for each rarity tier in it. The curve is the tier's
+                average, not a forecast for any one card.
               </p>
             </div>
             <select value={cycleGrade} onChange={(e) => setCycleGrade(e.target.value)} className="bg-gray-950 border border-gray-700 rounded px-1.5 py-1 text-xs text-gray-200">
               {GRADES.map((g) => <option key={g.key} value={g.key}>{g.label}</option>)}
             </select>
           </div>
-          <SetCycle sets={sets} curves={curves} cat={cat} grade={cycleGrade} />
+          <SetCycle sets={sets} curves={curves} all={data.curves.filter((c) => c.lang === lang)} cat={cat} grade={cycleGrade} />
         </section>
       )}
 
@@ -466,7 +514,10 @@ export default function TimingPage() {
       {bottoms.length > 0 && (
         <section className="rounded-lg border border-gray-800 bg-gray-900 p-4 space-y-2">
           <h2 className="text-sm font-semibold text-gray-100">When individual cards bottomed · {CAT_LABEL[cat]}</h2>
-          <p className="text-xs text-gray-500">Cards with prices from launch through month 18+: the month each was cheapest in its first two years.</p>
+          <p className="text-xs text-gray-500">
+            Cards with prices from launch through month 18+: the month each was cheapest in its first two years, and that low as a share of its release
+            price. A card selling inside "Low ÷ release" is at a typical bottom for its kind.
+          </p>
           <table className="w-full text-sm">
             <thead className="text-xs text-gray-500">
               <tr>
@@ -475,6 +526,7 @@ export default function TimingPage() {
                 <th className="text-right py-1 font-medium">Median bottom</th>
                 <th className="text-right py-1 font-medium">Middle half</th>
                 <th className="text-right py-1 font-medium">Median drop from launch</th>
+                <th className="text-right py-1 font-medium" title="Each card's low ÷ its release price (its price in the first two months): median, and the middle half of cards">Low ÷ release</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-800 text-gray-300 tabular-nums">
@@ -485,6 +537,9 @@ export default function TimingPage() {
                   <td className="py-1.5 text-right">month {b.median_month}</td>
                   <td className="py-1.5 text-right">months {b.p25_month}–{b.p75_month}</td>
                   <td className="py-1.5 text-right">{pct(b.median_drop)}</td>
+                  <td className="py-1.5 text-right">
+                    {b.low_ratio != null ? <>{Math.round(b.low_ratio * 100)}% <span className="text-gray-500">({Math.round((b.low_ratio_p25 ?? 0) * 100)}–{Math.round((b.low_ratio_p75 ?? 0) * 100)}%)</span></> : "—"}
+                  </td>
                 </tr>
               ))}
             </tbody>

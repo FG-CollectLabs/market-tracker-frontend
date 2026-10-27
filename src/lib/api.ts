@@ -769,6 +769,11 @@ export interface ActionMetrics {
   phase?: string;
   break_even_cents?: number;
   target_cents?: number;
+  release_cents?: number;
+  release_estimated?: boolean;
+  now_vs_release?: number;
+  now_vs_bottom?: number;
+  low_range?: [number, number];
 }
 
 export interface ServiceTier {
@@ -933,6 +938,13 @@ export interface Lifecycle {
   bottom_cents?: number;
   buy_under_cents?: number;
   months_to_bottom: number;
+  release_cents?: number;
+  release_estimated?: boolean;
+  now_vs_release?: number;
+  now_vs_bottom?: number;
+  low_range?: [number, number];
+  bottom_vs_release: number;
+  low_cards?: number;
 }
 
 export interface CurvePoint {
@@ -971,6 +983,9 @@ export interface CurveBottoms {
   p25_month: number;
   p75_month: number;
   median_drop: number;
+  low_ratio?: number; // each card's low ÷ its release price: median and middle half
+  low_ratio_p25?: number;
+  low_ratio_p75?: number;
 }
 
 export interface Appreciation {
@@ -1138,6 +1153,13 @@ export interface PlaySummary {
   break_even_cents?: number;
   bid_cents?: number;
   grader?: string;
+  release_cents?: number;
+  release_estimated?: boolean;
+  now_vs_release?: number;
+  now_vs_bottom?: number;
+  low_range?: [number, number];
+  exp_bottom_cents?: number;
+  bottom_vs_release?: number;
 }
 
 export interface AuctionWeek {

@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { fetchCardAnalysis, TRAINER_BUCKETS, type ActionMetrics, type BuyAction, type CardAnalysis, type Strategy, type FairValue, type GradeAnalysis, type GradingEV, type Lifecycle } from "../lib/api";
+import ReleaseVs from "./ReleaseVs";
 import { formatCents } from "../lib/roi";
 import { AsOf } from "./AsOf";
 import { Spinner, ErrorMsg } from "./Spinner";
@@ -206,6 +207,7 @@ function TimingBlock({ l, label }: { l: Lifecycle; label: string }) {
             </>
           )}
           {l.bottom_cents != null && l.phase !== "falling" && <> · typical low ~{money(l.bottom_cents)}</>}
+          {" · "}<ReleaseVs f={l} />
           {l.buy_under_cents != null && (
             <>
               {" · "}buy under <span className={inRange ? "text-green-400 font-medium" : "text-gray-100"}>{money(l.buy_under_cents)}</span>
@@ -216,7 +218,8 @@ function TimingBlock({ l, label }: { l: Lifecycle; label: string }) {
       )}
       <div className="text-gray-500">
         {l.card_change != null && <>This card {pct(l.card_change)} since launch; </>}
-        {tier} cards typically bottom at {pct(l.bottom_change)} around month {l.bottom_month} (low-risk months {l.window_from}–{l.window_to}).
+        {tier} cards typically bottom at {pct(l.bottom_change)} around month {l.bottom_month} (low-risk months {l.window_from}–{l.window_to})
+        {l.low_range && <>; cards' own lows run {Math.round(l.low_range[0] * 100)}–{Math.round(l.low_range[1] * 100)}% of release</>}.
       </div>
     </div>
   );
@@ -235,6 +238,7 @@ export function MetricsStrip({ m, unit }: { m: ActionMetrics; unit: string }) {
   return (
     <div className="flex flex-wrap gap-1.5 text-[11px] mt-1.5">
       {m.market_cents != null && chip(`${unit} now`, money(m.market_cents))}
+      {(m.now_vs_release != null || m.now_vs_bottom != null) && chip("vs release", <ReleaseVs f={m} />)}
       {m.bottom_cents != null && m.phase === "falling" &&
         chip("Expected bottom", `~${money(m.bottom_cents)}`, `In ~${Math.round(m.months_to_bottom)} months (month ${m.bottom_month})${m.card_change != null && m.curve_bottom != null ? `; this card ${pct(m.card_change)} since launch vs a typical ${pct(m.curve_bottom)}` : ""}`)}
       {m.buy_under_cents != null && chip("Buy under", money(m.buy_under_cents), "Top of the typical bottom band")}
