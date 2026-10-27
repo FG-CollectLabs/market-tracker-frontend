@@ -8,14 +8,32 @@
 - Checked: `npm run lint`, `npm run typecheck`, `npm run build` all pass.
 - Not sure / skipped: nothing significant; the drawer/modal tasks (2-4) are pending.
 
-## 2. Edit strategies in a side drawer
-- Pending.
+## 2-4. Cards with their listings, set aside with a reason, filters and photos
 
-## 3. Pass and notes on hits
-- Pending.
+Built by Claude (not opencode) in one PR, `feat/watchlist-cards-reviews`, after opencode's #69-#71
+followed the old version of this doc and #73 / #74 (the v2 redo) missed most of the spec (see the
+review comments on #73 and #74). Those PRs are closed unmerged.
 
-## 4. Hits: auctions and filters
-- Pending.
+Files: `src/pages/WatchlistPage.tsx`, new `src/components/WatchHits.tsx` (filters, the listing row,
+the photo overlay, the drawer, the shared clock).
+
+- **Task 2:** the big Hits table is gone; "Best hits" shows the 8 listings most under their max
+  (click: opens the card and scrolls to it). Clicking a card row expands its listings, one row per
+  listing (a listing matching two strategies shows once, with both). Strategy chips per target,
+  amber "paused" with the gate text; a listings badge on every card with targets. "Edit strategies"
+  opens `TargetEditor` in a right-side drawer (Escape / backdrop / Cancel / Save). Open cards print
+  their listings.
+- **Task 3:** "Set aside ▾" is a menu of `HIT_REASONS` with an optional note; the row leaves at once
+  with Undo for 5 s; a failed save puts it back with the error. Note / Edit note inline. "Show
+  set-aside (N)": dimmed rows with the reason badge ("No back photo · auto" for the agent), Restore.
+  Counts and Best hits never include set-aside listings.
+- **Task 4:** Kind / Source / "Hide 1-photo raw listings" and the sort, remembered in
+  `localStorage` (`watchlist.filters`). Auction rows: bid, bids, time left (`2d 4h`, `3h 12m`,
+  `mm:ss`, red under 5 min) on one clock (30 s, 1 s while an auction shown ends within the hour).
+  "1 photo" badge; clicking a photo opens it large with a link to the listing.
+
+Checked: lint, `tsc -b`, build; the filter / de-dupe / sort / countdown logic run against sample
+data (esbuild bundle). Not clicked through signed in.
 
 ## Review
 
