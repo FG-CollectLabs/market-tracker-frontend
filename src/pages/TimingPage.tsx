@@ -3,6 +3,7 @@ import { Link } from "react-router-dom";
 import {
   fetchReleaseCurves, fetchSetWindows, type CurveCategory, type CurveGrade, type CurveLang, type ReleaseCurve, type ReleaseCurves, type SetWindows,
   type WindowRow,
+  CLASS_LABELS,
 } from "../lib/api";
 import { LineChart, Legend, SERIES, type ChartMarker, type LineSeries } from "../components/HistoryCharts";
 import { PhaseChip, phaseOfWindow } from "../components/BuyWindows";
@@ -24,7 +25,8 @@ const CATEGORIES: { key: CurveCategory; label: string; hint: string }[] = [
   { key: "ultra", label: "Full art / UR", hint: "Ultra Rares and full-art trainers; Japanese SR." },
   { key: "gold", label: "Gold / hyper", hint: "Hyper and Mega Hyper Rares; SV-era Secret Rares; Japanese UR." },
   { key: "gallery", label: "TG / GG", hint: "Sword & Shield Trainer Gallery and Galarian Gallery." },
-  { key: "promo", label: "Promos", hint: "Tracked promos (owned ones for now). Box vs ETB promos need a promo-source list (roadmap)." },
+  { key: "promo", label: "Promos (untagged)", hint: "Promos not tagged with a class on the Promos page." },
+  ...Object.entries(CLASS_LABELS).map(([key, label]) => ({ key, label, hint: "Tagged on the Promos page; counts from each card's own release date." })),
 ];
 const CAT_LABEL = Object.fromEntries(CATEGORIES.map((c) => [c.key, c.label])) as Record<CurveCategory, string>;
 
@@ -307,7 +309,7 @@ export default function TimingPage() {
           ))}
         </div>
         <div className="inline-flex flex-wrap rounded border border-gray-700 overflow-hidden">
-          {CATEGORIES.map((c) => (
+          {CATEGORIES.filter((c) => !(c.key in CLASS_LABELS) || data.curves.some((x) => x.category === c.key)).map((c) => (
             <button key={c.key} onClick={() => setCat(c.key)} title={c.hint}
               className={`px-2.5 py-1 ${cat === c.key ? "bg-indigo-700 text-white" : "bg-gray-900 text-gray-400 hover:text-gray-200"}`}>
               {c.label}
@@ -432,7 +434,7 @@ export default function TimingPage() {
           <div className="flex gap-2 text-xs">
             <select value={tCat} onChange={(e) => setTCat(e.target.value as CurveCategory | "")} className="bg-gray-950 border border-gray-700 rounded px-1.5 py-1 text-gray-200">
               <option value="">Every tier</option>
-              {CATEGORIES.map((c) => <option key={c.key} value={c.key}>{c.label}</option>)}
+              {CATEGORIES.filter((c) => !(c.key in CLASS_LABELS) || data.curves.some((x) => x.category === c.key)).map((c) => <option key={c.key} value={c.key}>{c.label}</option>)}
             </select>
             <select value={tGrade} onChange={(e) => setTGrade(e.target.value)} className="bg-gray-950 border border-gray-700 rounded px-1.5 py-1 text-gray-200">
               <option value="">Every grade</option>
