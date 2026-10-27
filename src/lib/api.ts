@@ -2226,3 +2226,22 @@ export interface BeatSP {
 export function fetchBeatSP(grade: "raw" | "psa-10", lang?: string): Promise<BeatSP> {
   return get(`/v1/analysis/beat-sp?grade=${grade}${lang && lang !== "all" ? `&lang=${lang}` : ""}`);
 }
+
+// The cards behind a curve group (GET /v1/analysis/group-cards).
+export interface GroupCard {
+  display_key: string;
+  name: string;
+  number: string;
+  set_code: string;
+  set_name: string;
+  lang: string;
+  image_url?: string;
+  months_since_release: number;
+  price_cents?: number;
+  now_vs_release?: number;
+  now_vs_peak?: number;
+  trailing_12m?: number;
+}
+export function fetchGroupCards(category: string, grade: string, lang: string): Promise<{ cards: GroupCard[] }> {
+  return get(`/v1/analysis/group-cards?category=${encodeURIComponent(category)}&grade=${encodeURIComponent(grade === "raw" || grade === "psa-10" ? grade : "raw")}&lang=${lang}`);
+}

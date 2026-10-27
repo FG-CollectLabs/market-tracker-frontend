@@ -1,5 +1,6 @@
 import { useMemo, useState } from "react";
-import { TRAINER_BUCKETS, type CurveLang, type ReleaseCurves } from "../lib/api";
+import { TRAINER_BUCKETS, type CurveLang, type ReleaseCurve, type ReleaseCurves } from "../lib/api";
+import GroupCards from "./GroupCards";
 import { LineChart, Legend, SERIES, type LineSeries } from "./HistoryCharts";
 
 // Compare release curves and returns across groups of one dimension: how
@@ -49,9 +50,21 @@ function bucketStyle(dim: string, i: number) {
     : { color: SERIES[i % SERIES.length], dashed: i >= SERIES.length };
 }
 
+const annualize = (r: number, months: number) => Math.pow(1 + r, 12 / months) - 1;
+
+// Change from buying at month `from` to month `to` on a curve (null past its end).
+function between(c: ReleaseCurve | undefined, from: number, to: number): number | null {
+  const a = c?.points.find((p) => p.month === from)?.change, b = c?.points.find((p) => p.month === to)?.change;
+  return a == null || b == null ? null : (1 + b) / (1 + a) - 1;
+}
+
+const HOLDS = [6, 12, 24];
+
 export default function CompareBy({ data, lang }: { data: ReleaseCurves; lang: CurveLang }) {
   const [dim, setDim] = useState(DIMS[0].key);
   const [grade, setGrade] = useState("psa-10");
+  const [start, setStart] = useState(0); // buy month
+  const [cardsOf, setCardsOf] = useState<string | null>(null); // group whose cards are shown
   const d = DIMS.find((x) => x.key === dim)!;
   const color = (i: number) => bucketStyle(dim, i).color;
 
@@ -62,18 +75,20 @@ export default function CompareBy({ data, lang }: { data: ReleaseCurves; lang: C
     const series: LineSeries[] = d.buckets.flatMap((b, i) => {
       const c = curves[i];
       if (!c) return [];
-      const by = new Map(c.points.map((p) => [p.month, p.change * 100]));
-      return [{ label: b.label, ...bucketStyle(dim, i), values: xs.map((m) => by.get(Number(m)) ?? null) }];
+      return [{ label: b.label, ...bucketStyle(dim, i), values: xs.map((m) => {
+        const v = Number(m) < start ? null : between(c, start, Number(m));
+        return v == null ? null : v * 100;
+      }) }];
     });
     return { xs, series };
-  }, [data, d, dim, grade, lang]);
+  }, [data, d, dim, grade, lang, start]);
+  const maxStart = Math.max(0, xs.length - 7);
 
   const rows = d.buckets.map((b, i) => ({
     b, i,
     row: data.table.find((r) => r.category === b.key && r.grade === grade && r.lang === lang),
     curve: data.curves.find((c) => c.category === b.key && c.grade === grade && c.lang === lang),
   }));
-  const holdCols: [number, number][] = [[6, 12], [12, 12], [12, 24], [18, 12], [24, 12]];
 
   return (
     <section className="rounded-lg border border-gray-800 bg-gray-900 p-4 space-y-3">
@@ -87,7 +102,7 @@ export default function CompareBy({ data, lang }: { data: ReleaseCurves; lang: C
       <div className="flex flex-wrap items-center gap-3 text-sm">
         <div className="inline-flex rounded border border-gray-700 overflow-hidden">
           {DIMS.map((x) => (
-            <button key={x.key} onClick={() => setDim(x.key)} title={x.hint}
+            <button key={x.key} onClick={() => { setDim(x.key); setCardsOf(null); }} title={x.hint}
               className={`px-2.5 py-1 ${dim === x.key ? "bg-indigo-700 text-white" : "bg-gray-900 text-gray-400 hover:text-gray-200"}`}>{x.label}</button>
           ))}
         </div>
@@ -110,8 +125,19 @@ export default function CompareBy({ data, lang }: { data: ReleaseCurves; lang: C
       ) : (
         <>
           <div className="flex justify-end"><Legend items={series.map((x) => ({ label: x.label, color: x.color }))} /></div>
-          <LineChart weeks={xs} series={series} fmt={(v) => pct(v / 100)} axisFmt={(v) => `${Math.round(v)}%`}
-            xLabel={(m) => `M${m}`} xTitle={(m) => `Month ${m} since release`} />
+          <div className="flex flex-wrap items-center gap-3 text-xs text-gray-400">
+            <label htmlFor="cmp-start" className="whitespace-nowrap">Buy at month</label>
+            <input id="cmp-start" type="range" min={0} max={maxStart} value={Math.min(start, maxStart)} onChange={(e) => setStart(Number(e.target.value))} className="w-64 accent-indigo-500" />
+            <span className="font-mono text-gray-100 w-10">M{Math.min(start, maxStart)}</span>
+            {[0, 6, 12, 18, 24, 36].filter((m) => m <= maxStart).map((m) => (
+              <button key={m} onClick={() => setStart(m)}
+                className={`px-1.5 py-0.5 rounded border ${start === m ? "border-indigo-500 text-white" : "border-gray-700 text-gray-400 hover:text-gray-200"}`}>M{m}</button>
+            ))}
+            <span className="text-gray-500">Re-bases every group on buying at that month; hover shows the yearly rate 6+ months in.</span>
+          </div>
+          <LineChart weeks={xs} series={series} fmt={(v) => pct(v / 100)} axisFmt={(v) => `${Math.round(v)}%`} shadeBefore={start}
+            fmtAt={(v, i) => (i - start >= 6 ? `${pct(v / 100)} · ${pct(annualize(v / 100, i - start))}/yr` : pct(v / 100))}
+            xLabel={(m) => `M${m}`} xTitle={(m) => `Month ${m} since release${start ? ` (${Number(m) - start >= 0 ? `${Number(m) - start} months after buying` : "before buying"})` : ""}`} />
         </>
       )}
 
@@ -127,8 +153,8 @@ export default function CompareBy({ data, lang }: { data: ReleaseCurves; lang: C
               <th className="text-right py-1 px-2 font-medium" title="Share of post-hype cards that lost value over the year">Fell</th>
               <th className="text-right py-1 px-2 font-medium" title="Worst decile yearly change">Worst 10%</th>
               <th className="text-right py-1 px-2 font-medium" title="Median biggest peak-to-trough drop within the year: selloff risk">Typical drawdown</th>
-              {holdCols.map(([b, h]) => (
-                <th key={`${b}-${h}`} className="text-right py-1 px-2 font-medium" title={`Buy at month ${b}, hold ${h} months (curve)`}>M{b}+{h}</th>
+              {HOLDS.map((h) => (
+                <th key={h} className="text-right py-1 px-2 font-medium" title={`Bought at month ${start}, held ${h} months (curve): total · per year`}>M{start}+{h}</th>
               ))}
               <th className="text-right py-1 pl-2 font-medium">Cards</th>
             </tr>
@@ -136,10 +162,12 @@ export default function CompareBy({ data, lang }: { data: ReleaseCurves; lang: C
           <tbody className="divide-y divide-gray-800 text-gray-300">
             {rows.map(({ b, i, row, curve }) => {
               const t = row?.trailing;
-              const ret = (bm: number, h: number) => curve?.returns.find((r) => r.buy_month === bm && r.hold_months === h)?.change;
+              const open = cardsOf === b.key;
               return (
-                <tr key={b.key} className={row?.outperforms ? "bg-green-950/20" : ""}>
+                <tr key={b.key} onClick={() => setCardsOf(open ? null : b.key)} title="Click to list this group's cards"
+                  className={`cursor-pointer ${open ? "bg-indigo-950/40" : row?.outperforms ? "bg-green-950/20 hover:bg-gray-800/30" : "hover:bg-gray-800/30"}`}>
                   <td className="py-1.5 pr-2 whitespace-nowrap">
+                    <span className="text-gray-500 mr-1">{open ? "▾" : "▸"}</span>
                     <span className="inline-block w-2.5 h-2.5 rounded-sm mr-1.5 align-middle" style={{ background: color(i) }} />{b.label}
                     {row?.provisional && <span className="ml-1 text-[10px] text-amber-300" title={`As few as ${row.min_sets} sets`}>prov.</span>}
                   </td>
@@ -152,9 +180,13 @@ export default function CompareBy({ data, lang }: { data: ReleaseCurves; lang: C
                   <td className="py-1.5 px-2 text-right">{t ? `${Math.round(t.down_share * 100)}%` : "—"}</td>
                   <td className="py-1.5 px-2 text-right">{t ? pct(t.p10) : "—"}</td>
                   <td className="py-1.5 px-2 text-right">{t ? pct(t.median_drawdown) : "—"}</td>
-                  {holdCols.map(([bm, h]) => {
-                    const v = ret(bm, h);
-                    return <td key={`${bm}-${h}`} className={`py-1.5 px-2 text-right ${v != null && v > 0 ? "text-green-400/90" : v != null && v < 0 ? "text-red-400/90" : ""}`}>{v != null ? pct(v) : "—"}</td>;
+                  {HOLDS.map((h) => {
+                    const v = between(curve, start, start + h);
+                    return (
+                      <td key={h} className={`py-1.5 px-2 text-right whitespace-nowrap ${v != null && v > 0 ? "text-green-400/90" : v != null && v < 0 ? "text-red-400/90" : ""}`}>
+                        {v != null ? <>{pct(v)}{h > 12 && <span className="text-gray-500"> · {pct(annualize(v, h))}/yr</span>}</> : "—"}
+                      </td>
+                    );
                   })}
                   <td className="py-1.5 pl-2 text-right text-gray-500">{t ? `${t.cards}` : row ? row.cards : "—"}</td>
                 </tr>
@@ -163,8 +195,11 @@ export default function CompareBy({ data, lang }: { data: ReleaseCurves; lang: C
           </tbody>
         </table>
       </div>
+      {cardsOf && (
+        <GroupCards category={cardsOf} label={d.buckets.find((b) => b.key === cardsOf)?.label ?? cardsOf} grade={grade} lang={lang} onClose={() => setCardsOf(null)} />
+      )}
       <p className="text-[11px] text-gray-500">
-        M6+12 = buy six months after release, hold a year (from the group's curve). Appreciation and risk come from each card's own last ~12 months,
+        M{start}+12 = buy {start} months after release, hold a year (from the group's curve); 12 months is already a yearly rate. Click a group for its cards. Appreciation and risk come from each card's own last ~12 months,
         cards past month 12 only. Past results on 1–2 years of history, not a forecast.
       </p>
     </section>
