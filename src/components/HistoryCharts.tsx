@@ -104,7 +104,7 @@ export interface ChartMarker {
   label: string;
 }
 
-export function LineChart({ weeks, series, fmt, axisFmt, xLabel, xTitle, markers, shadeBefore }: {
+export function LineChart({ weeks, series, fmt, fmtAt, axisFmt, xLabel, xTitle, markers, shadeBefore }: {
   weeks: string[];
   markers?: ChartMarker[]; // drawn along the bottom, listed in the tooltip
   shadeBefore?: number; // grey out x indexes before this one
@@ -112,6 +112,7 @@ export function LineChart({ weeks, series, fmt, axisFmt, xLabel, xTitle, markers
   xTitle?: (w: string) => string; // tooltip heading (default: "Week of …")
   series: LineSeries[];
   fmt: (v: number) => string; // tooltip values
+  fmtAt?: (v: number, i: number) => string; // tooltip values that depend on the x index (wins over fmt)
   axisFmt?: (v: number) => string; // y-axis ticks (default: fmt)
 }) {
   const [hover, setHover] = useState<number | null>(null);
@@ -219,7 +220,7 @@ export function LineChart({ weeks, series, fmt, axisFmt, xLabel, xTitle, markers
             <div key={s.label} className="flex items-center gap-1.5">
               <span className="inline-block w-2 h-2 rounded-full" style={{ background: s.color }} />
               <span className="text-gray-400">{s.label}</span>
-              <span className="ml-auto pl-3 tabular-nums">{fmt(s.values[hover]!)}</span>
+              <span className="ml-auto pl-3 tabular-nums">{fmtAt ? fmtAt(s.values[hover]!, hover) : fmt(s.values[hover]!)}</span>
             </div>
           ))}
           {series.every((s) => s.values[hover] == null) && <div className="text-gray-500">No data this week</div>}

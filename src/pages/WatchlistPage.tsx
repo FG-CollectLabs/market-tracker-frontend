@@ -8,6 +8,7 @@ import { cardThumb } from "../lib/thumb";
 import { Spinner, ErrorMsg } from "../components/Spinner";
 import WatchSuggestions from "../components/WatchSuggestions";
 import { watchChanged } from "../components/WatchButton";
+import ReleaseVs from "../components/ReleaseVs";
 import { Drawer, HitRow, PhotoOverlay, cardHits, loadHitFilters, saveHitFilters, sortHits, useNow, type CardHit, type HitFilters, type Photo } from "../components/WatchHits";
 
 const usd = (c?: number | null) => (c == null ? "—" : `$${(c / 100).toFixed(2)}`);
@@ -460,8 +461,11 @@ export default function WatchlistPage() {
                         {p && <span className={`px-1 rounded border text-[10px] mr-1 ${STANCE[p.stance].cls}`}>{STANCE[p.stance].label}</span>}
                         <span className="text-gray-400 print:text-black">{p?.headline}</span>
                       </td>
-                      <td className="py-1.5 pr-2 text-right">{usd(p?.raw_cents)}</td>
-                      <td className="py-1.5 pr-2 text-right">{usd(p?.bottom_cents)}</td>
+                      <td className="py-1.5 pr-2 text-right">
+                        {usd(p?.raw_cents)}
+                        {p && <div className="text-[10px]"><ReleaseVs f={{ ...p, bottom_cents: p.exp_bottom_cents }} /></div>}
+                      </td>
+                      <td className="py-1.5 pr-2 text-right">{usd(p?.exp_bottom_cents ?? p?.bottom_cents)}</td>
                       <td className="py-1.5 pr-2 text-right font-medium">{usd(p?.target_cents)}</td>
                       <td className={`py-1.5 pr-2 text-right ${over ? "text-red-400" : ""}`}>{usd(p?.break_even_cents)}</td>
                       <td className="py-1.5 pr-2 text-right">{usd(it.psa10_cents)}</td>
