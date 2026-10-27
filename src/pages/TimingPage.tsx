@@ -10,6 +10,7 @@ import { PhaseChip, phaseOfWindow } from "../components/BuyWindows";
 import { Spinner, ErrorMsg } from "../components/Spinner";
 import CompareBy from "../components/CompareBy";
 import AfterHype from "../components/AfterHype";
+import BeatSP from "../components/BeatSP";
 
 const LANGS: { key: CurveLang; label: string }[] = [
   { key: "ja", label: "Japanese" },
@@ -492,8 +493,10 @@ export default function TimingPage() {
 
       <AfterHype data={data} lang={lang} />
 
+      <BeatSP lang={lang} catLabel={(k) => CAT_LABEL[k] ?? k} />
+
       <section className="rounded-lg border border-gray-800 bg-gray-900 p-4 space-y-2">
-        <h2 className="text-sm font-semibold text-gray-100">Outperforming the S&P after fees</h2>
+        <h2 className="text-sm font-semibold text-gray-100">Tiers beating the S&P after fees (every set pooled)</h2>
         {winners.length === 0 ? (
           <p className="text-xs text-gray-500">
             No tier/grade in this language beats {Math.round(data.benchmark * 100)}%/yr after the selling fee yet (or there aren't 8+ post-hype cards
