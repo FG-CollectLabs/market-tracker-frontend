@@ -1201,6 +1201,13 @@ export interface PlaySummary {
   low_range?: [number, number];
   exp_bottom_cents?: number;
   bottom_vs_release?: number;
+  // Raw on its tier's release curve: phase, the typical drop still to come
+  // and when, and the tier's yearly change after its low.
+  raw_phase?: "falling" | "bottom" | "recovering" | "unknown";
+  raw_to_bottom?: number;
+  raw_bottom_month?: number;
+  raw_months_to_bottom?: number;
+  raw_after_low_yearly?: number;
 }
 
 export interface AuctionWeek {

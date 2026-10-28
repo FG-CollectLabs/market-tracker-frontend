@@ -30,13 +30,45 @@ function Seg<T extends string>({ value, options, onChange }: { value: T; options
   );
 }
 
+const signed = (v: number) => `${v > 0 ? "+" : ""}${Math.round(v * 100)}%`;
+
+// Raw on its tier's release curve: the drop still to come (and by when),
+// or where it sits past the low, then what the tier did after its low.
+function ToLow({ p }: { p?: PlaySummary }) {
+  if (!p?.raw_phase || p.raw_phase === "unknown") return <>—</>;
+  const after = p.raw_after_low_yearly;
+  // This card's own expected low (its launch price x the curve's low) when
+  // it has one, else the tier's typical drop from here.
+  const own = p.raw_cents && p.exp_bottom_cents ? Math.min(0, p.exp_bottom_cents / p.raw_cents - 1) : undefined;
+  const drop = own ?? p.raw_to_bottom;
+  return (
+    <>
+      {p.raw_phase === "falling" && drop != null ? (
+        <span className={drop <= -0.25 ? "text-red-400" : drop <= -0.1 ? "text-amber-300" : "text-gray-200"}
+          title={p.raw_to_bottom != null ? `Tier typically falls ${signed(p.raw_to_bottom)} more from this month` : undefined}>
+          {signed(drop)}
+          {p.raw_bottom_month != null && <span className="text-gray-500 text-[11px]"> by M{p.raw_bottom_month}</span>}
+        </span>
+      ) : (
+        <span className="text-gray-400">{p.raw_phase === "bottom" ? "at the low" : "past the low"}</span>
+      )}
+      {after != null && (
+        <div className={`text-[10px] ${after > 0.05 ? "text-green-400" : after < 0 ? "text-red-400" : "text-gray-500"}`} title="The tier's yearly change after its low (release curve)">
+          then {signed(after)}/yr
+        </div>
+      )}
+    </>
+  );
+}
+
 // Tabs: one per buy target, each with the columns that decide it.
 type Tab = BuyTarget | "" | "none";
-type ColId = "play" | "raw" | "low" | "grade_le" | "be" | "be_psa" | "be_cgc" | "psa10" | "cgc10" | "bid10" | "held10" | "held_raw" | "score_psa" | "score_cgc";
+type ColId = "play" | "raw" | "low" | "to_low" | "grade_le" | "be" | "be_psa" | "be_cgc" | "psa10" | "cgc10" | "bid10" | "held10" | "held_raw" | "score_psa" | "score_cgc";
 const COLS: Record<ColId, { label: string; title?: string }> = {
   play: { label: "Play" },
   raw: { label: "Raw now", title: "Raw market price, and where it sits vs its release price and expected low" },
   low: { label: "Exp. low", title: "Expected raw low (release curve)" },
+  to_low: { label: "To low", title: "How much further raw copies of this tier typically fall from here and by which month since release (release curve), then the tier's yearly change after its low. Big drops ahead: bid less hard, hold the ungradable copies until the low, or sell them now if nothing grows after" },
   grade_le: { label: "Grade ≤", title: "Most to pay raw to grade (your return bar, better grader)" },
   be: { label: "Break-even", title: "Grading nets $0 at this raw price (better grader): never pay more" },
   be_psa: { label: "PSA BE", title: "Highest raw price at which grading with PSA nets $0 at the public gem rate (sold at whatever grade it gets)" },
@@ -50,9 +82,9 @@ const COLS: Record<ColId, { label: string; title?: string }> = {
   held_raw: { label: "Raw held/yr", title: "A raw copy's projected yearly return held two years, after fees (tier curve + its own trend)" },
 };
 const TAB_COLS: Record<Tab, ColId[]> = {
-  "": ["raw", "low", "score_psa", "score_cgc", "be_psa", "be_cgc", "psa10", "cgc10", "held_raw", "play"],
-  raw_grade: ["raw", "low", "score_psa", "score_cgc", "be_psa", "be_cgc", "grade_le", "psa10", "cgc10", "held_raw"],
-  raw_invest: ["raw", "low", "held_raw", "play"],
+  "": ["raw", "low", "to_low", "score_psa", "score_cgc", "be_psa", "be_cgc", "psa10", "cgc10", "held_raw", "play"],
+  raw_grade: ["raw", "low", "to_low", "score_psa", "score_cgc", "be_psa", "be_cgc", "grade_le", "psa10", "cgc10", "held_raw"],
+  raw_invest: ["raw", "low", "to_low", "held_raw", "play"],
   cgc_10: ["play", "cgc10", "be_cgc", "held10"],
   psa_10: ["play", "psa10", "bid10", "held10"],
   regrade: ["play", "psa10", "cgc10", "held10"],
@@ -100,6 +132,7 @@ function cell(c: ColId, it: WatchItem, p: PlaySummary | undefined) {
         </td>
       );
     case "low": return <td key={c} className="py-1.5 pr-2 text-right">{usd(p?.exp_bottom_cents ?? p?.bottom_cents)}</td>;
+    case "to_low": return <td key={c} className="py-1.5 pr-2 text-right"><ToLow p={p} /></td>;
     case "grade_le": return <td key={c} className="py-1.5 pr-2 text-right font-medium">{usd(p?.target_cents)}</td>;
     case "be": return <td key={c} className={`py-1.5 pr-2 text-right ${over(p?.break_even_cents) ? "text-red-400" : ""}`}>{usd(p?.break_even_cents)}</td>;
     case "be_psa": return <td key={c} className={`py-1.5 pr-2 text-right ${over(p?.break_even_psa_cents) ? "text-red-400" : ""}`}>{usd(p?.break_even_psa_cents)}</td>;
