@@ -32,7 +32,7 @@ function Seg<T extends string>({ value, options, onChange }: { value: T; options
 
 // Tabs: one per buy target, each with the columns that decide it.
 type Tab = BuyTarget | "" | "none";
-type ColId = "play" | "raw" | "low" | "grade_le" | "be" | "be_psa" | "be_cgc" | "psa10" | "bid10" | "held10" | "held_raw";
+type ColId = "play" | "raw" | "low" | "grade_le" | "be" | "be_psa" | "be_cgc" | "psa10" | "cgc10" | "bid10" | "held10" | "held_raw" | "score_psa" | "score_cgc";
 const COLS: Record<ColId, { label: string; title?: string }> = {
   play: { label: "Play" },
   raw: { label: "Raw now", title: "Raw market price, and where it sits vs its release price and expected low" },
@@ -41,20 +41,36 @@ const COLS: Record<ColId, { label: string; title?: string }> = {
   be: { label: "Break-even", title: "Grading nets $0 at this raw price (better grader): never pay more" },
   be_psa: { label: "PSA BE", title: "Highest raw price at which grading with PSA nets $0 at the public gem rate (sold at whatever grade it gets)" },
   be_cgc: { label: "CGC BE", title: "The same with CGC, Pristine 10s valued at their own price" },
-  psa10: { label: "PSA 10" },
-  bid10: { label: "10 bid ≤", title: "PSA 10 auction ceiling (hammer)" },
-  held10: { label: "10 held/yr", title: "A PSA 10's projected yearly return held two years, after fees" },
+  psa10: { label: "PSA 10", title: "PSA 10 market price" },
+  cgc10: { label: "CGC 10", title: "CGC Gem Mint 10 market price; Pristine 10 under it" },
+  bid10: { label: "10 bid ≤", title: "The most to bid (hammer, before the buyer's premium) on a PSA 10 at a Fanatics auction to still clear your return bar" },
+  held10: { label: "10 held/yr", title: "Buying a PSA 10 and holding it two years: projected yearly return after fees" },
+  score_psa: { label: "PSA score", title: "Buy raw to grade with PSA: score 0-100 (A 70+, B 50-69, C under 50). Expected return after fees, adjusted for release age, sell speed and collectibility" },
+  score_cgc: { label: "CGC score", title: "The same for CGC, Pristine 10s counted" },
   held_raw: { label: "Raw held/yr", title: "A raw copy's projected yearly return held two years, after fees (tier curve + its own trend)" },
 };
 const TAB_COLS: Record<Tab, ColId[]> = {
-  "": ["play", "raw", "low", "grade_le", "be", "psa10", "bid10", "held10"],
-  raw_grade: ["raw", "low", "be_psa", "be_cgc", "grade_le", "held_raw"],
+  "": ["raw", "low", "score_psa", "score_cgc", "be_psa", "be_cgc", "psa10", "cgc10", "held_raw", "play"],
+  raw_grade: ["raw", "low", "score_psa", "score_cgc", "be_psa", "be_cgc", "grade_le", "psa10", "cgc10", "held_raw"],
   raw_invest: ["raw", "low", "held_raw", "play"],
-  cgc_10: ["play", "raw", "held10"],
+  cgc_10: ["play", "cgc10", "be_cgc", "held10"],
   psa_10: ["play", "psa10", "bid10", "held10"],
-  regrade: ["play", "psa10", "held10"],
+  regrade: ["play", "psa10", "cgc10", "held10"],
   none: ["play", "raw", "low", "held_raw"],
 };
+
+// Grading tiers from the 0-100 buy-raw-to-grade scores (the set pages' colors).
+type TierFilter = "" | "A" | "B" | "C";
+const tierOf = (s?: number): TierFilter => (s == null ? "" : s >= 70 ? "A" : s >= 50 ? "B" : "C");
+const scoreBy = (it: WatchItem, by: "best" | "psa" | "cgc") =>
+  by === "psa" ? it.score_grade_psa : by === "cgc" ? it.score_grade_cgc
+    : it.score_grade_psa == null && it.score_grade_cgc == null ? undefined : Math.max(it.score_grade_psa ?? 0, it.score_grade_cgc ?? 0);
+
+function ScoreCell({ s }: { s?: number }) {
+  if (s == null) return <span className="text-gray-600">—</span>;
+  const cls = s >= 70 ? "bg-green-900/60 text-green-300" : s >= 50 ? "bg-amber-900/50 text-amber-300" : "bg-gray-800 text-gray-400";
+  return <span className={`inline-block min-w-[2.75rem] text-center px-1 rounded font-mono font-semibold ${cls}`}>{tierOf(s)} {s}</span>;
+}
 const TAB_KEY = "watchlist.tab";
 const loadTab = (): Tab => {
   try {
@@ -89,6 +105,14 @@ function cell(c: ColId, it: WatchItem, p: PlaySummary | undefined) {
     case "be_psa": return <td key={c} className={`py-1.5 pr-2 text-right ${over(p?.break_even_psa_cents) ? "text-red-400" : ""}`}>{usd(p?.break_even_psa_cents)}</td>;
     case "be_cgc": return <td key={c} className={`py-1.5 pr-2 text-right ${over(p?.break_even_cgc_cents) ? "text-red-400" : ""}`}>{usd(p?.break_even_cgc_cents)}</td>;
     case "psa10": return <td key={c} className="py-1.5 pr-2 text-right">{usd(it.psa10_cents)}</td>;
+    case "cgc10": return (
+      <td key={c} className="py-1.5 pr-2 text-right">
+        {usd(it.cgc10_cents)}
+        {it.pristine_cents != null && <div className="text-[10px] text-gray-500" title="CGC Pristine 10">P {usd(it.pristine_cents)}</div>}
+      </td>
+    );
+    case "score_psa": return <td key={c} className="py-1.5 pr-2 text-right"><ScoreCell s={it.score_grade_psa} /></td>;
+    case "score_cgc": return <td key={c} className="py-1.5 pr-2 text-right"><ScoreCell s={it.score_grade_cgc} /></td>;
     case "bid10": return <td key={c} className="py-1.5 pr-2 text-right">{usd(p?.bid_cents)}</td>;
     case "held10": return <td key={c} className="py-1.5 pr-2 text-right">{yearly(p?.projection)}</td>;
     case "held_raw": return <td key={c} className="py-1.5 pr-2 text-right">{yearly(p?.projection_raw)}</td>;
@@ -106,6 +130,8 @@ export default function WatchlistPage() {
   const [intent, setIntent] = useState<WatchIntent | "">("");
   const [target, setTargetState] = useState<Tab>(loadTab);
   const [unpricedOnly, setUnpricedOnly] = useState(false);
+  const [tier, setTier] = useState<TierFilter>("");
+  const [tierBy, setTierBy] = useState<"best" | "psa" | "cgc">("best");
   const [history, setHistory] = useState(false);
   const [preset, setPreset] = useState("");
   const [setCode, setSetCode] = useState("");
@@ -177,6 +203,7 @@ export default function WatchlistPage() {
     return (items ?? []).filter((it) => {
       if (intent && it.intent !== intent) return false;
       if (setCode && it.set_code !== setCode) return false;
+      if (tier && tierOf(scoreBy(it, tierBy)) !== tier) return false;
       if (needle && !`${it.name} ${it.number} ${it.set_name}`.toLowerCase().includes(needle)) return false;
       const all = it.targets_detail ?? [];
       if (target === "none") return all.length === 0;
@@ -185,7 +212,7 @@ export default function WatchlistPage() {
       if (onlyHits && cardHits(ts, filters, false, hidden).length === 0) return false;
       return true;
     });
-  }, [items, intent, setCode, q, target, preset, unpricedOnly, onlyHits, shownTargets, filters, hidden]);
+  }, [items, intent, setCode, q, target, preset, unpricedOnly, onlyHits, shownTargets, filters, hidden, tier, tierBy]);
 
   const bySet = useMemo(() => {
     const m = new Map<string, { name: string; code: string; items: WatchItem[] }>();
@@ -370,6 +397,20 @@ export default function WatchlistPage() {
         <label className="flex items-center gap-1 text-sm text-gray-300">
           <input type="checkbox" className="accent-indigo-500" checked={onlyHits} onChange={(e) => setOnlyHits(e.target.checked)} /> Only cards with hits
         </label>
+        <span className="flex items-center gap-1 text-sm text-gray-300" title="Buy-raw-to-grade score tier: A 70+, B 50-69, C under 50">
+          Grading tier
+          <select value={tier} onChange={(e) => setTier(e.target.value as TierFilter)} className={sel}>
+            <option value="">Any</option>
+            <option value="A">A (70+)</option>
+            <option value="B">B (50-69)</option>
+            <option value="C">C (under 50)</option>
+          </select>
+          <select value={tierBy} onChange={(e) => setTierBy(e.target.value as "best" | "psa" | "cgc")} className={sel} title="Which grader's score">
+            <option value="best">better grader</option>
+            <option value="psa">PSA</option>
+            <option value="cgc">CGC</option>
+          </select>
+        </span>
         <label className="flex items-center gap-1 text-sm text-gray-300" title="Only strategies with no price rule (they never hit)">
           <input type="checkbox" className="accent-indigo-500" checked={unpricedOnly} onChange={(e) => setUnpricedOnly(e.target.checked)} /> Without a price
         </label>

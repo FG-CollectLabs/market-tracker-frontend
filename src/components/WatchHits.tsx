@@ -397,7 +397,10 @@ export function Reviewer({ title, hits, start, displayKey, now, onClose, onNotIn
               ))}
             </div>
           )}
-          <span className="text-xs text-gray-500">photo {photos.length ? p + 1 : 0} of {photos.length}</span>
+          <span className="text-xs text-gray-500">
+            photo {photos.length ? p + 1 : 0} of {photos.length}
+            {(h.image_count ?? 0) > photos.length && <> · eBay lists {h.image_count}; the rest load after the next eBay check of this listing</>}
+          </span>
         </div>
         <div className="lg:w-80 shrink-0 space-y-2 text-sm text-gray-300">
           <div className="flex flex-wrap gap-1 text-[11px]">
