@@ -16,6 +16,7 @@ import CardClassesPage from "./pages/CardClassesPage";
 import RoadmapPage from "./pages/RoadmapPage";
 import WatchlistPage from "./pages/WatchlistPage";
 import AutomationPage from "./pages/AutomationPage";
+import SealedTodoPage from "./pages/SealedTodoPage";
 import { SignIn } from "./components/SignIn";
 import { Mark } from "./brand/Mark";
 import { COMPANY_NAME, PRODUCT_NAME } from "./brand/brand";
@@ -65,6 +66,9 @@ function Nav() {
       <NavLink to="/automation" className={linkCls}>
         Automation
       </NavLink>
+      <NavLink to="/sealed" className={linkCls}>
+        Sealed TODO
+      </NavLink>
       <NavLink to="/developer" className={linkCls}>
         Developer
       </NavLink>
@@ -90,6 +94,7 @@ export default function App() {
             <Route path="/rankings" element={<RankingsPage />} />
             <Route path="/promos" element={<CardClassesPage />} />
             <Route path="/developer" element={<RoadmapPage />} />
+            <Route path="/sealed" element={<SealedTodoPage />} />
             <Route path="/roadmap" element={<RoadmapPage />} />
             <Route path="/watchlist" element={<WatchlistPage />} />
             <Route path="/prep" element={<BuyingPrepPage />} />
