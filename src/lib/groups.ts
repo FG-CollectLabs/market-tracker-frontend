@@ -9,7 +9,10 @@ const TIERS: Record<string, string> = {
 const SCARCITY: Record<string, string> = { "1": "Most common", "2": "Common", "3": "Scarce", "4": "Scarcest" };
 const PULL_TIER: Record<string, string> = { ir: "IR", sir: "SIR", ultra: "Full art", gold: "Gold" };
 
+const LEVEL: Record<string, string> = { easy: "easy", medium: "medium", hard: "hard" };
+
 export function groupLabel(key: string): string {
+  if (key.includes("|")) return key.split("|").map(groupLabel).join(" · ");
   if (TIERS[key]) return TIERS[key];
   if (CLASS_LABELS[key]) return CLASS_LABELS[key];
   const [dim, a, b] = key.split(":");
@@ -18,7 +21,11 @@ export function groupLabel(key: string): string {
     case "artist": return `Artist tier ${a === "top" ? "Top" : a === "unranked" ? "unranked" : a.toUpperCase()}`;
     case "trainer": return TRAINER_BUCKETS.find((x) => x.key === a)?.label ?? key;
     case "scarcity": return `Scarcity: ${SCARCITY[a] ?? a}`;
-    case "pull": return `${PULL_TIER[a] ?? a} · ${b === "hard" ? "hard" : "easy"} to pull`;
+    case "pull":
+      if (b === undefined) return `${LEVEL[a] ?? a} to pull`; // crossed: "pull:hard"
+      return a === "all" ? `${LEVEL[b] ?? b} to pull (any tier)` : `${PULL_TIER[a] ?? a} · ${LEVEL[b] ?? b} to pull`;
+    case "gem": return `${a === "low" ? "Low" : a === "high" ? "High" : "Mid"} gem rate`;
+    case "chase": return a === "top" ? "Top chase" : "Not the chase";
   }
   return key;
 }

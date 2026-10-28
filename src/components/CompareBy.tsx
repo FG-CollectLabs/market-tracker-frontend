@@ -27,10 +27,16 @@ const DIMS: { key: string; label: string; hint: string; buckets: { key: string; 
     buckets: [{ key: "scarcity:1", label: "Most common" }, { key: "scarcity:2", label: "Common" }, { key: "scarcity:3", label: "Scarce" }, { key: "scarcity:4", label: "Scarcest" }],
   },
   {
-    key: "pull", label: "Pull difficulty", hint: "Inside each rarity tier: easier or harder to pull than the tier's median (packs to pull that exact card, in its language). A set with three times the usual IRs makes each of its IRs harder to pull.",
-    buckets: [["ir", "IR"], ["sir", "SIR"], ["ultra", "Full art"], ["gold", "Gold"]].flatMap(([t, l]) => [
-      { key: `pull:${t}:easy`, label: `${l} easy` }, { key: `pull:${t}:hard`, label: `${l} hard` },
-    ]),
+    key: "pull", label: "Pull difficulty", hint: "Packs to pull that exact card against the other sets' cards of its rarity tier, in its language: easy = more than 1 standard deviation fewer packs than the sets' average, hard = more than 1 SD more, medium in between. Per tier and crossed with the Pokémon / artist / trainer tiers on the Pull difficulty tab.",
+    buckets: [{ key: "pull:all:easy", label: "Easy" }, { key: "pull:all:medium", label: "Medium" }, { key: "pull:all:hard", label: "Hard" }],
+  },
+  {
+    key: "gem", label: "Gem rate", hint: "PSA gem rate (10s of all graded, cards with 50+ graded) in thirds per language. See the Gem rate tab.",
+    buckets: [{ key: "gem:low", label: "Low" }, { key: "gem:mid", label: "Mid" }, { key: "gem:high", label: "High" }],
+  },
+  {
+    key: "chase", label: "Chase", hint: "Top chase: one of its set's 3 most expensive raw cards today.",
+    buckets: [{ key: "chase:top", label: "Top chase" }, { key: "chase:rest", label: "Not the chase" }],
   },
 ];
 
@@ -44,12 +50,9 @@ const pct = (v: number) => {
   return `${r > 0 ? "+" : ""}${r === 0 ? 0 : r}%`;
 };
 
-// Past the palette, colors repeat dashed; pull difficulty pairs a tier's
-// easy (solid) and hard (dashed) in one color.
-function bucketStyle(dim: string, i: number) {
-  return dim === "pull"
-    ? { color: SERIES[Math.floor(i / 2) % SERIES.length], dashed: i % 2 === 1 }
-    : { color: SERIES[i % SERIES.length], dashed: i >= SERIES.length };
+// Past the palette, colors repeat dashed.
+function bucketStyle(_dim: string, i: number) {
+  return { color: SERIES[i % SERIES.length], dashed: i >= SERIES.length };
 }
 
 const annualize = (r: number, months: number) => Math.pow(1 + r, 12 / months) - 1;

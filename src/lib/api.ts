@@ -1028,6 +1028,33 @@ export interface ReleaseCurves {
   bottoms: CurveBottoms[];
   table: WindowRow[];
   scarcity_bounds?: number[];
+  pull_bands?: PullBand[];
+  gem_bands?: GemBand[];
+}
+
+// Easy / medium / hard to pull, per rarity tier and language: packs to pull
+// one specific card, more than 1 SD below / within / above the sets' mean
+// (log scale, each set counted once).
+export interface PullBand {
+  tier: string;
+  lang: string;
+  sets: number;
+  typical_packs: number;
+  easy_below: number;
+  hard_above: number;
+  log_sd: number;
+  easy_sets: number;
+  medium_sets: number;
+  hard_sets: number;
+}
+
+// PSA gem rate thirds per language (cards with 50+ graded).
+export interface GemBand {
+  lang: string;
+  cards: number;
+  low_below: number;
+  high_from: number;
+  median: number;
 }
 
 // Packs to open to pull one exact card (measured per-rarity rates).
