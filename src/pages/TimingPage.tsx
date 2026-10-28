@@ -1,5 +1,5 @@
 import { Fragment, useEffect, useMemo, useState } from "react";
-import { Link } from "react-router-dom";
+import { Link, useSearchParams } from "react-router-dom";
 import {
   fetchReleaseCurves, fetchSetWindows, type CurveCategory, type CurveGrade, type CurveLang, type ReleaseCurve, type ReleaseCurves, type SetWindows,
   type WindowRow,
@@ -11,6 +11,20 @@ import { Spinner, ErrorMsg } from "../components/Spinner";
 import CompareBy from "../components/CompareBy";
 import AfterHype from "../components/AfterHype";
 import BeatSP from "../components/BeatSP";
+import PullDifficultyTab from "../components/PullDifficultyTab";
+import GemRateTab from "../components/GemRateTab";
+import { Toggle } from "../components/GroupMatrix";
+
+// Subtabs: each angle on which singles are worth holding.
+const TABS = [
+  { key: "curves", label: "Release curves", hint: "How prices move with months since release, buy windows, and where sets are on the cycle." },
+  { key: "compare", label: "Compare by", hint: "Release curves and returns across Pokémon, artist, trainer, scarcity, pull difficulty, gem rate and chase groups." },
+  { key: "pull", label: "Pull difficulty", hint: "Easy / medium / hard to pull, by rarity tier and inside each Pokémon, artist and trainer tier." },
+  { key: "gem", label: "Gem rate", hint: "PSA 10 investability by gem rate: low-gem-rate cards vs the hyped top chase." },
+  { key: "hype", label: "After the hype", hint: "Buying past the launch hype, and which tiers beat the S&P." },
+  { key: "sp", label: "Beat the S&P", hint: "Card groups that out-returned the S&P after fees." },
+] as const;
+type TabKey = (typeof TABS)[number]["key"];
 
 const LANGS: { key: CurveLang; label: string }[] = [
   { key: "ja", label: "Japanese" },
@@ -253,6 +267,8 @@ export default function TimingPage() {
   const [start, setStart] = useState(0);
   const [sets, setSets] = useState<SetWindows[]>([]);
   const [cycleGrade, setCycleGrade] = useState("psa-10");
+  const [params, setParams] = useSearchParams();
+  const tab: TabKey = TABS.find((t) => t.key === params.get("tab"))?.key ?? "curves";
 
   useEffect(() => {
     fetchReleaseCurves().then(setData).catch((e: Error) => setError(e.message));
@@ -300,6 +316,23 @@ export default function TimingPage() {
         </p>
       </div>
 
+      <div className="border-b border-gray-800 flex flex-wrap gap-1">
+        {TABS.map((t) => (
+          <button key={t.key} title={t.hint} onClick={() => setParams(t.key === "curves" ? {} : { tab: t.key }, { replace: true })}
+            className={`px-3 py-1.5 text-sm -mb-px border-b-2 ${tab === t.key ? "border-indigo-500 text-white" : "border-transparent text-gray-400 hover:text-gray-200"}`}>
+            {t.label}
+          </button>
+        ))}
+      </div>
+      <p className="text-xs text-gray-500 -mt-3">{TABS.find((t) => t.key === tab)?.hint}</p>
+
+      {(tab === "compare" || tab === "hype" || tab === "sp") && (
+        <Toggle value={lang} options={LANGS} onChange={setLang} />
+      )}
+      {tab === "pull" && <PullDifficultyTab data={data} />}
+      {tab === "gem" && <GemRateTab data={data} />}
+
+      {tab === "curves" && (<>
       <div className="flex flex-wrap items-center gap-3 text-sm">
         <div className="inline-flex rounded border border-gray-700 overflow-hidden">
           {LANGS.map((l) => (
@@ -489,13 +522,15 @@ export default function TimingPage() {
         </div>
       </section>
 
-      <CompareBy data={data} lang={lang} />
+      </>)}
 
-      <AfterHype data={data} lang={lang} />
+      {tab === "compare" && <CompareBy data={data} lang={lang} />}
 
-      <BeatSP lang={lang} catLabel={(k) => CAT_LABEL[k] ?? k} />
+      {tab === "hype" && <AfterHype data={data} lang={lang} />}
 
-      <section className="rounded-lg border border-gray-800 bg-gray-900 p-4 space-y-2">
+      {tab === "sp" && <BeatSP lang={lang} catLabel={(k) => CAT_LABEL[k] ?? k} />}
+
+      {tab === "hype" && <section className="rounded-lg border border-gray-800 bg-gray-900 p-4 space-y-2">
         <h2 className="text-sm font-semibold text-gray-100">Tiers beating the S&P after fees (every set pooled)</h2>
         {winners.length === 0 ? (
           <p className="text-xs text-gray-500">
@@ -514,9 +549,9 @@ export default function TimingPage() {
           </ul>
         )}
         <p className="text-xs text-gray-500">Past appreciation, not a forecast: it rests on 1–2 years of history and on cards that were tracked because they're chase cards.</p>
-      </section>
+      </section>}
 
-      {bottoms.length > 0 && (
+      {tab === "curves" && bottoms.length > 0 && (
         <section className="rounded-lg border border-gray-800 bg-gray-900 p-4 space-y-2">
           <h2 className="text-sm font-semibold text-gray-100">When individual cards bottomed · {CAT_LABEL[cat]}</h2>
           <p className="text-xs text-gray-500">
