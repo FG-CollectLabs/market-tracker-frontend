@@ -2312,3 +2312,30 @@ export interface RankingCard {
 export function fetchRankingCards(kind: "pokemon" | "artist" | "trainer", name: string): Promise<{ cards: RankingCard[] }> {
   return get(`/v1/rankings/cards?kind=${kind}&name=${encodeURIComponent(name)}`);
 }
+
+// ---- sealed price links (Sealed TODO; admin) ---------------------------------
+
+export type SealedLinkStatus = "pending" | "linked" | "unmatched" | "none";
+
+export interface SealedLink {
+  tcgplayer_product_id: number;
+  status: SealedLinkStatus;
+  name: string;
+  set_name: string;
+  game: string;
+  product_type: string;
+  pricecharting_url?: string;
+  candidates: { url: string; title?: string; tcgplayer_id?: string }[];
+  note?: string;
+  checked_at?: string;
+  backfilled_at?: string;
+  months: number;
+}
+
+export function fetchSealedLinks(status = ""): Promise<{ links: SealedLink[] }> {
+  return adminFetch(`/v1/admin/sealed-links${status ? `?status=${encodeURIComponent(status)}` : ""}`);
+}
+
+export function saveSealedLink(id: number, body: { pricecharting_url: string } | { status: "none" | "pending" }): Promise<{ saved: boolean }> {
+  return adminFetch(`/v1/admin/sealed-links/${id}`, { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+}
