@@ -11,6 +11,7 @@ import BuyingPrepPage from "./pages/BuyingPrepPage";
 import TimingPage from "./pages/TimingPage";
 import SettingsPage from "./pages/SettingsPage";
 import RankingsPage from "./pages/RankingsPage";
+import GroupPage from "./pages/GroupPage";
 import CardClassesPage from "./pages/CardClassesPage";
 import RoadmapPage from "./pages/RoadmapPage";
 import WatchlistPage from "./pages/WatchlistPage";
@@ -84,6 +85,7 @@ export default function App() {
             <Route path="/deals" element={<DealsPage />} />
             <Route path="/windows" element={<BuyWindowsPage />} />
             <Route path="/timing" element={<TimingPage />} />
+            <Route path="/timing/group/:category" element={<GroupPage />} />
             <Route path="/settings" element={<SettingsPage />} />
             <Route path="/rankings" element={<RankingsPage />} />
             <Route path="/promos" element={<CardClassesPage />} />

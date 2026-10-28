@@ -1,4 +1,6 @@
 import { useMemo, useState } from "react";
+import { Link } from "react-router-dom";
+import { groupPath } from "../lib/groups";
 import { TRAINER_BUCKETS, type CurveLang, type ReleaseCurves, type WindowRow } from "../lib/api";
 
 // After the hype: what buying at month 4 (or at the curve's bottom) and
@@ -92,7 +94,7 @@ export default function AfterHype({ data, lang }: { data: ReleaseCurves; lang: C
             {rows.map(({ c, r }) => (
               <tr key={c.key} className={r ? "" : "text-gray-600"}>
                 <td className="py-1.5 px-2 text-gray-200 whitespace-nowrap">
-                  {c.label}
+                  <Link to={groupPath(c.key, grade, lang)} className="hover:text-indigo-300" title="Open this group: its curve, lows, appreciation and cards">{c.label} ↗</Link>
                   {r?.provisional && <span className="ml-1 text-amber-400" title={`Provisional: as few as ${r.min_sets} sets behind some months`}>*</span>}
                 </td>
                 {r ? (

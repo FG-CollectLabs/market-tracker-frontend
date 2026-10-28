@@ -1562,6 +1562,8 @@ export interface TargetHit {
   image_url?: string; // the listing's main photo (eBay)
   image_count?: number; // photos on it; 1 on a raw listing = the back isn't shown
   seller?: string; // eBay username
+  image_urls?: string[]; // every photo (eBay-hosted)
+  shipping_cents?: number; // shipping included in price_cents
   review?: HitReview;
 }
 
@@ -2278,4 +2280,20 @@ export interface ReviewLogRow {
 }
 export function fetchHitReviews(days = 30, status = ""): Promise<{ reviews: ReviewLogRow[]; days: number; pruned: number }> {
   return adminFetch(`/v1/admin/watch-hits/reviews?days=${days}${status ? `&status=${status}` : ""}`);
+}
+
+// The tracked cards behind one Rankings entry.
+export interface RankingCard {
+  display_key: string;
+  name: string;
+  number: string;
+  set_code: string;
+  set_name: string;
+  image_url?: string;
+  rarity?: string;
+  artist?: string;
+  raw_cents?: number;
+}
+export function fetchRankingCards(kind: "pokemon" | "artist" | "trainer", name: string): Promise<{ cards: RankingCard[] }> {
+  return get(`/v1/rankings/cards?kind=${kind}&name=${encodeURIComponent(name)}`);
 }
