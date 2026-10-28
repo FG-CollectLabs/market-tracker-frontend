@@ -12,9 +12,27 @@ const RULE: Record<WatchSuggestion["rule"], { label: string; cls: string }> = {
   auction_discount: { label: "Auction discount", cls: "bg-amber-900/50 text-amber-200" },
 };
 
+const OPEN_KEY = "watchlist.suggestions.open";
+
 export default function WatchSuggestions({ onAccepted }: { onAccepted: () => void }) {
   const [xs, setXs] = useState<WatchSuggestion[] | null>(null);
-  const [open, setOpen] = useState(true);
+  // Collapsed unless you left it open (remembered per browser).
+  const [open, setOpenState] = useState(() => {
+    try {
+      return localStorage.getItem(OPEN_KEY) === "1";
+    } catch {
+      return false;
+    }
+  });
+  const setOpen = (f: (v: boolean) => boolean) => setOpenState((v) => {
+    const n = f(v);
+    try {
+      localStorage.setItem(OPEN_KEY, n ? "1" : "0");
+    } catch {
+      // not remembered; fine
+    }
+    return n;
+  });
   const [busy, setBusy] = useState<number | "run" | null>(null);
   const [msg, setMsg] = useState<string | null>(null);
   const load = () => fetchWatchSuggestions().then((r) => setXs(r.suggestions)).catch(() => setXs([]));

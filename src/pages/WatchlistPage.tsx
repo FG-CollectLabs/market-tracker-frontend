@@ -556,12 +556,27 @@ export default function WatchlistPage() {
                                 <button onClick={undoAside} className="underline hover:text-white">Undo</button>
                               </div>
                             )}
-                            <div className="divide-y divide-gray-800 print:divide-gray-200">
-                              {sortHits(ch.all, filters.sort).map((x) => (
-                                <HitRow key={x.key} ch={x} displayKey={it.display_key} now={now} error={hitErr[x.key]} onPhoto={setPhoto}
-                                  onSetAside={(c, reason, note) => setAside(it.display_key, c, reason, note)} onChanged={load} />
-                              ))}
-                            </div>
+                            {ch.all.length > 0 && (
+                              <div className={`grid gap-3 ${filters.kind === "all" ? "md:grid-cols-2" : ""}`}>
+                                {([["buy_now", "Buy Now"], ["auction", "Auctions"]] as const)
+                                  .filter(([k]) => filters.kind === "all" || filters.kind === k)
+                                  .map(([k, label]) => {
+                                    const part = sortHits(ch.all.filter((x) => x.h.kind === k), filters.sort);
+                                    return (
+                                      <div key={k} className="min-w-0">
+                                        <div className="text-[11px] font-semibold text-gray-400 uppercase tracking-wide pt-1">{label} ({part.length})</div>
+                                        <div className="divide-y divide-gray-800 print:divide-gray-200">
+                                          {part.map((x) => (
+                                            <HitRow key={x.key} ch={x} displayKey={it.display_key} now={now} error={hitErr[x.key]} onPhoto={setPhoto}
+                                              onSetAside={(c, reason, note) => setAside(it.display_key, c, reason, note)} onChanged={load} />
+                                          ))}
+                                        </div>
+                                        {part.length === 0 && <p className="text-xs text-gray-600 py-2">None right now.</p>}
+                                      </div>
+                                    );
+                                  })}
+                              </div>
+                            )}
                             {ch.all.length === 0 && (
                               <p className="text-xs text-gray-500 py-2">
                                 {ts.length === 0 ? "No strategies yet: add one to see listings." : "Nothing listed under its prices right now (with these filters)."}
