@@ -364,6 +364,12 @@ export default function BuyingGuide({ displayKey }: { displayKey: string }) {
               <div className="flex items-baseline justify-between text-xs">
                 <span className="text-gray-300">
                   Timing{a.months_since_release != null && <> · month {Math.floor(a.months_since_release)} since release</>}
+                  {a.pull_odds && (
+                    <span className="ml-2 text-gray-400" title={`${a.pull_odds.rarity_label}: 1 in ${a.pull_odds.packs_per_rarity} packs for any of the set's ${a.pull_odds.cards_in_rarity}, each printed equally (measured pull rates, ${a.pull_odds.source})`}>
+                      · pulled 1 in <span className="text-gray-100">{Math.round(a.pull_odds.packs_per_copy).toLocaleString()}</span> packs
+                      <span className="text-gray-500"> ({a.pull_odds.rarity_label}: 1 in {a.pull_odds.packs_per_rarity} × {a.pull_odds.cards_in_rarity})</span>
+                    </span>
+                  )}
                 </span>
                 <Link to="/timing" className="text-indigo-300 hover:text-indigo-200">Release curves →</Link>
               </div>

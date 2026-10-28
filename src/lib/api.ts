@@ -1030,10 +1030,21 @@ export interface ReleaseCurves {
   scarcity_bounds?: number[];
 }
 
+// Packs to open to pull one exact card (measured per-rarity rates).
+export interface PullOdds {
+  rarity_label: string;
+  packs_per_rarity: number;
+  cards_in_rarity: number;
+  packs_per_copy: number;
+  source: string;
+  fetched_at: string;
+}
+
 export interface CardAnalysis {
   display_key: string;
   name: string;
   set_code: string;
+  pull_odds?: PullOdds;
   months_since_release?: number;
   gem_rates: Record<string, number>;
   image_url?: string;
