@@ -1151,6 +1151,9 @@ export interface PlaySummary {
   bottom_cents?: number;
   target_cents?: number;
   break_even_cents?: number;
+  break_even_psa_cents?: number; // highest raw price at which grading with PSA nets $0 (public gem rate)
+  break_even_cgc_cents?: number; // the same with CGC, Pristines at their own price
+  projection_raw?: number; // a raw copy's yearly return held two years, after fees
   bid_cents?: number;
   grader?: string;
   release_cents?: number;
@@ -1558,12 +1561,14 @@ export interface TargetHit {
   ends_at?: string; // auctions
   image_url?: string; // the listing's main photo (eBay)
   image_count?: number; // photos on it; 1 on a raw listing = the back isn't shown
+  seller?: string; // eBay username
   review?: HitReview;
 }
 
 // Your pass or note on a hit (one listing).
 export interface HitReview {
-  status: "pass" | "note";
+  status: "pass" | "note" | "interested";
+  max_bid_cents?: number; // interested: the most you'd pay, all-in
   reason?: HitReason;
   note?: string;
   price_cents?: number; // the price when reviewed
@@ -1583,7 +1588,7 @@ export const HIT_REASONS: { key: Exclude<HitReason, "no_back_photo">; label: str
   { key: "other", label: "Other", hint: "Say why in the note" },
 ];
 
-export function reviewHit(h: { source: string; listing_id: string; display_key: string; status: "pass" | "note"; reason?: HitReason; note?: string; price_cents?: number }): Promise<{ saved: boolean }> {
+export function reviewHit(h: { source: string; listing_id: string; display_key: string; status: "pass" | "note" | "interested"; reason?: HitReason; note?: string; price_cents?: number; max_bid_cents?: number }): Promise<{ saved: boolean }> {
   return adminFetch(`/v1/admin/watch-hits/review`, { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify(h) });
 }
 
@@ -2244,4 +2249,33 @@ export interface GroupCard {
 }
 export function fetchGroupCards(category: string, grade: string, lang: string): Promise<{ cards: GroupCard[] }> {
   return get(`/v1/analysis/group-cards?category=${encodeURIComponent(category)}&grade=${encodeURIComponent(grade === "raw" || grade === "psa-10" ? grade : "raw")}&lang=${lang}`);
+}
+
+// The review log: every listing set aside, noted or marked interested
+// (GET /v1/admin/watch-hits/reviews).
+export interface ReviewLogRow {
+  source: string;
+  listing_id: string;
+  status: "pass" | "note" | "interested";
+  reason?: HitReason;
+  note?: string;
+  max_bid_cents?: number;
+  price_cents?: number; // when reviewed
+  reviewed_at: string;
+  reviewed_by?: string;
+  display_key?: string;
+  card_name?: string;
+  card_number?: string;
+  set_name?: string;
+  title?: string;
+  url?: string;
+  image_url?: string;
+  grade_key?: string;
+  kind?: "buy_now" | "auction";
+  now_cents?: number;
+  ends_at?: string;
+  live: boolean;
+}
+export function fetchHitReviews(days = 30, status = ""): Promise<{ reviews: ReviewLogRow[]; days: number; pruned: number }> {
+  return adminFetch(`/v1/admin/watch-hits/reviews?days=${days}${status ? `&status=${status}` : ""}`);
 }
