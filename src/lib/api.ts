@@ -1219,6 +1219,10 @@ export interface WatchItem {
   added_by?: string;
   created_at: string;
   psa10_cents?: number;
+  cgc10_cents?: number;
+  pristine_cents?: number; // CGC Pristine 10
+  score_grade_psa?: number; // buy raw to grade with PSA, 0-100
+  score_grade_cgc?: number; // ... with CGC
   play?: PlaySummary;
   targets_detail?: WatchTarget[];
   hits?: number;
