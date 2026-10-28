@@ -1,6 +1,6 @@
 import { Fragment, useCallback, useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
-import { BUY_TARGETS, clearHitReview, fetchWatchlist, putTargets, reviewHit, unwatchCard, type BuyTarget, type HitReason, type WatchItem, type WatchIntent, type WatchTarget } from "../lib/api";
+import { BUY_TARGETS, clearHitReview, fetchWatchlist, putTargets, reviewHit, unwatchCard, type BuyTarget, type HitReason, type PlaySummary, type WatchItem, type WatchIntent, type WatchTarget } from "../lib/api";
 import { useSession } from "../lib/auth";
 import { STANCE } from "../components/BuyingGuide";
 import { CardPrepButtons, PresetBar, TARGET_LABEL, TargetEditor, usePresets } from "../components/WatchTargets";
@@ -9,6 +9,7 @@ import { Spinner, ErrorMsg } from "../components/Spinner";
 import WatchSuggestions from "../components/WatchSuggestions";
 import { watchChanged } from "../components/WatchButton";
 import ReleaseVs from "../components/ReleaseVs";
+import ReviewLog from "../components/ReviewLog";
 import { Drawer, HitRow, PhotoOverlay, cardHits, loadHitFilters, saveHitFilters, sortHits, useNow, type CardHit, type HitFilters, type Photo } from "../components/WatchHits";
 
 const usd = (c?: number | null) => (c == null ? "—" : `$${(c / 100).toFixed(2)}`);
@@ -29,6 +30,71 @@ function Seg<T extends string>({ value, options, onChange }: { value: T; options
   );
 }
 
+// Tabs: one per buy target, each with the columns that decide it.
+type Tab = BuyTarget | "" | "none";
+type ColId = "play" | "raw" | "low" | "grade_le" | "be" | "be_psa" | "be_cgc" | "psa10" | "bid10" | "held10" | "held_raw";
+const COLS: Record<ColId, { label: string; title?: string }> = {
+  play: { label: "Play" },
+  raw: { label: "Raw now", title: "Raw market price, and where it sits vs its release price and expected low" },
+  low: { label: "Exp. low", title: "Expected raw low (release curve)" },
+  grade_le: { label: "Grade ≤", title: "Most to pay raw to grade (your return bar, better grader)" },
+  be: { label: "Break-even", title: "Grading nets $0 at this raw price (better grader): never pay more" },
+  be_psa: { label: "PSA BE", title: "Highest raw price at which grading with PSA nets $0 at the public gem rate (sold at whatever grade it gets)" },
+  be_cgc: { label: "CGC BE", title: "The same with CGC, Pristine 10s valued at their own price" },
+  psa10: { label: "PSA 10" },
+  bid10: { label: "10 bid ≤", title: "PSA 10 auction ceiling (hammer)" },
+  held10: { label: "10 held/yr", title: "A PSA 10's projected yearly return held two years, after fees" },
+  held_raw: { label: "Raw held/yr", title: "A raw copy's projected yearly return held two years, after fees (tier curve + its own trend)" },
+};
+const TAB_COLS: Record<Tab, ColId[]> = {
+  "": ["play", "raw", "low", "grade_le", "be", "psa10", "bid10", "held10"],
+  raw_grade: ["raw", "low", "be_psa", "be_cgc", "grade_le", "held_raw"],
+  raw_invest: ["raw", "low", "held_raw", "play"],
+  cgc_10: ["play", "raw", "held10"],
+  psa_10: ["play", "psa10", "bid10", "held10"],
+  regrade: ["play", "psa10", "held10"],
+  none: ["play", "raw", "low", "held_raw"],
+};
+const TAB_KEY = "watchlist.tab";
+const loadTab = (): Tab => {
+  try {
+    const v = localStorage.getItem(TAB_KEY) ?? "";
+    return (v in TAB_COLS ? v : "") as Tab;
+  } catch {
+    return "";
+  }
+};
+const yearly = (v?: number) => (v == null ? "—" : `${v >= 0 ? "+" : ""}${Math.round(v * 100)}%`);
+
+function cell(c: ColId, it: WatchItem, p: PlaySummary | undefined) {
+  const over = (be?: number) => p?.raw_cents != null && be != null && p.raw_cents >= be;
+  switch (c) {
+    case "play":
+      return (
+        <td key={c} className="py-1.5 pr-2 max-w-xs">
+          {p && <span className={`px-1 rounded border text-[10px] mr-1 ${STANCE[p.stance].cls}`}>{STANCE[p.stance].label}</span>}
+          <span className="text-gray-400 print:text-black">{p?.headline}</span>
+        </td>
+      );
+    case "raw":
+      return (
+        <td key={c} className="py-1.5 pr-2 text-right">
+          {usd(p?.raw_cents)}
+          {p && <div className="text-[10px]"><ReleaseVs f={{ ...p, bottom_cents: p.exp_bottom_cents }} /></div>}
+        </td>
+      );
+    case "low": return <td key={c} className="py-1.5 pr-2 text-right">{usd(p?.exp_bottom_cents ?? p?.bottom_cents)}</td>;
+    case "grade_le": return <td key={c} className="py-1.5 pr-2 text-right font-medium">{usd(p?.target_cents)}</td>;
+    case "be": return <td key={c} className={`py-1.5 pr-2 text-right ${over(p?.break_even_cents) ? "text-red-400" : ""}`}>{usd(p?.break_even_cents)}</td>;
+    case "be_psa": return <td key={c} className={`py-1.5 pr-2 text-right ${over(p?.break_even_psa_cents) ? "text-red-400" : ""}`}>{usd(p?.break_even_psa_cents)}</td>;
+    case "be_cgc": return <td key={c} className={`py-1.5 pr-2 text-right ${over(p?.break_even_cgc_cents) ? "text-red-400" : ""}`}>{usd(p?.break_even_cgc_cents)}</td>;
+    case "psa10": return <td key={c} className="py-1.5 pr-2 text-right">{usd(it.psa10_cents)}</td>;
+    case "bid10": return <td key={c} className="py-1.5 pr-2 text-right">{usd(p?.bid_cents)}</td>;
+    case "held10": return <td key={c} className="py-1.5 pr-2 text-right">{yearly(p?.projection)}</td>;
+    case "held_raw": return <td key={c} className="py-1.5 pr-2 text-right">{yearly(p?.projection_raw)}</td>;
+  }
+}
+
 // The buy list, by set: each card's buy targets, and (click the row) the
 // live listings under them, which can be set aside with a reason or noted.
 // Prints cleanly (Ctrl+P / the Print button); open cards print their listings.
@@ -38,7 +104,9 @@ export default function WatchlistPage() {
   const [items, setItems] = useState<WatchItem[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [intent, setIntent] = useState<WatchIntent | "">("");
-  const [target, setTarget] = useState<BuyTarget | "" | "none" | "unpriced">("");
+  const [target, setTargetState] = useState<Tab>(loadTab);
+  const [unpricedOnly, setUnpricedOnly] = useState(false);
+  const [history, setHistory] = useState(false);
   const [preset, setPreset] = useState("");
   const [setCode, setSetCode] = useState("");
   const [onlyHits, setOnlyHits] = useState(false);
@@ -98,11 +166,11 @@ export default function WatchlistPage() {
   // Targets a card keeps under the target / strategy filters.
   const shownTargets = useCallback((it: WatchItem): WatchTarget[] => {
     let ts = it.targets_detail ?? [];
-    if (target && target !== "none" && target !== "unpriced") ts = ts.filter((t) => t.target === target);
-    if (target === "unpriced") ts = ts.filter((t) => t.max_cents == null);
+    if (target && target !== "none") ts = ts.filter((t) => t.target === target);
+    if (unpricedOnly) ts = ts.filter((t) => t.max_cents == null);
     if (preset) ts = ts.filter((t) => (preset === "custom" ? !t.preset : t.preset === preset));
     return ts;
-  }, [target, preset]);
+  }, [target, preset, unpricedOnly]);
 
   const filtered = useMemo(() => {
     const needle = q.trim().toLowerCase();
@@ -113,11 +181,11 @@ export default function WatchlistPage() {
       const all = it.targets_detail ?? [];
       if (target === "none") return all.length === 0;
       const ts = shownTargets(it);
-      if ((target || preset) && ts.length === 0) return false;
+      if ((target || preset || unpricedOnly) && ts.length === 0) return false;
       if (onlyHits && cardHits(ts, filters, false, hidden).length === 0) return false;
       return true;
     });
-  }, [items, intent, setCode, q, target, preset, onlyHits, shownTargets, filters, hidden]);
+  }, [items, intent, setCode, q, target, preset, unpricedOnly, onlyHits, shownTargets, filters, hidden]);
 
   const bySet = useMemo(() => {
     const m = new Map<string, { name: string; code: string; items: WatchItem[] }>();
@@ -178,6 +246,16 @@ export default function WatchlistPage() {
     setFiltersState(n);
     saveHitFilters(n);
   };
+
+  const setTarget = (t: Tab) => {
+    setTargetState(t);
+    try {
+      localStorage.setItem(TAB_KEY, t);
+    } catch {
+      // not remembered; fine
+    }
+  };
+  const cols = TAB_COLS[target];
 
   const toggleExpanded = (k: string) => setExpanded((s) => {
     const n = new Set(s);
@@ -263,13 +341,18 @@ export default function WatchlistPage() {
 
       <WatchSuggestions onAccepted={load} />
 
+      <div className="flex flex-wrap items-end gap-1 border-b border-gray-800 print:hidden">
+        {([["", "All", items.length] as const, ...BUY_TARGETS.map((t) => [t.key, t.label, targetCount(t.key)] as const),
+          ["none", "No targets", items.filter((it) => (it.targets_detail ?? []).length === 0).length] as const]).map(([k, label, n]) => (
+          <button key={k || "all"} onClick={() => setTarget(k as Tab)} title={BUY_TARGETS.find((t) => t.key === k)?.hint}
+            className={`px-3 py-1.5 text-sm rounded-t border-x border-t -mb-px ${target === k ? "border-gray-700 bg-gray-900 text-white" : "border-transparent text-gray-400 hover:text-gray-200"}`}>
+            {label} <span className="text-xs text-gray-500">{n}</span>
+          </button>
+        ))}
+      </div>
+      <h2 className="hidden print:block text-sm font-semibold">{target ? (BUY_TARGETS.find((t) => t.key === target)?.label ?? "No targets") : "Every target"}</h2>
+
       <div className="flex flex-wrap items-center gap-2 print:hidden">
-        <select value={target} onChange={(e) => setTarget(e.target.value as typeof target)} className={sel}>
-          <option value="">Every target</option>
-          {BUY_TARGETS.map((t) => <option key={t.key} value={t.key}>{t.label} ({targetCount(t.key)})</option>)}
-          <option value="unpriced">Targets without a price</option>
-          <option value="none">No targets yet</option>
-        </select>
         <select value={preset} onChange={(e) => setPreset(e.target.value)} className={sel}>
           <option value="">Every strategy</option>
           {presets.map((p) => <option key={p.key} value={p.key}>{p.label}</option>)}
@@ -286,6 +369,9 @@ export default function WatchlistPage() {
         <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search cards" className={`${sel} w-44`} />
         <label className="flex items-center gap-1 text-sm text-gray-300">
           <input type="checkbox" className="accent-indigo-500" checked={onlyHits} onChange={(e) => setOnlyHits(e.target.checked)} /> Only cards with hits
+        </label>
+        <label className="flex items-center gap-1 text-sm text-gray-300" title="Only strategies with no price rule (they never hit)">
+          <input type="checkbox" className="accent-indigo-500" checked={unpricedOnly} onChange={(e) => setUnpricedOnly(e.target.checked)} /> Without a price
         </label>
       </div>
 
@@ -344,6 +430,8 @@ export default function WatchlistPage() {
         <label className="flex items-center gap-1 text-gray-300 ml-2">
           <input type="checkbox" className="accent-indigo-500" checked={showPassed} onChange={(e) => setShowPassed(e.target.checked)} /> Show set-aside ({passedCount})
         </label>
+        <button onClick={() => setHistory(true)} className="ml-2 px-2 py-0.5 rounded border border-gray-700 text-gray-300 hover:text-white"
+          title="Everything you set aside, noted or marked interested: find a wrong call and change it">Review history</button>
       </div>
 
       <section className="rounded-lg border border-green-900/60 bg-gray-900 p-3 break-inside-avoid print:hidden">
@@ -392,20 +480,15 @@ export default function WatchlistPage() {
                 </th>
                 <th className="text-left py-1 pr-2 font-medium sticky top-12 left-0 bg-gray-900 z-20 print:static" colSpan={2}>Card</th>
                 <th className="text-left py-1 pr-2 font-medium sticky top-12 bg-gray-900 z-10 print:static">Buy targets</th>
-                <th className="text-left py-1 pr-2 font-medium sticky top-12 bg-gray-900 z-10 print:static">Play</th>
-                <th className="text-right py-1 pr-2 font-medium sticky top-12 bg-gray-900 z-10 print:static">Raw now</th>
-                <th className="text-right py-1 pr-2 font-medium sticky top-12 bg-gray-900 z-10 print:static" title="Expected raw low (release curve)">Exp. low</th>
-                <th className="text-right py-1 pr-2 font-medium sticky top-12 bg-gray-900 z-10 print:static" title="Most to pay raw to grade (your return bar)">Grade ≤</th>
-                <th className="text-right py-1 pr-2 font-medium sticky top-12 bg-gray-900 z-10 print:static" title="Grading nets $0 at this raw price: never pay more">Break-even</th>
-                <th className="text-right py-1 pr-2 font-medium sticky top-12 bg-gray-900 z-10 print:static">PSA 10</th>
-                <th className="text-right py-1 pr-2 font-medium sticky top-12 bg-gray-900 z-10 print:static" title="PSA 10 auction ceiling (hammer)">10 bid ≤</th>
-                <th className="text-right py-1 font-medium sticky top-12 bg-gray-900 z-10 print:static" title="Similar cards' yearly appreciation after fees (PSA 10)">Held/yr</th>
+                {cols.map((c) => (
+                  <th key={c} title={COLS[c].title}
+                    className={`${c === "play" ? "text-left" : "text-right"} py-1 pr-2 font-medium sticky top-12 bg-gray-900 z-10 print:static`}>{COLS[c].label}</th>
+                ))}
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-800 print:divide-gray-200 text-gray-300 print:text-black">
               {g.items.map((it) => {
                 const p = it.play;
-                const over = p?.raw_cents != null && p.break_even_cents != null && p.raw_cents >= p.break_even_cents;
                 const ts = shownTargets(it);
                 const ch = hitsByCard.get(it.display_key) ?? { all: [], live: [] };
                 const open = expanded.has(it.display_key);
@@ -457,24 +540,11 @@ export default function WatchlistPage() {
                           <div className="text-red-400 text-[11px] mt-1">{removeErr.msg}</div>
                         )}
                       </td>
-                      <td className="py-1.5 pr-2 max-w-xs">
-                        {p && <span className={`px-1 rounded border text-[10px] mr-1 ${STANCE[p.stance].cls}`}>{STANCE[p.stance].label}</span>}
-                        <span className="text-gray-400 print:text-black">{p?.headline}</span>
-                      </td>
-                      <td className="py-1.5 pr-2 text-right">
-                        {usd(p?.raw_cents)}
-                        {p && <div className="text-[10px]"><ReleaseVs f={{ ...p, bottom_cents: p.exp_bottom_cents }} /></div>}
-                      </td>
-                      <td className="py-1.5 pr-2 text-right">{usd(p?.exp_bottom_cents ?? p?.bottom_cents)}</td>
-                      <td className="py-1.5 pr-2 text-right font-medium">{usd(p?.target_cents)}</td>
-                      <td className={`py-1.5 pr-2 text-right ${over ? "text-red-400" : ""}`}>{usd(p?.break_even_cents)}</td>
-                      <td className="py-1.5 pr-2 text-right">{usd(it.psa10_cents)}</td>
-                      <td className="py-1.5 pr-2 text-right">{usd(p?.bid_cents)}</td>
-                      <td className="py-1.5 text-right">{p?.projection != null ? `${p.projection >= 0 ? "+" : ""}${Math.round(p.projection * 100)}%` : "—"}</td>
+                      {cols.map((c) => cell(c, it, p))}
                     </tr>
                     {open && (
                       <tr>
-                        <td colSpan={12} className="pb-2 pl-6">
+                        <td colSpan={4 + cols.length} className="pb-2 pl-6">
                           <div className="rounded border border-gray-800 bg-gray-950/60 px-3 py-1 print:border-gray-300 print:bg-white">
                             <div className="flex flex-wrap items-center justify-between gap-2 pt-1 text-[11px] text-gray-500">
                               <span>{ch.live.length} listing{ch.live.length === 1 ? "" : "s"} at or under a target price{ch.all.length > ch.live.length ? `, ${ch.all.length - ch.live.length} set aside` : ""}</span>
@@ -529,6 +599,11 @@ export default function WatchlistPage() {
         );
       })()}
       {photo && <PhotoOverlay photo={photo} onClose={() => setPhoto(null)} />}
+      {history && (
+        <Drawer onClose={() => { setHistory(false); load(); }} title={<h2 className="text-sm font-semibold text-gray-100">Review history</h2>}>
+          <ReviewLog />
+        </Drawer>
+      )}
     </div>
   );
 }

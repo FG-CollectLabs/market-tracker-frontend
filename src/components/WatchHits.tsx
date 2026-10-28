@@ -42,6 +42,7 @@ export function saveHitFilters(f: HitFilters) {
 export const onePhotoRaw = (h: TargetHit) => h.grade_key === "raw" && h.image_count === 1;
 
 const passed = (h: TargetHit) => h.review?.status === "pass";
+const interested = (h: TargetHit) => h.review?.status === "interested";
 
 // One listing under a card, with every strategy it matched.
 export interface CardHit {
@@ -79,7 +80,8 @@ export function cardHits(targets: WatchTarget[], f: HitFilters, includePassed: b
 export function sortHits(list: CardHit[], sort: HitSort): CardHit[] {
   const end = (x: CardHit) => (x.h.kind === "auction" && x.h.ends_at ? new Date(x.h.ends_at).getTime() : Infinity);
   return [...list].sort((a, b) => {
-    // Set-aside rows (Show set-aside) go last.
+    // Interested first; set-aside rows (Show set-aside) last.
+    if (interested(a.h) !== interested(b.h)) return interested(a.h) ? -1 : 1;
     if (passed(a.h) !== passed(b.h)) return passed(a.h) ? 1 : -1;
     if (sort === "ending") return end(a) - end(b) || b.under - a.under;
     if (sort === "cheapest") return a.h.all_in_cents - b.h.all_in_cents;
@@ -137,7 +139,11 @@ export function HitRow({ ch, displayKey, now, error, onPhoto, onSetAside, onChan
   const [note, setNote] = useState(h.review?.note ?? "");
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
+  const [liking, setLiking] = useState(false);
+  const [maxBid, setMaxBid] = useState(h.review?.max_bid_cents != null ? (h.review.max_bid_cents / 100).toFixed(2) : "");
+  const [likeNote, setLikeNote] = useState(h.review?.note ?? "");
   const isPassed = passed(h);
+  const isLiked = interested(h);
   const left = h.kind === "auction" ? timeLeft(h.ends_at, now) : null;
 
   const run = async (f: () => Promise<unknown>) => {
@@ -163,8 +169,17 @@ export function HitRow({ ch, displayKey, now, error, onPhoto, onSetAside, onChan
     if (ok) setEditing(false);
   };
 
+  const saveLike = async () => {
+    const dollars = Number(maxBid);
+    const ok = await run(() => reviewHit({
+      source: h.source, listing_id: h.listing_id, display_key: displayKey, status: "interested", price_cents: h.all_in_cents,
+      note: likeNote.trim() || undefined, max_bid_cents: maxBid.trim() && dollars >= 0 ? Math.round(dollars * 100) : undefined,
+    }));
+    if (ok) setLiking(false);
+  };
+
   return (
-    <div className={`py-2 text-xs flex items-start gap-2 break-inside-avoid ${isPassed ? "opacity-50" : ""}`}>
+    <div className={`py-2 text-xs flex items-start gap-2 break-inside-avoid ${isPassed ? "opacity-50" : ""} ${isLiked ? "bg-amber-950/20 -mx-2 px-2 rounded" : ""}`}>
       {h.image_url ? (
         <button onClick={() => onPhoto({ url: largePhoto(h.image_url!), title: h.title, href: h.url })} className="shrink-0 print:pointer-events-none" title="Show the photo larger">
           <img src={h.image_url} alt="" loading="lazy" className="w-12 h-12 object-cover rounded-sm bg-gray-800" />
@@ -182,6 +197,12 @@ export function HitRow({ ch, displayKey, now, error, onPhoto, onSetAside, onChan
           <span className="text-gray-500">· {ch.targets.map((t) => TARGET_LABEL[t.target]).join(", ")}</span>
           {onePhotoRaw(h) && <span className="px-1 rounded bg-amber-900/50 text-amber-200" title="Only one photo: the back isn't shown">1 photo</span>}
           {isPassed && <span className="px-1 rounded border border-gray-600 text-gray-300">{reasonLabel(h.review?.reason)}</span>}
+          {isLiked && (
+            <span className="px-1 rounded bg-amber-500/90 text-black font-medium print:border print:border-gray-400">
+              ★ Interested{h.review?.max_bid_cents != null ? ` · max ${usd(h.review.max_bid_cents)}` : ""}
+            </span>
+          )}
+          {h.seller && <span className="text-gray-600" title="eBay seller">· {h.seller}</span>}
         </div>
         {h.url
           ? <a href={h.url} target="_blank" rel="noreferrer" className="text-indigo-300 hover:text-indigo-200 print:text-black block truncate">{h.title}</a>
@@ -223,11 +244,33 @@ export function HitRow({ ch, displayKey, now, error, onPhoto, onSetAside, onChan
               )}
             </span>
           )}
-          {!editing && (
+          {!isPassed && !liking && (
+            <button onClick={() => setLiking(true)} title="Keep it at the top of this card's listings, with the most you'd pay"
+              className="text-[10px] px-1.5 py-0.5 rounded border border-amber-700/70 text-amber-200 hover:text-amber-100">
+              {isLiked ? "Edit ★" : "★ Interested"}
+            </button>
+          )}
+          {isLiked && !liking && (
+            <button disabled={busy} onClick={() => run(() => clearHitReview(h.source, h.listing_id))}
+              className="text-[10px] px-1.5 py-0.5 rounded border border-gray-700 text-gray-400 hover:text-white disabled:opacity-40">Unmark</button>
+          )}
+          {!editing && !isLiked && (
             <button onClick={() => { setEditing(true); setNote(h.review?.note ?? ""); }}
               className="text-[10px] px-1.5 py-0.5 rounded border border-gray-700 text-gray-400 hover:text-white">{h.review?.note ? "Edit note" : "Note"}</button>
           )}
         </div>
+        {liking && (
+          <div className="flex flex-wrap items-center gap-1 pt-0.5 print:hidden">
+            <span className="text-[11px] text-gray-400">Max bid $</span>
+            <input autoFocus type="number" min={0} step={0.01} value={maxBid} onChange={(e) => setMaxBid(e.target.value)} placeholder="optional"
+              className="w-20 bg-gray-950 border border-gray-700 rounded px-1.5 py-0.5 text-[11px] text-gray-200 text-right" />
+            <input value={likeNote} onChange={(e) => setLikeNote(e.target.value)} maxLength={2000} placeholder="Note (optional)"
+              onKeyDown={(e) => { if (e.key === "Enter") saveLike(); if (e.key === "Escape") setLiking(false); }}
+              className="flex-1 min-w-[10rem] bg-gray-950 border border-gray-700 rounded px-1.5 py-0.5 text-[11px] text-gray-200" />
+            <button disabled={busy} onClick={saveLike} className="text-[10px] px-1.5 rounded bg-amber-600 text-black hover:bg-amber-500 disabled:opacity-40">Save</button>
+            <button onClick={() => setLiking(false)} className="text-[10px] px-1 text-gray-400 hover:text-gray-200">Cancel</button>
+          </div>
+        )}
         {editing && (
           <div className="flex gap-1 pt-0.5 print:hidden">
             <input autoFocus value={note} onChange={(e) => setNote(e.target.value)} maxLength={2000}
