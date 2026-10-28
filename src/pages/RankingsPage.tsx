@@ -3,6 +3,7 @@ import { fetchRankings, saveRankings, resetRankings, type RankingLists, type Ran
 import { useSession } from "../lib/auth";
 import { Spinner, ErrorMsg } from "../components/Spinner";
 import { HelpDot } from "../components/HelpTip";
+import RankingCards from "../components/RankingCards";
 
 type Kind = "pokemon" | "artists" | "trainers";
 
@@ -235,7 +236,8 @@ export default function RankingsPage() {
       </div>
 
       {pickCol && pickName && (
-        <div className="flex flex-wrap items-center gap-2 text-xs rounded border border-indigo-800 bg-indigo-950/30 px-3 py-2 print:hidden">
+        <div className="rounded border border-indigo-800 bg-indigo-950/30 px-3 py-2 space-y-2 print:hidden">
+        <div className="flex flex-wrap items-center gap-2 text-xs">
           <span className="text-gray-100 font-medium">{label(pickName)}</span>
           <span className="text-gray-500">{countOf(pickName)} tracked cards</span>
           <span className="text-gray-400 ml-2">Move to</span>
@@ -253,6 +255,8 @@ export default function RankingsPage() {
             Remove{kind === "trainers" ? " (becomes other)" : " (unlisted)"}
           </button>
           <button onClick={() => setPicked(null)} className="ml-auto text-gray-500 hover:text-gray-300">Close</button>
+        </div>
+        <RankingCards kind={kind === "artists" ? "artist" : kind === "trainers" ? "trainer" : "pokemon"} name={pickName} />
         </div>
       )}
 

@@ -1,6 +1,8 @@
 import { useMemo, useState } from "react";
 import { TRAINER_BUCKETS, type CurveLang, type ReleaseCurve, type ReleaseCurves } from "../lib/api";
 import GroupCards from "./GroupCards";
+import { Link } from "react-router-dom";
+import { groupPath } from "../lib/groups";
 import { LineChart, Legend, SERIES, type LineSeries } from "./HistoryCharts";
 
 // Compare release curves and returns across groups of one dimension: how
@@ -169,6 +171,7 @@ export default function CompareBy({ data, lang }: { data: ReleaseCurves; lang: C
                   <td className="py-1.5 pr-2 whitespace-nowrap">
                     <span className="text-gray-500 mr-1">{open ? "▾" : "▸"}</span>
                     <span className="inline-block w-2.5 h-2.5 rounded-sm mr-1.5 align-middle" style={{ background: color(i) }} />{b.label}
+                    <Link to={groupPath(b.key, grade, lang)} onClick={(e) => e.stopPropagation()} className="ml-1.5 text-indigo-300 hover:text-indigo-200" title="Open this group's page">↗</Link>
                     {row?.provisional && <span className="ml-1 text-[10px] text-amber-300" title={`As few as ${row.min_sets} sets`}>prov.</span>}
                   </td>
                   <td className="py-1.5 px-2 text-right">{row ? `M${row.window_from}–${row.window_to}` : "—"}</td>

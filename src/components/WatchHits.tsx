@@ -1,4 +1,4 @@
-import { useEffect, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useState, type ReactNode } from "react";
 import { HIT_REASONS, clearHitReview, reviewHit, type HitReason, type TargetHit, type WatchTarget } from "../lib/api";
 import { TARGET_LABEL } from "./WatchTargets";
 
@@ -123,12 +123,12 @@ export interface Photo {
   href?: string;
 }
 
-export function HitRow({ ch, displayKey, now, error, onPhoto, onSetAside, onChanged }: {
+export function HitRow({ ch, displayKey, now, error, onOpen, onSetAside, onChanged }: {
   ch: CardHit;
   displayKey: string;
   now: number;
   error?: string;
-  onPhoto: (p: Photo) => void;
+  onOpen: () => void; // the quick-review viewer, at this listing
   onSetAside: (ch: CardHit, reason: HitReason, note: string) => void;
   onChanged: () => void;
 }) {
@@ -181,7 +181,7 @@ export function HitRow({ ch, displayKey, now, error, onPhoto, onSetAside, onChan
   return (
     <div className={`py-2 text-xs flex items-start gap-2 break-inside-avoid ${isPassed ? "opacity-50" : ""} ${isLiked ? "bg-amber-950/20 -mx-2 px-2 rounded" : ""}`}>
       {h.image_url ? (
-        <button onClick={() => onPhoto({ url: largePhoto(h.image_url!), title: h.title, href: h.url })} className="shrink-0 print:pointer-events-none" title="Show the photo larger">
+        <button onClick={onOpen} className="shrink-0 print:pointer-events-none" title="Review: every photo, ★ Interested / ✕ Not interested, next listing">
           <img src={h.image_url} alt="" loading="lazy" className="w-12 h-12 object-cover rounded-sm bg-gray-800" />
         </button>
       ) : (
@@ -209,7 +209,7 @@ export function HitRow({ ch, displayKey, now, error, onPhoto, onSetAside, onChan
           : <span className="text-gray-200 block truncate">{h.title}</span>}
         {h.review?.note && !editing && <div className="text-[11px] text-amber-200/80 print:text-black">{h.review.note}</div>}
         <div className="text-[11px] text-gray-400 tabular-nums print:text-black">
-          {h.kind === "auction" ? "Bid" : "Ask"} {usd(h.price_cents)}
+          {h.kind === "auction" ? "Bid" : "Ask"} {h.shipping_cents ? <>{usd(h.price_cents - h.shipping_cents)} + {usd(h.shipping_cents)} ship</> : usd(h.price_cents)}
           {h.all_in_cents !== h.price_cents && <> · all-in <span className="text-gray-200 print:text-black">{usd(h.all_in_cents)}</span></>}
           {" "}· max {usd(h.max_cents)} ·{" "}
           <span className={ch.under >= 0 ? "text-green-300 print:text-black" : "text-red-300"}>{Math.round(ch.under * 100)}% under</span>
@@ -227,7 +227,7 @@ export function HitRow({ ch, displayKey, now, error, onPhoto, onSetAside, onChan
               className="text-[10px] px-1.5 py-0.5 rounded border border-gray-700 text-gray-300 hover:text-white disabled:opacity-40">Restore</button>
           ) : (
             <span className="relative">
-              <button onClick={() => setMenu(!menu)} className="text-[10px] px-1.5 py-0.5 rounded border border-gray-700 text-gray-300 hover:text-white">Set aside ▾</button>
+              <button onClick={() => setMenu(!menu)} className="text-[10px] px-1.5 py-0.5 rounded border border-gray-700 text-gray-500 hover:text-white" title="Set aside with a reason">Set aside ▾</button>
               {menu && (
                 <div className="absolute left-0 top-full mt-1 z-30 w-64 rounded border border-gray-700 bg-gray-950 p-2 space-y-1 shadow-lg"
                   onKeyDown={(e) => { if (e.key === "Escape") setMenu(false); }}>
@@ -244,11 +244,19 @@ export function HitRow({ ch, displayKey, now, error, onPhoto, onSetAside, onChan
               )}
             </span>
           )}
-          {!isPassed && !liking && (
-            <button onClick={() => setLiking(true)} title="Keep it at the top of this card's listings, with the most you'd pay"
-              className="text-[10px] px-1.5 py-0.5 rounded border border-amber-700/70 text-amber-200 hover:text-amber-100">
-              {isLiked ? "Edit ★" : "★ Interested"}
-            </button>
+          {!isPassed && !isLiked && (
+            <button disabled={busy} title="Keep it at the top of this card's listings (add a max bid with Edit ★)"
+              onClick={() => run(() => reviewHit({ source: h.source, listing_id: h.listing_id, display_key: displayKey, status: "interested", price_cents: h.all_in_cents, note: h.review?.note }))}
+              className="text-[10px] px-1.5 py-0.5 rounded border border-amber-700/70 text-amber-200 hover:text-amber-100 disabled:opacity-40">★ Interested</button>
+          )}
+          {!isPassed && (
+            <button title="Set aside (not interested); pick a reason with Set aside ▾ if you want one"
+              onClick={() => onSetAside(ch, "not_interested", "")}
+              className="text-[10px] px-1.5 py-0.5 rounded border border-gray-700 text-gray-300 hover:text-white">✕ Not interested</button>
+          )}
+          {isLiked && !liking && (
+            <button onClick={() => setLiking(true)} title="Max bid and note"
+              className="text-[10px] px-1.5 py-0.5 rounded border border-amber-700/70 text-amber-200 hover:text-amber-100">Edit ★</button>
           )}
           {isLiked && !liking && (
             <button disabled={busy} onClick={() => run(() => clearHitReview(h.source, h.listing_id))}
@@ -286,20 +294,139 @@ export function HitRow({ ch, displayKey, now, error, onPhoto, onSetAside, onChan
   );
 }
 
-// A photo shown large; Escape or a click closes it.
-export function PhotoOverlay({ photo, onClose }: { photo: Photo; onClose: () => void }) {
+// Every photo of a listing, large (eBay's own URLs; s-l1600 is the full size).
+export const photosOf = (h: TargetHit) => {
+  const xs = h.image_urls?.length ? h.image_urls : h.image_url ? [h.image_url] : [];
+  return xs.map(largePhoto);
+};
+
+// Quick review: a card's listings one at a time with every photo. Click the
+// photo (or →) for the next photo, then the next listing; ← back; I marks
+// interested, N sets it aside as not interested and moves on; ↓ skips to the
+// next listing; Escape closes.
+export function Reviewer({ title, hits, start, displayKey, now, onClose, onNotInterested, onChanged }: {
+  title: string;
+  hits: CardHit[];
+  start: number;
+  displayKey: string;
+  now: number;
+  onClose: () => void;
+  onNotInterested: (ch: CardHit) => void;
+  onChanged: () => void;
+}) {
+  const [i, setI] = useState(start);
+  const [p, setP] = useState(0);
+  const [marks, setMarks] = useState<Record<string, "interested" | "pass">>({});
+  const [err, setErr] = useState<string | null>(null);
+  const ch = hits[Math.min(i, hits.length - 1)];
+  const h = ch?.h;
+  const photos = h ? photosOf(h) : [];
+  const mark = h ? marks[ch.key] ?? (h.review?.status === "interested" ? "interested" : h.review?.status === "pass" ? "pass" : undefined) : undefined;
+
+  const go = useCallback((di: number) => {
+    setI((x) => Math.max(0, Math.min(hits.length - 1, x + di)));
+    setP(0);
+  }, [hits.length]);
+  const nextPhoto = useCallback(() => {
+    if (p + 1 < photos.length) setP(p + 1);
+    else if (i + 1 < hits.length) go(1);
+  }, [p, photos.length, i, hits.length, go]);
+  const prevPhoto = useCallback(() => {
+    if (p > 0) setP(p - 1);
+    else if (i > 0) go(-1);
+  }, [p, i, go]);
+  const like = useCallback(async () => {
+    if (!h) return;
+    setErr(null);
+    try {
+      await reviewHit({ source: h.source, listing_id: h.listing_id, display_key: displayKey, status: "interested", price_cents: h.all_in_cents, note: h.review?.note });
+      setMarks((m) => ({ ...m, [ch.key]: "interested" }));
+      onChanged();
+    } catch (e) {
+      setErr((e as Error).message);
+    }
+  }, [h, ch, displayKey, onChanged]);
+  const nope = useCallback(() => {
+    if (!h) return;
+    onNotInterested(ch);
+    setMarks((m) => ({ ...m, [ch.key]: "pass" }));
+    if (i + 1 < hits.length) go(1);
+  }, [h, ch, i, hits.length, go, onNotInterested]);
+
   useEffect(() => {
-    const k = (e: KeyboardEvent) => { if (e.key === "Escape") onClose(); };
+    const k = (e: KeyboardEvent) => {
+      if ((e.target as HTMLElement)?.closest?.("input,textarea,select")) return;
+      switch (e.key) {
+        case "Escape": onClose(); break;
+        case "ArrowRight": nextPhoto(); break;
+        case "ArrowLeft": prevPhoto(); break;
+        case "ArrowDown": case "j": go(1); break;
+        case "ArrowUp": case "k": go(-1); break;
+        case "i": case "I": like(); break;
+        case "n": case "N": nope(); break;
+        default: return;
+      }
+      e.preventDefault();
+    };
     window.addEventListener("keydown", k);
     return () => window.removeEventListener("keydown", k);
-  }, [onClose]);
+  }, [onClose, nextPhoto, prevPhoto, go, like, nope]);
+
+  if (!h) return null;
+  const left = h.kind === "auction" ? timeLeft(h.ends_at, now) : null;
+  const btn = "px-3 py-1.5 rounded text-sm font-medium disabled:opacity-40";
   return (
-    <div className="fixed inset-0 z-40 bg-black/80 flex items-center justify-center p-4 print:hidden" onClick={onClose}>
-      <div className="max-w-3xl w-full space-y-2" onClick={(e) => e.stopPropagation()}>
-        <img src={photo.url} alt={photo.title} className="max-h-[80vh] mx-auto rounded" onClick={onClose} />
-        <div className="flex items-center justify-between gap-2 text-xs">
-          <span className="text-gray-300 truncate">{photo.title}</span>
-          {photo.href && <a href={photo.href} target="_blank" rel="noreferrer" className="shrink-0 text-indigo-300 hover:text-indigo-200">Open the listing ↗</a>}
+    <div className="fixed inset-0 z-40 bg-black/90 flex flex-col print:hidden" onClick={onClose}>
+      <div className="flex items-center gap-3 px-4 py-2 text-sm text-gray-300" onClick={(e) => e.stopPropagation()}>
+        <span className="font-semibold text-white truncate">{title}</span>
+        <span className="text-gray-500">listing {i + 1} of {hits.length}</span>
+        <span className="flex-1" />
+        <span className="hidden md:inline text-xs text-gray-500">click photo / → next · ← back · ↓ next listing · I interested · N not interested · Esc close</span>
+        <button onClick={onClose} className="text-gray-400 hover:text-white">✕</button>
+      </div>
+      <div className="flex-1 min-h-0 flex flex-col lg:flex-row gap-3 px-4 pb-4" onClick={(e) => e.stopPropagation()}>
+        <div className="flex-1 min-h-0 flex flex-col items-center justify-center gap-2">
+          {photos.length > 0
+            ? <img src={photos[p]} alt={h.title} onClick={nextPhoto} className="max-h-[72vh] max-w-full object-contain rounded cursor-pointer select-none" title="Next photo" />
+            : <div className="text-gray-500 text-sm">No photos for this listing</div>}
+          {photos.length > 1 && (
+            <div className="flex gap-1 overflow-x-auto max-w-full">
+              {photos.map((u, k) => (
+                <img key={u} src={u} alt="" loading="lazy" onClick={() => setP(k)}
+                  className={`h-14 w-14 object-cover rounded cursor-pointer ${k === p ? "ring-2 ring-indigo-400" : "opacity-60 hover:opacity-100"}`} />
+              ))}
+            </div>
+          )}
+          <span className="text-xs text-gray-500">photo {photos.length ? p + 1 : 0} of {photos.length}</span>
+        </div>
+        <div className="lg:w-80 shrink-0 space-y-2 text-sm text-gray-300">
+          <div className="flex flex-wrap gap-1 text-[11px]">
+            <span className="px-1 rounded bg-gray-800">{h.source === "fanatics" ? "Fanatics" : "eBay"}</span>
+            <span className="px-1 rounded bg-gray-800">{h.kind === "auction" ? "Auction" : "Buy Now"}</span>
+            <span className="px-1 rounded bg-gray-800 font-medium">{h.grade_key.toUpperCase()}</span>
+            {onePhotoRaw(h) && <span className="px-1 rounded bg-amber-900/50 text-amber-200">1 photo</span>}
+            {h.seller && <span className="text-gray-500">{h.seller}</span>}
+          </div>
+          <div className="text-gray-100">{h.title}</div>
+          <div className="tabular-nums space-y-0.5">
+            <div>{h.kind === "auction" ? "Bid" : "Ask"} <span className="text-white">{usd(h.shipping_cents ? h.price_cents - h.shipping_cents : h.price_cents)}</span>
+              {h.shipping_cents ? <> + {usd(h.shipping_cents)} shipping</> : h.source === "ebay" ? <span className="text-gray-500"> (free or unknown shipping)</span> : null}</div>
+            {h.all_in_cents !== h.price_cents && <div>All-in {usd(h.all_in_cents)} <span className="text-gray-500">(buyer's premium)</span></div>}
+            <div>Max {usd(h.max_cents)} · <span className={ch.under >= 0 ? "text-green-300" : "text-red-300"}>{Math.round(ch.under * 100)}% under</span></div>
+            {h.kind === "auction" && <div>{h.bids ?? 0} bid{h.bids === 1 ? "" : "s"}{left && <> · <span className={left.urgent ? "text-red-400" : ""}>{left.text} left</span></>}</div>}
+            <div className="text-gray-500 text-xs">{ch.targets.map((t) => TARGET_LABEL[t.target]).join(", ")}</div>
+          </div>
+          {mark && <div className={`text-xs ${mark === "interested" ? "text-amber-300" : "text-gray-400"}`}>{mark === "interested" ? "★ Marked interested" : "Set aside"}</div>}
+          {err && <div className="text-xs text-red-400">{err}</div>}
+          <div className="flex flex-wrap gap-2 pt-1">
+            <button onClick={like} disabled={mark === "interested"} className={`${btn} bg-amber-500 text-black hover:bg-amber-400`}>★ Interested <span className="text-xs opacity-70">I</span></button>
+            <button onClick={nope} disabled={mark === "pass"} className={`${btn} bg-gray-700 text-white hover:bg-gray-600`}>✕ Not interested <span className="text-xs opacity-70">N</span></button>
+          </div>
+          <div className="flex flex-wrap gap-2">
+            <button onClick={() => go(-1)} disabled={i === 0} className={`${btn} border border-gray-700 text-gray-300 hover:text-white`}>↑ Previous</button>
+            <button onClick={() => go(1)} disabled={i >= hits.length - 1} className={`${btn} border border-gray-700 text-gray-300 hover:text-white`}>Next listing ↓</button>
+            {h.url && <a href={h.url} target="_blank" rel="noreferrer" className={`${btn} text-indigo-300 hover:text-indigo-200`}>Open listing ↗</a>}
+          </div>
         </div>
       </div>
     </div>

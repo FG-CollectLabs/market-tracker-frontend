@@ -12,7 +12,7 @@ const PAGE = 40;
 type Sort = "price" | "release" | "peak" | "year";
 
 // The cards in one curve group, with a watch button each.
-export default function GroupCards({ category, label, grade, lang, onClose }: { category: string; label: string; grade: string; lang: string; onClose: () => void }) {
+export default function GroupCards({ category, label, grade, lang, onClose }: { category: string; label: string; grade: string; lang: string; onClose?: () => void }) {
   const [cards, setCards] = useState<GroupCard[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [sort, setSort] = useState<Sort>("price");
@@ -46,7 +46,7 @@ export default function GroupCards({ category, label, grade, lang, onClose }: { 
           <option value="peak">Furthest under its high</option>
           <option value="year">Best last year</option>
         </select>
-        <button onClick={onClose} className="text-gray-500 hover:text-gray-200">Close</button>
+        {onClose && <button onClick={onClose} className="text-gray-500 hover:text-gray-200">Close</button>}
       </div>
       {error && <p className="text-xs text-red-400">{error}</p>}
       {cards && (

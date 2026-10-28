@@ -10,7 +10,7 @@ import WatchSuggestions from "../components/WatchSuggestions";
 import { watchChanged } from "../components/WatchButton";
 import ReleaseVs from "../components/ReleaseVs";
 import ReviewLog from "../components/ReviewLog";
-import { Drawer, HitRow, PhotoOverlay, cardHits, loadHitFilters, saveHitFilters, sortHits, useNow, type CardHit, type HitFilters, type Photo } from "../components/WatchHits";
+import { Drawer, HitRow, Reviewer, cardHits, loadHitFilters, saveHitFilters, sortHits, useNow, type CardHit, type HitFilters } from "../components/WatchHits";
 
 const usd = (c?: number | null) => (c == null ? "—" : `$${(c / 100).toFixed(2)}`);
 const INTENT_LABEL: Record<WatchIntent, string> = { grade: "Grade", invest: "Invest", flip: "Flip", watch: "Watch" };
@@ -118,7 +118,7 @@ export default function WatchlistPage() {
   const [hidden, setHidden] = useState<Set<string>>(new Set()); // set aside, save in flight
   const [undo, setUndo] = useState<{ key: string; displayKey: string; title: string; source: string; listing_id: string } | null>(null);
   const [hitErr, setHitErr] = useState<Record<string, string>>({});
-  const [photo, setPhoto] = useState<Photo | null>(null);
+  const [viewer, setViewer] = useState<{ displayKey: string; title: string; hits: CardHit[]; start: number } | null>(null);
   const [picked, setPicked] = useState<Set<string>>(new Set());
   const [removing, setRemoving] = useState<string | null>(null);
   const [removeErr, setRemoveErr] = useState<{ key: string; msg: string } | null>(null);
@@ -567,7 +567,13 @@ export default function WatchlistPage() {
                                         <div className="text-[11px] font-semibold text-gray-400 uppercase tracking-wide pt-1">{label} ({part.length})</div>
                                         <div className="divide-y divide-gray-800 print:divide-gray-200">
                                           {part.map((x) => (
-                                            <HitRow key={x.key} ch={x} displayKey={it.display_key} now={now} error={hitErr[x.key]} onPhoto={setPhoto}
+                                            <HitRow key={x.key} ch={x} displayKey={it.display_key} now={now} error={hitErr[x.key]}
+                                              onOpen={() => {
+                                                // The viewer walks the card's listings as shown: Buy Nows, then auctions.
+                                                const order = (["buy_now", "auction"] as const).filter((kk) => filters.kind === "all" || filters.kind === kk)
+                                                  .flatMap((kk) => sortHits(ch.all.filter((y) => y.h.kind === kk), filters.sort));
+                                                setViewer({ displayKey: it.display_key, title: `${it.name} #${it.number}`, hits: order, start: Math.max(0, order.findIndex((y) => y.key === x.key)) });
+                                              }}
                                               onSetAside={(c, reason, note) => setAside(it.display_key, c, reason, note)} onChanged={load} />
                                           ))}
                                         </div>
@@ -613,7 +619,11 @@ export default function WatchlistPage() {
           </Drawer>
         );
       })()}
-      {photo && <PhotoOverlay photo={photo} onClose={() => setPhoto(null)} />}
+      {viewer && (
+        <Reviewer key={viewer.displayKey} title={viewer.title} hits={viewer.hits} start={viewer.start} displayKey={viewer.displayKey} now={now}
+          onClose={() => setViewer(null)} onChanged={load}
+          onNotInterested={(c) => setAside(viewer.displayKey, c, "not_interested", "")} />
+      )}
       {history && (
         <Drawer onClose={() => { setHistory(false); load(); }} title={<h2 className="text-sm font-semibold text-gray-100">Review history</h2>}>
           <ReviewLog />
