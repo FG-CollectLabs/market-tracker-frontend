@@ -66,6 +66,8 @@ export const PHASES: Phase[] = [
       { title: "Fanatics ingest budget at 3x the cards", status: "next" },
       { title: "423 ingest rows hitting numeric overflow", status: "later" },
       { title: "14 PriceCharting backfill failures", status: "later" },
+      { title: "Source access review: request volume and IP-ban risk", status: "blocked",
+        detail: "Talking point for a future milestone. PriceCharting refused our history backfill on 2026-10-26 after ~1.5 h of nonstop requests (now 2,000 pages a week, 4 s apart, stopping when refused). Review every scraper's volume, back-off and User-Agent (the PriceCharting jobs present a browser UA). Rotating VPN / proxy IPs to dodge limits is ruled out: it circumvents the site's limits and risks wider blocks and the VPN account. Options if we need more: PriceCharting's paid API / data subscription, asking sources for access, caching harder." },
     ],
   },
   {
