@@ -69,7 +69,7 @@ type GroupBy = "" | "rarity" | "pokemon" | "artist";
 
 function rankLabel(r: CollectRank | undefined): string | null {
   if (!r?.tier) return null;
-  return r.tier === "top" ? `#${r.position}` : r.tier.toUpperCase();
+  return r.tier === "top" ? `#${r.position}` : r.tier.toUpperCase();  // S, A, B, C
 }
 
 // Small badge for a Pokémon / artist rank: "#3" for the ordered top list,
@@ -78,7 +78,8 @@ function RankBadge({ r, what }: { r: CollectRank | undefined; what: string }) {
   const label = rankLabel(r);
   if (!label) return null;
   const color =
-    r!.tier === "top" ? "bg-amber-900/60 text-amber-300"
+    r!.tier === "s" ? "bg-fuchsia-900/60 text-fuchsia-200"
+    : r!.tier === "top" ? "bg-amber-900/60 text-amber-300"
     : r!.tier === "a" ? "bg-emerald-900/50 text-emerald-300"
     : r!.tier === "b" ? "bg-sky-900/50 text-sky-300"
     : "bg-gray-800 text-gray-400";

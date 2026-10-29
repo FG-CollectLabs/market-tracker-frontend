@@ -12,11 +12,11 @@ import { LineChart, Legend, SERIES, type LineSeries } from "./HistoryCharts";
 const DIMS: { key: string; label: string; hint: string; buckets: { key: string; label: string }[] }[] = [
   {
     key: "poke", label: "Pokémon tier", hint: "Collectibility rankings (polls + card-market demand): top list, then tiers A / B / C; unranked = little demand.",
-    buckets: [{ key: "poke:top", label: "Top" }, { key: "poke:a", label: "A" }, { key: "poke:b", label: "B" }, { key: "poke:c", label: "C" }, { key: "poke:unranked", label: "Unranked" }],
+    buckets: [{ key: "poke:s", label: "S" }, { key: "poke:top", label: "Top" }, { key: "poke:a", label: "A" }, { key: "poke:b", label: "B" }, { key: "poke:c", label: "C" }, { key: "poke:unranked", label: "Unranked" }],
   },
   {
     key: "artist", label: "Artist tier", hint: "Illustrator rankings from collector guides; unranked artists are neutral.",
-    buckets: [{ key: "artist:top", label: "Top" }, { key: "artist:a", label: "A" }, { key: "artist:b", label: "B" }, { key: "artist:c", label: "C" }, { key: "artist:unranked", label: "Unranked" }],
+    buckets: [{ key: "artist:s", label: "S" }, { key: "artist:top", label: "Top" }, { key: "artist:a", label: "A" }, { key: "artist:b", label: "B" }, { key: "artist:c", label: "C" }, { key: "artist:unranked", label: "Unranked" }],
   },
   {
     key: "trainer", label: "Trainers", hint: "Trainer cards (no Pokémon on them) by who they show: waifu (chased as characters) or aura (cool, villains, rivals), each ranked S / A / B; 'other' is generic NPCs, items and stadiums. Edit the lists on the Rankings page.",

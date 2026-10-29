@@ -423,9 +423,9 @@ export interface SupplySummary {
 }
 
 // Collectibility rank (backend internal/collectibility/collectibility.yaml):
-// tier "top" (with position), "a", "b", "c", or none; score 0-100.
+// tier "s", "top" (with position), "a", "b", "c", or none; score 0-100.
 export interface CollectRank {
-  tier?: "top" | "a" | "b" | "c";
+  tier?: "s" | "top" | "a" | "b" | "c";
   position?: number;
   score: number;
 }
@@ -2126,6 +2126,7 @@ export function fetchCCDeals(o: { minMargin?: number; days?: number; limit?: num
 // Rankings: Pokémon, artist and trainer tiers (GET /v1/rankings; edits via
 // PUT / DELETE /v1/admin/rankings).
 export interface RankList {
+  s?: string[] | null; // above top: the handful everyone chases (unordered)
   top: string[] | null;
   tiers: { a: string[] | null; b: string[] | null; c: string[] | null };
 }

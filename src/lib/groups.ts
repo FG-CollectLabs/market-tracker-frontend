@@ -17,7 +17,7 @@ export function groupLabel(key: string): string {
   if (CLASS_LABELS[key]) return CLASS_LABELS[key];
   const [dim, a, b] = key.split(":");
   switch (dim) {
-    case "poke": return `Pokémon tier ${a === "top" ? "Top" : a === "unranked" ? "unranked" : a.toUpperCase()}`;
+    case "poke": return `Pokémon tier ${a === "top" ? "Top" : a === "unranked" ? "unranked" : a.toUpperCase()}`; // S, A, B, C
     case "artist": return `Artist tier ${a === "top" ? "Top" : a === "unranked" ? "unranked" : a.toUpperCase()}`;
     case "trainer": return TRAINER_BUCKETS.find((x) => x.key === a)?.label ?? key;
     case "scarcity": return `Scarcity: ${SCARCITY[a] ?? a}`;

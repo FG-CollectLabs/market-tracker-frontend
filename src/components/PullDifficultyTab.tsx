@@ -16,7 +16,7 @@ const LANG_OPTS: { key: CurveLang; label: string }[] = [{ key: "en", label: "Eng
 const GRADE_OPTS = [{ key: "psa-10", label: "PSA 10" }, { key: "raw", label: "Raw" }];
 type Split = "pull" | "gem" | "both";
 const SPLITS: { key: Split; label: string }[] = [{ key: "pull", label: "By pull difficulty" }, { key: "gem", label: "By gem rate" }, { key: "both", label: "Pull difficulty × gem rate" }];
-const tierRows = (dim: string) => ["top", "a", "b", "c", "unranked"].map((t) => ({ key: `${dim}:${t}`, label: t === "top" ? "Top" : t === "unranked" ? "Unranked" : t.toUpperCase() }));
+const tierRows = (dim: string) => ["s", "top", "a", "b", "c", "unranked"].map((t) => ({ key: `${dim}:${t}`, label: t === "top" ? "Top" : t === "unranked" ? "Unranked" : t.toUpperCase() }));
 const FACTORS: { key: string; label: string; rows: { key: string; label: string }[] }[] = [
   { key: "poke", label: "Pokémon tier", rows: tierRows("poke") },
   { key: "artist", label: "Artist tier", rows: tierRows("artist") },
