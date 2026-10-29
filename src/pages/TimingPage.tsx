@@ -13,6 +13,7 @@ import AfterHype from "../components/AfterHype";
 import BeatSP from "../components/BeatSP";
 import PullDifficultyTab from "../components/PullDifficultyTab";
 import GemRateTab from "../components/GemRateTab";
+import ArtTab from "../components/ArtTab";
 import { Toggle } from "../components/GroupMatrix";
 
 // Subtabs: each angle on which singles are worth holding.
@@ -21,6 +22,7 @@ const TABS = [
   { key: "compare", label: "Compare by", hint: "Release curves and returns across Pokémon, artist, trainer, scarcity, pull difficulty, gem rate and chase groups." },
   { key: "pull", label: "Pull difficulty", hint: "Easy / medium / hard to pull, by rarity tier and inside each Pokémon, artist and trainer tier." },
   { key: "gem", label: "Gem rate", hint: "PSA 10 investability by gem rate: low-gem-rate cards vs the hyped top chase." },
+  { key: "art", label: "Art & cameos", hint: "Cameos (major / noticeable / hidden, and who), mood and technique, read from each card's art." },
   { key: "hype", label: "After the hype", hint: "Buying past the launch hype, and which tiers beat the S&P." },
   { key: "sp", label: "Beat the S&P", hint: "Groups expected to beat the S&P if bought today, with why for each card: what backs it, and whether a card that's already run is momentum." },
 ] as const;
@@ -331,6 +333,7 @@ export default function TimingPage() {
       )}
       {tab === "pull" && <PullDifficultyTab data={data} />}
       {tab === "gem" && <GemRateTab data={data} />}
+      {tab === "art" && <ArtTab data={data} />}
 
       {tab === "curves" && (<>
       <div className="flex flex-wrap items-center gap-3 text-sm">

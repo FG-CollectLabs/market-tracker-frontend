@@ -26,6 +26,9 @@ export function groupLabel(key: string): string {
       return a === "all" ? `${LEVEL[b] ?? b} to pull (any tier)` : `${PULL_TIER[a] ?? a} · ${LEVEL[b] ?? b} to pull`;
     case "gem": return `${a === "low" ? "Low" : a === "high" ? "High" : "Mid"} gem rate`;
     case "gemd": return `Gem rate ${Number(a) * 10}–${Number(a) * 10 + 9}%`;
+    case "cameo": return a === "star" ? "Star cameo" : a === "plain" ? "Other cameos" : a === "none" ? "No cameo" : `${a[0].toUpperCase()}${a.slice(1)} cameo`;
+    case "mood": return `Mood: ${a.replace("_", " / ")}`;
+    case "technique": return `Technique: ${a.replace("_", " / ")}`;
     case "chase": return a === "top" ? "Top chase" : "Not the chase";
   }
   return key;
