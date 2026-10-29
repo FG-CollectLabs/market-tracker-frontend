@@ -18,6 +18,7 @@ export default function BeatSP({ lang, catLabel }: { lang: CurveLang; catLabel: 
   const [error, setError] = useState<string | null>(null);
   const [open, setOpen] = useState<string | null>(null);
   const [all, setAll] = useState<Record<string, boolean>>({});
+  const [why, setWhy] = useState<string | null>(null); // card whose reasons are open
 
   useEffect(() => {
     setData(null);
@@ -42,7 +43,10 @@ export default function BeatSP({ lang, catLabel }: { lang: CurveLang; catLabel: 
               </>
             } />
           </h2>
-          <p className="text-xs text-gray-500">Click a set to see its cards and add them to the watchlist.</p>
+          <p className="text-xs text-gray-500">
+            A forecast, not a scoreboard: groups expected to beat the S&amp;P if bought today. Click a set for its cards, and "why" on a card for
+            what backs it (each group it belongs to against the whole market) and whether a card that's already run is momentum.
+          </p>
         </div>
         <span className="inline-flex rounded border border-gray-700 overflow-hidden text-xs">
           {(["psa-10", "raw"] as const).map((g) => (
@@ -104,11 +108,20 @@ export default function BeatSP({ lang, catLabel }: { lang: CurveLang; catLabel: 
                                 <table className="w-full text-xs">
                                   <tbody className="divide-y divide-gray-800/60">
                                     {g.cards.map((c) => (
-                                      <tr key={c.display_key}>
+                                      <Fragment key={c.display_key}>
+                                      <tr className={c.stretched && !c.supported ? "opacity-70" : ""}>
                                         <td className="py-1 pr-2 w-8">{c.image_url && <img src={cardThumb(c.image_url)} alt="" loading="lazy" className="w-7 h-10 object-cover rounded-sm" />}</td>
                                         <td className="py-1 pr-2">
                                           <Link to={`/cards/${encodeURIComponent(c.display_key)}`} className="text-gray-100 hover:text-indigo-300">{c.name}</Link>
                                           <span className="text-gray-500"> #{c.number}</span>
+                                          {c.stretched && (
+                                            <span className={`ml-1.5 px-1 rounded text-[10px] ${c.supported ? "bg-emerald-950/60 text-emerald-300" : "bg-red-950/60 text-red-300"}`}
+                                              title={c.verdict}>{c.supported ? "ran, with a record" : "momentum"}</span>
+                                          )}
+                                          {c.why && (
+                                            <button onClick={(e) => { e.stopPropagation(); setWhy(why === c.display_key ? null : c.display_key); }}
+                                              className="ml-1.5 text-[11px] text-indigo-300 hover:text-indigo-200">{why === c.display_key ? "hide why" : "why"}</button>
+                                          )}
                                         </td>
                                         <td className="py-1 px-2 text-right" title={`Expected ${usd(c.exp_cents_24m)} in two years (${c.confidence} confidence)`}>
                                           {usd(c.price_cents)} <span className="text-gray-500">→ {usd(c.exp_cents_24m)}</span>
@@ -120,6 +133,24 @@ export default function BeatSP({ lang, catLabel }: { lang: CurveLang; catLabel: 
                                         </td>
                                         <td className="py-1 pl-2 text-right"><WatchButton displayKey={c.display_key} compact /></td>
                                       </tr>
+                                      {why === c.display_key && c.why && (
+                                        <tr>
+                                          <td colSpan={7} className="pb-2 pl-9">
+                                            {c.verdict && <p className="text-xs text-gray-200 py-1">{c.verdict}</p>}
+                                            <ul className="space-y-0.5">
+                                              {c.why.map((f) => (
+                                                <li key={f.label} className="text-[11px] text-gray-400 flex gap-2">
+                                                  <span className={`shrink-0 w-4 text-center ${f.effect === "for" ? "text-green-400" : f.effect === "against" ? "text-red-400" : "text-gray-500"}`}>
+                                                    {f.effect === "for" ? "✓" : f.effect === "against" ? "✗" : "·"}
+                                                  </span>
+                                                  <span><b className="text-gray-300 font-medium">{f.label}</b>: {f.detail}</span>
+                                                </li>
+                                              ))}
+                                            </ul>
+                                          </td>
+                                        </tr>
+                                      )}
+                                      </Fragment>
                                     ))}
                                   </tbody>
                                 </table>

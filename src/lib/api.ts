@@ -2253,6 +2253,10 @@ export interface BeatCard {
   now_vs_peak: number;
   now_vs_release?: number;
   confidence: string;
+  why?: { label: string; detail: string; effect: "for" | "against" | "neutral" }[];
+  verdict?: string;
+  stretched?: boolean; // 2.5x+ its release price and near its high
+  supported?: boolean; // stretched, but its groups' record backs it
 }
 export interface BeatGroup {
   tier: "S" | "A";
