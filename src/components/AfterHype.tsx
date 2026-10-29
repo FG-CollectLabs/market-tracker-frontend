@@ -16,8 +16,8 @@ const GROUPS: { key: string; label: string; cats: { key: string; label: string }
       { key: "gold", label: "Gold / hyper" }, { key: "gallery", label: "TG / GG" }, { key: "promo", label: "Promos" },
     ],
   },
-  { key: "poke", label: "Pokémon tier", cats: [["poke:top", "Top"], ["poke:a", "A"], ["poke:b", "B"], ["poke:c", "C"], ["poke:unranked", "Unranked"]].map(([key, label]) => ({ key, label })) },
-  { key: "artist", label: "Artist tier", cats: [["artist:top", "Top"], ["artist:a", "A"], ["artist:b", "B"], ["artist:c", "C"], ["artist:unranked", "Unranked"]].map(([key, label]) => ({ key, label })) },
+  { key: "poke", label: "Pokémon tier", cats: [["poke:s", "S"], ["poke:top", "Top"], ["poke:a", "A"], ["poke:b", "B"], ["poke:c", "C"], ["poke:unranked", "Unranked"]].map(([key, label]) => ({ key, label })) },
+  { key: "artist", label: "Artist tier", cats: [["artist:s", "S"], ["artist:top", "Top"], ["artist:a", "A"], ["artist:b", "B"], ["artist:c", "C"], ["artist:unranked", "Unranked"]].map(([key, label]) => ({ key, label })) },
   { key: "trainer", label: "Trainers", cats: TRAINER_BUCKETS.map((b) => ({ key: `trainer:${b.key}`, label: b.label })) },
   { key: "scarcity", label: "Scarcity", cats: [["scarcity:1", "Most common"], ["scarcity:2", "Common"], ["scarcity:3", "Scarce"], ["scarcity:4", "Scarcest"]].map(([key, label]) => ({ key, label })) },
 ];

@@ -16,13 +16,15 @@ interface Col {
 
 const COLS: Record<Kind, Col[]> = {
   pokemon: [
-    { id: "top", label: "Top", hint: "Ordered, #1 = most collectible (score 100 sliding to 75)", ordered: true },
+    { id: "s", label: "S", hint: "Above everyone else, at most ~10 (score 100, unordered)" },
+    { id: "top", label: "Top", hint: "Ordered, #1 = most collectible (score 92 sliding to 75)", ordered: true },
     { id: "a", label: "A", hint: "Score 65" },
     { id: "b", label: "B", hint: "Score 45" },
     { id: "c", label: "C", hint: "Score 25; unlisted Pokémon score 10" },
   ],
   artists: [
-    { id: "top", label: "Top", hint: "Ordered, #1 = most collectible (score 100 sliding to 75)", ordered: true },
+    { id: "s", label: "S", hint: "The artists collectors chase by name, at most ~10 (score 100, unordered): reputation, not one hot card" },
+    { id: "top", label: "Top", hint: "Ordered, #1 = most collectible (score 92 sliding to 75)", ordered: true },
     { id: "a", label: "A", hint: "Score 65" },
     { id: "b", label: "B", hint: "Score 45, the same as unlisted (neutral)" },
     { id: "c", label: "C", hint: "Score 25" },
@@ -49,7 +51,7 @@ function getCol(l: RankingLists, kind: Kind, id: string): string[] {
     return l.trainers[t][r] ?? [];
   }
   const list = l[kind];
-  return (id === "top" ? list.top : list.tiers[id as "a" | "b" | "c"]) ?? [];
+  return (id === "s" ? list.s : id === "top" ? list.top : list.tiers[id as "a" | "b" | "c"]) ?? [];
 }
 
 function setCol(l: RankingLists, kind: Kind, id: string, v: string[]): RankingLists {
@@ -58,7 +60,7 @@ function setCol(l: RankingLists, kind: Kind, id: string, v: string[]): RankingLi
     return { ...l, trainers: { ...l.trainers, [t]: { ...l.trainers[t], [r]: v } } };
   }
   const list = l[kind];
-  return { ...l, [kind]: id === "top" ? { ...list, top: v } : { ...list, tiers: { ...list.tiers, [id]: v } } };
+  return { ...l, [kind]: id === "s" ? { ...list, s: v } : id === "top" ? { ...list, top: v } : { ...list, tiers: { ...list.tiers, [id]: v } } };
 }
 
 const norm = (s: string) => s.trim().toLowerCase().replace(/\s+/g, " ");
