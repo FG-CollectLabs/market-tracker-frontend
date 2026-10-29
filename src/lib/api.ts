@@ -2390,3 +2390,28 @@ export function fetchSealedLinks(status = ""): Promise<{ links: SealedLink[] }> 
 export function saveSealedLink(id: number, body: { pricecharting_url: string } | { status: "none" | "pending" }): Promise<{ saved: boolean }> {
   return adminFetch(`/v1/admin/sealed-links/${id}`, { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
 }
+
+// ---- system status (Developer tab; admin) ------------------------------------
+
+export type CheckStatus = "ok" | "warn" | "down" | "unknown";
+
+export interface SystemCheck {
+  id: string;
+  group: "edge" | "lxc109" | "lxc106" | "agents" | "jobs" | "data";
+  name: string;
+  where?: string;
+  status: CheckStatus;
+  detail?: string;
+  last_at?: string;
+}
+
+export interface SystemStatus {
+  checked_at: string;
+  slot_minutes: number;
+  checks: SystemCheck[];
+  history: Record<string, ("" | CheckStatus)[]>; // per check, the last 24 h in slots (oldest first)
+}
+
+export function fetchSystemStatus(): Promise<SystemStatus> {
+  return adminFetch("/v1/admin/system-status");
+}
