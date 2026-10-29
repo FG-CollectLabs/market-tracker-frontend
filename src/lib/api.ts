@@ -2297,6 +2297,23 @@ export interface GroupCard {
   now_vs_release?: number;
   now_vs_peak?: number;
   trailing_12m?: number;
+  packs_per_copy?: number; // packs to pull this exact card
+  packs_estimated?: boolean; // from the era's per-tier rate, not a measured one
+  pull_level?: "easy" | "medium" | "hard";
+  gem_rate?: number; // PSA 10s ÷ graded (50+ graded)
+}
+
+// One group's release curve and its parent group's (what it splits).
+export interface GroupCurve {
+  category: string;
+  grade: string;
+  lang: string;
+  parent: string;
+  curve?: ReleaseCurve;
+  parent_curve?: ReleaseCurve;
+}
+export function fetchGroupCurve(category: string, grade: string, lang: string): Promise<GroupCurve> {
+  return get(`/v1/analysis/group-curve?category=${encodeURIComponent(category)}&grade=${encodeURIComponent(grade)}&lang=${lang}`);
 }
 export function fetchGroupCards(category: string, grade: string, lang: string): Promise<{ cards: GroupCard[] }> {
   return get(`/v1/analysis/group-cards?category=${encodeURIComponent(category)}&grade=${encodeURIComponent(grade === "raw" || grade === "psa-10" ? grade : "raw")}&lang=${lang}`);

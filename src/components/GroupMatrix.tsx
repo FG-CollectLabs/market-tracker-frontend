@@ -18,14 +18,16 @@ export function findRow(data: ReleaseCurves, cat: string, grade: string, lang: s
 // Too few cards to say anything: fewer than this behind the trailing figure.
 const THIN = 15;
 
-export function MatrixCell({ row, cat, grade, lang, benchmark }: { row?: WindowRow; cat: string; grade: string; lang: string; benchmark: number }) {
+export function MatrixCell({ row, cat, grade, lang, benchmark, selected, onSelect }: {
+  row?: WindowRow; cat: string; grade: string; lang: string; benchmark: number; selected?: boolean; onSelect?: (cat: string) => void;
+}) {
   if (!row) return <td className="py-2 px-2 text-center text-gray-600">—</td>;
   const t = row.trailing;
   const thin = !t || t.cards < THIN;
   const beat = t && t.net_median_2y > benchmark;
   return (
     <td className={`py-2 px-2 align-top ${thin ? "opacity-60" : ""}`}>
-      <Link to={groupPath(cat, grade, lang)} className="block hover:bg-gray-800/60 rounded px-1 -mx-1"
+      <Wrap cat={cat} grade={grade} lang={lang} selected={selected} onSelect={onSelect}
         title={`${row.cards} cards. Trailing: median yearly change of cards past month 12 over their last ~12 months` +
           (t ? ` (${t.cards} cards, middle half ${pct(t.p25)} to ${pct(t.p75)}, ${Math.round(t.beat_share * 100)}% beat the S&P after fees, ${Math.round(t.down_share * 100)}% lost value)` : "") +
           `. Bottom: where the group's release curve is lowest; buy window = months within 3% of it.${row.provisional ? " Provisional: fewer than 8 sets behind some months." : ""}`}>
@@ -39,12 +41,22 @@ export function MatrixCell({ row, cat, grade, lang, benchmark }: { row?: WindowR
         <div className="text-[10px] text-gray-500">
           {t ? `${t.cards} held` : ""}{t ? " · " : ""}{row.cards} cards{row.provisional ? " · provisional" : ""}{thin && t ? " · thin" : ""}
         </div>
-      </Link>
+      </Wrap>
     </td>
   );
 }
 
-export function MatrixTable({ data, rows, cols, cat, grade, lang, corner }: {
+// A cell opens its group inline (onSelect) or links to the group page.
+function Wrap({ cat, grade, lang, selected, onSelect, title, children }: {
+  cat: string; grade: string; lang: string; selected?: boolean; onSelect?: (cat: string) => void; title: string; children: React.ReactNode;
+}) {
+  const cls = `block w-full text-left rounded px-1 -mx-1 ${selected ? "bg-indigo-900/50 ring-1 ring-indigo-500" : "hover:bg-gray-800/60"}`;
+  return onSelect
+    ? <button type="button" onClick={() => onSelect(cat)} className={cls} title={title}>{children}</button>
+    : <Link to={groupPath(cat, grade, lang)} className={cls} title={title}>{children}</Link>;
+}
+
+export function MatrixTable({ data, rows, cols, cat, grade, lang, corner, selected, onSelect, rowNote }: {
   data: ReleaseCurves;
   rows: { key: string; label: string }[];
   cols: { key: string; label: string }[];
@@ -52,6 +64,9 @@ export function MatrixTable({ data, rows, cols, cat, grade, lang, corner }: {
   grade: string;
   lang: string;
   corner?: string;
+  selected?: string;
+  onSelect?: (cat: string) => void;
+  rowNote?: (row: string) => React.ReactNode;
 }) {
   return (
     <div className="overflow-x-auto">
@@ -65,10 +80,14 @@ export function MatrixTable({ data, rows, cols, cat, grade, lang, corner }: {
         <tbody className="divide-y divide-gray-800">
           {rows.map((r) => (
             <tr key={r.key}>
-              <td className="py-2 pr-3 text-gray-300 whitespace-nowrap align-top">{r.label}</td>
+              <td className="py-2 pr-3 text-gray-300 whitespace-nowrap align-top">
+                {r.label}
+                {rowNote && <div className="text-[10px] text-gray-500 font-normal">{rowNote(r.key)}</div>}
+              </td>
               {cols.map((c) => {
                 const k = cat(r.key, c.key);
-                return <MatrixCell key={c.key} row={findRow(data, k, grade, lang)} cat={k} grade={grade} lang={lang} benchmark={data.benchmark} />;
+                return <MatrixCell key={c.key} row={findRow(data, k, grade, lang)} cat={k} grade={grade} lang={lang} benchmark={data.benchmark}
+                  selected={selected === k} onSelect={onSelect} />;
               })}
             </tr>
           ))}
@@ -95,7 +114,7 @@ export function CellLegend({ benchmark }: { benchmark: number }) {
       Each cell: the group's <b className="text-gray-400">trailing yearly change</b> (median card past month 12, its last ~12 months;{" "}
       <span className="text-green-400">green</span> = beats the S&P's {pct(benchmark)}/yr after fees held two years), then its{" "}
       <b className="text-gray-400">release low</b> (month and drop vs launch) and buy window. Faded = fewer than {THIN} cards behind the trailing
-      figure. Click a cell for its cards.
+      figure. Click a cell for its curve and cards.
     </p>
   );
 }

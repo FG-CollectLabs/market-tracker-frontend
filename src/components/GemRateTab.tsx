@@ -1,6 +1,7 @@
 import { useState } from "react";
 import type { CurveLang, ReleaseCurves } from "../lib/api";
 import { CellLegend, MatrixTable, Toggle, findRow, pct } from "./GroupMatrix";
+import GroupDetail from "./GroupDetail";
 
 // PSA 10 investability by gem rate: does a PSA 10 of a card that rarely
 // gems beat a PSA 10 of the set's hyped top chase?
@@ -10,10 +11,18 @@ const GRADE_OPTS = [{ key: "psa-10", label: "PSA 10" }, { key: "raw", label: "Ra
 const GEMS = [{ key: "low", label: "Low gem rate" }, { key: "mid", label: "Mid" }, { key: "high", label: "High gem rate" }, { key: "any", label: "Any gem rate" }];
 const CHASE = [{ key: "top", label: "Top chase (set's 3 priciest)" }, { key: "rest", label: "Not the chase" }, { key: "any", label: "All cards" }];
 const pctRate = (v: number) => `${Math.round(v * 100)}%`;
+const DECILES = Array.from({ length: 10 }, (_, i) => ({ key: `gemd:${i}`, label: `${i * 10}–${i * 10 + 9}%` }));
 
 export default function GemRateTab({ data }: { data: ReleaseCurves }) {
   const [lang, setLang] = useState<CurveLang>("en");
   const [grade, setGrade] = useState("psa-10");
+  const [sel, setSel] = useState<{ section: string; cat: string } | null>(null);
+  const pick = (section: string) => (cat: string) => setSel((s) => (s?.section === section && s.cat === cat ? null : { section, cat }));
+  const detail = (section: string) => sel?.section === section && (
+    <div className="rounded border border-indigo-800/60 bg-gray-950/40 p-3">
+      <GroupDetail data={data} category={sel.cat} grade={grade} lang={lang} onClose={() => setSel(null)} />
+    </div>
+  );
   const band = data.gem_bands?.find((b) => b.lang === lang);
   const cat = (chase: string, gem: string) =>
     chase === "any" ? (gem === "any" ? "all" : `gem:${gem}`) : gem === "any" ? `chase:${chase}` : `gem:${gem}|chase:${chase}`;
@@ -23,7 +32,7 @@ export default function GemRateTab({ data }: { data: ReleaseCurves }) {
   return (
     <div className="space-y-4">
       <div className="flex flex-wrap gap-3 text-sm">
-        <Toggle value={lang} options={LANG_OPTS} onChange={setLang} />
+        <Toggle value={lang} options={LANG_OPTS} onChange={(v) => { setLang(v); setSel(null); }} />
         <Toggle value={grade} options={GRADE_OPTS} onChange={setGrade} />
       </div>
 
@@ -52,7 +61,20 @@ export default function GemRateTab({ data }: { data: ReleaseCurves }) {
       <section className="rounded-lg border border-gray-800 bg-gray-900 p-4 space-y-2">
         <h2 className="text-sm font-semibold text-gray-100">Gem rate × chase</h2>
         <CellLegend benchmark={data.benchmark} />
-        <MatrixTable data={data} rows={CHASE} cols={GEMS} grade={grade} lang={lang} cat={cat} />
+        <MatrixTable data={data} rows={CHASE} cols={GEMS} grade={grade} lang={lang} cat={cat}
+          selected={sel?.section === "chase" ? sel.cat : undefined} onSelect={pick("chase")} />
+        {detail("chase")}
+      </section>
+
+      <section className="rounded-lg border border-gray-800 bg-gray-900 p-4 space-y-2">
+        <h2 className="text-sm font-semibold text-gray-100">By gem rate, in 10% steps</h2>
+        <p className="text-xs text-gray-500 max-w-3xl">
+          The same comparison without the thirds: every card with 50+ PSA-graded copies by its gem rate. The thirds above are what the other tabs
+          split by; this shows whether the effect is steady or concentrated at the bottom. Ends of the range are thin.
+        </p>
+        <MatrixTable data={data} rows={DECILES} cols={[{ key: "x", label: grade === "raw" ? "Raw" : "PSA 10" }]} grade={grade} lang={lang} cat={(r) => r}
+          corner="PSA gem rate" selected={sel?.section === "dec" ? sel.cat : undefined} onSelect={pick("dec")} />
+        {detail("dec")}
       </section>
     </div>
   );
