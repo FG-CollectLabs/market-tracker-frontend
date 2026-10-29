@@ -22,7 +22,7 @@ const TABS = [
   { key: "pull", label: "Pull difficulty", hint: "Easy / medium / hard to pull, by rarity tier and inside each Pokémon, artist and trainer tier." },
   { key: "gem", label: "Gem rate", hint: "PSA 10 investability by gem rate: low-gem-rate cards vs the hyped top chase." },
   { key: "hype", label: "After the hype", hint: "Buying past the launch hype, and which tiers beat the S&P." },
-  { key: "sp", label: "Beat the S&P", hint: "Card groups that out-returned the S&P after fees." },
+  { key: "sp", label: "Beat the S&P", hint: "Groups expected to beat the S&P if bought today, with why for each card: what backs it, and whether a card that's already run is momentum." },
 ] as const;
 type TabKey = (typeof TABS)[number]["key"];
 
