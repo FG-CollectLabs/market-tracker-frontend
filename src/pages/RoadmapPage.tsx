@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { OPEN_QUESTIONS, PATCH_NOTES, PHASES, type Status } from "../content/roadmap";
 import { DIAGRAM, SECTIONS } from "../content/architecture";
+import SystemStatus from "../components/SystemStatus";
 
 const STATUS: Record<Status, { label: string; cls: string }> = {
   done: { label: "Done", cls: "bg-green-950/60 text-green-300 border-green-900" },
@@ -17,7 +18,7 @@ function Badge({ s }: { s: Status }) {
 // The development roadmap and patch notes (src/content/roadmap.ts). Changes
 // land through PRs, so GitHub's history of that file is the audit trail.
 export default function RoadmapPage() {
-  const [tab, setTab] = useState<"roadmap" | "notes" | "architecture">("roadmap");
+  const [tab, setTab] = useState<"status" | "roadmap" | "notes" | "architecture">("status");
   const counts = PHASES.flatMap((p) => p.items).reduce<Record<string, number>>((m, i) => ({ ...m, [i.status]: (m[i.status] ?? 0) + 1 }), {});
 
   return (
@@ -35,15 +36,17 @@ export default function RoadmapPage() {
       </div>
 
       <div className="inline-flex rounded border border-gray-700 overflow-hidden text-sm">
-        {(["roadmap", "notes", "architecture"] as const).map((t) => (
+        {(["status", "roadmap", "notes", "architecture"] as const).map((t) => (
           <button key={t} onClick={() => setTab(t)}
             className={`px-3 py-1 ${tab === t ? "bg-indigo-700 text-white" : "bg-gray-900 text-gray-400 hover:text-gray-200"}`}>
-            {t === "roadmap" ? "Roadmap" : t === "notes" ? "Patch notes" : "Architecture"}
+            {t === "status" ? "Status" : t === "roadmap" ? "Roadmap" : t === "notes" ? "Patch notes" : "Architecture"}
           </button>
         ))}
       </div>
 
-      {tab === "architecture" ? (
+      {tab === "status" && <div className="max-w-6xl"><SystemStatus /></div>}
+
+      {tab === "status" ? null : tab === "architecture" ? (
         <div className="space-y-5 max-w-6xl">
           <section className="rounded-lg border border-gray-800 bg-gray-900 p-4 overflow-x-auto">
             <h2 className="text-sm font-semibold text-gray-100 mb-3">How data flows</h2>
