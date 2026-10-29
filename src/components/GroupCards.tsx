@@ -9,7 +9,7 @@ const share = (v?: number) => (v == null ? "—" : `${Math.round(v * 100)}%`);
 const usd = (c?: number) => (c == null ? "—" : `$${(c / 100).toFixed(2)}`);
 const PAGE = 40;
 
-type Sort = "price" | "release" | "peak" | "year";
+type Sort = "price" | "release" | "peak" | "year" | "packs" | "gem";
 
 // The cards in one curve group, with a watch button each.
 export default function GroupCards({ category, label, grade, lang, onClose }: { category: string; label: string; grade: string; lang: string; onClose?: () => void }) {
@@ -30,7 +30,8 @@ export default function GroupCards({ category, label, grade, lang, onClose }: { 
   const list = useMemo(() => {
     const f = q.trim().toLowerCase();
     const xs = (cards ?? []).filter((c) => !f || `${c.name} ${c.number} ${c.set_name}`.toLowerCase().includes(f));
-    const key = (c: GroupCard) => (sort === "price" ? -(c.price_cents ?? -1) : sort === "release" ? c.now_vs_release ?? 99 : sort === "peak" ? c.now_vs_peak ?? 99 : -(c.trailing_12m ?? -99));
+    const key = (c: GroupCard) => (sort === "price" ? -(c.price_cents ?? -1) : sort === "release" ? c.now_vs_release ?? 99 : sort === "peak" ? c.now_vs_peak ?? 99
+      : sort === "packs" ? -(c.packs_per_copy ?? -1) : sort === "gem" ? c.gem_rate ?? 99 : -(c.trailing_12m ?? -99));
     return [...xs].sort((a, b) => key(a) - key(b));
   }, [cards, q, sort]);
 
@@ -45,6 +46,8 @@ export default function GroupCards({ category, label, grade, lang, onClose }: { 
           <option value="release">Lowest vs release</option>
           <option value="peak">Furthest under its high</option>
           <option value="year">Best last year</option>
+          <option value="packs">Hardest to pull</option>
+          <option value="gem">Lowest gem rate</option>
         </select>
         {onClose && <button onClick={onClose} className="text-gray-500 hover:text-gray-200">Close</button>}
       </div>
@@ -59,6 +62,8 @@ export default function GroupCards({ category, label, grade, lang, onClose }: { 
               <th className="text-right py-1 px-2 font-medium" title="Today ÷ its price in the first two months">Of release</th>
               <th className="text-right py-1 px-2 font-medium" title="Today ÷ its highest monthly price">Of high</th>
               <th className="text-right py-1 px-2 font-medium" title="Change over the last ~12 months">Last year</th>
+              <th className="text-right py-1 px-2 font-medium" title="Packs to open to pull this exact card: packs per card of its rarity × cards of that rarity in the set (measured pull rates; ~ = the era's estimate). Easy / medium / hard against its tier's sets in its language">Packs to pull</th>
+              <th className="text-right py-1 px-2 font-medium" title="PSA gem rate: 10s ÷ all PSA-graded copies (cards with 50+ graded)">Gem rate</th>
               <th />
             </tr>
           </thead>
@@ -75,6 +80,11 @@ export default function GroupCards({ category, label, grade, lang, onClose }: { 
                 <td className="py-1 px-2 text-right">{share(c.now_vs_release)}</td>
                 <td className="py-1 px-2 text-right">{share(c.now_vs_peak)}</td>
                 <td className={`py-1 px-2 text-right ${c.trailing_12m == null ? "" : c.trailing_12m > 0 ? "text-green-400" : "text-red-400"}`}>{pct(c.trailing_12m)}</td>
+                <td className="py-1 px-2 text-right whitespace-nowrap">
+                  {c.packs_per_copy != null ? `${c.packs_estimated ? "~" : ""}${Math.round(c.packs_per_copy).toLocaleString()}` : "—"}
+                  {c.pull_level && <div className={`text-[10px] ${c.pull_level === "hard" ? "text-amber-300" : c.pull_level === "easy" ? "text-sky-300" : "text-gray-500"}`}>{c.pull_level}</div>}
+                </td>
+                <td className="py-1 px-2 text-right">{share(c.gem_rate)}</td>
                 <td className="py-1 pl-2 text-right"><WatchButton displayKey={c.display_key} compact /></td>
               </tr>
             ))}

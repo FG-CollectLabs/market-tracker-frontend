@@ -25,6 +25,7 @@ export function groupLabel(key: string): string {
       if (b === undefined) return `${LEVEL[a] ?? a} to pull`; // crossed: "pull:hard"
       return a === "all" ? `${LEVEL[b] ?? b} to pull (any tier)` : `${PULL_TIER[a] ?? a} · ${LEVEL[b] ?? b} to pull`;
     case "gem": return `${a === "low" ? "Low" : a === "high" ? "High" : "Mid"} gem rate`;
+    case "gemd": return `Gem rate ${Number(a) * 10}–${Number(a) * 10 + 9}%`;
     case "chase": return a === "top" ? "Top chase" : "Not the chase";
   }
   return key;
