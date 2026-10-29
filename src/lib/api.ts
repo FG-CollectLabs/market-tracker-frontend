@@ -794,6 +794,7 @@ export interface AnalysisSettings {
   sourcing_pct: number;
   capital_rate: number;
   use_timing: boolean;
+  value_source?: "pricecharting" | "comps"; // where a grade's market value comes from
   sell_fee_pct: number;
   exit_fee_pct: number;
   premium_pct: number;
