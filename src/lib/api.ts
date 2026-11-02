@@ -2421,3 +2421,22 @@ export interface SystemStatus {
 export function fetchSystemStatus(): Promise<SystemStatus> {
   return adminFetch("/v1/admin/system-status");
 }
+
+// A set's core numbers per rarity tier (GET /v1/analysis/set-tiers).
+export interface SetTier {
+  tier: string;
+  cards: number;
+  packs_per_copy?: number; // packs to pull one specific card of the tier (median card)
+  packs_estimated?: boolean;
+  packs_per_tier?: number; // packs to pull any card of the tier
+  psa_gem_rate?: number;
+  psa_graded: number;
+  psa_cards: number;
+  cgc_gem_rate?: number; // any CGC 10, Pristine included
+  cgc_pristine_rate?: number;
+  cgc_graded: number;
+  cgc_cards: number;
+}
+export function fetchSetTiers(set: string): Promise<{ set: string; tiers: SetTier[] }> {
+  return get(`/v1/analysis/set-tiers?set=${encodeURIComponent(set)}`);
+}
