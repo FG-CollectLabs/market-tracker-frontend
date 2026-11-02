@@ -2447,3 +2447,15 @@ export interface SetTier {
 export function fetchSetTiers(set: string): Promise<{ set: string; tiers: SetTier[] }> {
   return get(`/v1/analysis/set-tiers?set=${encodeURIComponent(set)}`);
 }
+
+// Every card behind a group's curve with its own monthly prices
+// (GET /v1/analysis/group-series): [month since release, cents].
+export interface GroupSeriesCard {
+  display_key: string;
+  name: string;
+  set_code: string;
+  points: [number, number][];
+}
+export function fetchGroupSeries(category: string, grade: string, lang: string): Promise<{ cards: GroupSeriesCard[]; total: number }> {
+  return get(`/v1/analysis/group-series?category=${encodeURIComponent(category)}&grade=${encodeURIComponent(grade)}&lang=${lang}`);
+}
