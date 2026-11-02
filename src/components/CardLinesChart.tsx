@@ -19,8 +19,7 @@ export interface CardLine {
   values: (number | null)[];
 }
 
-const W = 760, H = 300, PAD = { left: 48, right: 12, top: 10, bottom: 26 };
-const IW = W - PAD.left - PAD.right, IH = H - PAD.top - PAD.bottom;
+const PAD = { left: 48, right: 12, top: 10, bottom: 26 };
 const pct = (v: number) => `${v > 0 ? "+" : ""}${Math.round(v * 100)}%`;
 
 function quantile(xs: number[], q: number) {
@@ -29,13 +28,17 @@ function quantile(xs: number[], q: number) {
   return s[Math.min(s.length - 1, Math.max(0, Math.floor(q * (s.length - 1))))];
 }
 
-export default function CardLinesChart({ months, main, cards, start = 0, showCards = true }: {
+export default function CardLinesChart({ months, main, cards, start = 0, showCards = true, compact }: {
   months: number;
   main: MainLine[];
   cards: CardLine[];
   start?: number;
   showCards?: boolean;
+  compact?: boolean; // side-by-side panels: a narrower canvas so text stays readable
 }) {
+  const W = compact ? 460 : 760, H = compact ? 260 : 300;
+  const IW = W - PAD.left - PAD.right, IH = H - PAD.top - PAD.bottom;
+  const clip = useRef(`clip-${Math.random().toString(36).slice(2)}`).current;
   const nav = useNavigate();
   const ref = useRef<SVGSVGElement>(null);
   const [hover, setHover] = useState<{ i: number; card?: CardLine } | null>(null);
@@ -52,7 +55,8 @@ export default function CardLinesChart({ months, main, cards, start = 0, showCar
   }, [main, cards, showCards]);
 
   const x = (i: number) => PAD.left + (months <= 0 ? 0 : (i * IW) / months);
-  const y = (v: number) => PAD.top + IH - ((Math.min(hi, Math.max(lo, v)) - lo) / (hi - lo)) * IH;
+  // Lines run off the plot past the clipped range (clipPath), not along its edge.
+  const y = (v: number) => PAD.top + IH - ((v - lo) / (hi - lo)) * IH;
   const path = (vals: (number | null)[]) => {
     let d = "", pen = false;
     vals.forEach((v, i) => {
@@ -101,13 +105,16 @@ export default function CardLinesChart({ months, main, cards, start = 0, showCar
           </g>
         ))}
         {xTicks.map((m) => <text key={m} x={x(m)} y={H - 8} textAnchor="middle" className="fill-gray-500 text-[10px]">M{m}</text>)}
-        {showCards && cards.map((c) => (
-          <path key={c.key} d={path(c.values)} fill="none" stroke="#9ca3af" strokeOpacity={0.13} strokeWidth={1} />
-        ))}
-        {hover?.card && <path d={path(hover.card.values)} fill="none" stroke="#a5b4fc" strokeWidth={2} />}
-        {main.map((m) => (
-          <path key={m.label} d={path(m.values)} fill="none" stroke={m.color} strokeWidth={2.75} strokeDasharray={m.dashed ? "6 4" : undefined} />
-        ))}
+        <defs><clipPath id={clip}><rect x={PAD.left} y={PAD.top} width={IW} height={IH} /></clipPath></defs>
+        <g clipPath={`url(#${clip})`}>
+          {showCards && cards.map((c) => (
+            <path key={c.key} d={path(c.values)} fill="none" stroke="#9ca3af" strokeOpacity={0.13} strokeWidth={1} />
+          ))}
+          {hover?.card && <path d={path(hover.card.values)} fill="none" stroke="#a5b4fc" strokeWidth={2} />}
+          {main.map((m) => (
+            <path key={m.label} d={path(m.values)} fill="none" stroke={m.color} strokeWidth={2.75} strokeDasharray={m.dashed ? "6 4" : undefined} />
+          ))}
+        </g>
         {hover && <line x1={x(hover.i)} x2={x(hover.i)} y1={PAD.top} y2={PAD.top + IH} className="stroke-gray-600" />}
       </svg>
       {hover && (

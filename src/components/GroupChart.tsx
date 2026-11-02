@@ -77,7 +77,7 @@ export default function GroupChart({ category, grade, lang, start, compact, titl
       </div>
       {main.length === 0 && lines.length === 0
         ? <p className="text-xs text-gray-500 py-4">No curve or card history for this group, grade and language yet.</p>
-        : <CardLinesChart months={months} main={main} cards={lines} start={start} showCards={showCards} />}
+        : <CardLinesChart months={months} main={main} cards={lines} start={start} showCards={showCards} compact={compact} />}
     </div>
   );
 }
