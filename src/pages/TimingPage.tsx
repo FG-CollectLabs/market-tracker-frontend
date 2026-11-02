@@ -15,6 +15,7 @@ import PullDifficultyTab from "../components/PullDifficultyTab";
 import GemRateTab from "../components/GemRateTab";
 import ArtTab from "../components/ArtTab";
 import SplitCharts from "../components/SplitCharts";
+import AnalysisPanel from "../components/AnalysisPanel";
 import { Toggle } from "../components/GroupMatrix";
 
 // Subtabs: each angle on which singles are worth holding.
@@ -332,6 +333,7 @@ export default function TimingPage() {
       {(tab === "compare" || tab === "hype" || tab === "sp") && (
         <Toggle value={lang} options={LANGS} onChange={setLang} />
       )}
+      {(tab === "pull" || tab === "gem" || tab === "art" || tab === "sp") && <AnalysisPanel topic={tab} />}
       {tab === "pull" && <PullDifficultyTab data={data} />}
       {tab === "gem" && <GemRateTab data={data} />}
       {tab === "art" && <ArtTab data={data} />}

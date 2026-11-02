@@ -2459,3 +2459,26 @@ export interface GroupSeriesCard {
 export function fetchGroupSeries(category: string, grade: string, lang: string): Promise<{ cards: GroupSeriesCard[]; total: number }> {
   return get(`/v1/analysis/group-series?category=${encodeURIComponent(category)}&grade=${encodeURIComponent(grade)}&lang=${lang}`);
 }
+
+// An agent's written analysis of a Timing tab (GET /v1/analysis/timing-notes).
+export type AnalysisTopic = "pull" | "gem" | "art" | "sp";
+export interface AnalysisFinding {
+  question: string;
+  verdict: "yes" | "no" | "mixed" | "not_enough_data";
+  answer: string;
+  evidence: string[];
+  caveats: string[];
+}
+export interface TimingNotes {
+  topic: AnalysisTopic;
+  questions: string[];
+  latest?: { id: number; summary: string; findings: AnalysisFinding[]; data_built?: string; model?: string; created_at: string };
+  history: { id: number; created_at: string }[];
+  running: boolean;
+}
+export function fetchTimingNotes(topic: AnalysisTopic, id?: number): Promise<TimingNotes> {
+  return get(`/v1/analysis/timing-notes?topic=${topic}${id ? `&id=${id}` : ""}`);
+}
+export function runTimingAnalysis(topic: AnalysisTopic): Promise<{ id: number }> {
+  return adminFetch("/v1/admin/jobs", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ kind: "agent_timing_analysis", topic }) });
+}
