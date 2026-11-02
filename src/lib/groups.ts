@@ -11,6 +11,11 @@ const PULL_TIER: Record<string, string> = { ir: "IR", sir: "SIR", ultra: "Full a
 
 const LEVEL: Record<string, string> = { easy: "easy", medium: "medium", hard: "hard" };
 
+const CAMEO_Q: Record<string, string> = {
+  poke_s: "S-tier Pokémon", poke_top: "Top-tier Pokémon", poke_a: "A-tier Pokémon", poke_b: "B-tier Pokémon", poke_low: "C / unranked Pokémon",
+  trainer_s: "S-tier trainer", trainer_a: "A-tier trainer", trainer_b: "B-tier trainer",
+};
+
 export function groupLabel(key: string): string {
   if (key.includes("|")) return key.split("|").map(groupLabel).join(" · ");
   if (TIERS[key]) return TIERS[key];
@@ -25,7 +30,8 @@ export function groupLabel(key: string): string {
       if (b === undefined) return `${LEVEL[a] ?? a} to pull`; // crossed: "pull:hard"
       return a === "all" ? `${LEVEL[b] ?? b} to pull (any tier)` : `${PULL_TIER[a] ?? a} · ${LEVEL[b] ?? b} to pull`;
     case "gem": return `${a === "low" ? "Low" : a === "high" ? "High" : "Mid"} gem rate`;
-    case "gemd": return `Gem rate ${Number(a) * 10}–${Number(a) * 10 + 9}%`;
+    case "gemd": return `Gem rate ${Number(a) * 20}–${Number(a) * 20 + 19}%`;
+    case "cameoq": return a === "none" ? "No visible cameo" : `Cameo: ${CAMEO_Q[a] ?? a}`;
     case "cameo": return a === "star" ? "Star cameo" : a === "plain" ? "Other cameos" : a === "none" ? "No cameo" : `${a[0].toUpperCase()}${a.slice(1)} cameo`;
     case "mood": return `Mood: ${a.replace("_", " / ")}`;
     case "technique": return `Technique: ${a.replace("_", " / ")}`;

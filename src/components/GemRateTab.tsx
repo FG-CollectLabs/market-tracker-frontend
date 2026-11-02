@@ -11,7 +11,7 @@ const GRADE_OPTS = [{ key: "psa-10", label: "PSA 10" }, { key: "raw", label: "Ra
 const GEMS = [{ key: "low", label: "Low gem rate" }, { key: "mid", label: "Mid" }, { key: "high", label: "High gem rate" }, { key: "any", label: "Any gem rate" }];
 const CHASE = [{ key: "top", label: "Top chase (set's 3 priciest)" }, { key: "rest", label: "Not the chase" }, { key: "any", label: "All cards" }];
 const pctRate = (v: number) => `${Math.round(v * 100)}%`;
-const DECILES = Array.from({ length: 10 }, (_, i) => ({ key: `gemd:${i}`, label: `${i * 10}–${i * 10 + 9}%` }));
+const DECILES = Array.from({ length: 5 }, (_, i) => ({ key: `gemd:${i}`, label: `${i * 20}–${i * 20 + 19}%` }));
 
 export default function GemRateTab({ data }: { data: ReleaseCurves }) {
   const [lang, setLang] = useState<CurveLang>("en");
@@ -67,7 +67,7 @@ export default function GemRateTab({ data }: { data: ReleaseCurves }) {
       </section>
 
       <section className="rounded-lg border border-gray-800 bg-gray-900 p-4 space-y-2">
-        <h2 className="text-sm font-semibold text-gray-100">By gem rate, in 10% steps</h2>
+        <h2 className="text-sm font-semibold text-gray-100">By gem rate, in 20% steps</h2>
         <p className="text-xs text-gray-500 max-w-3xl">
           The same comparison without the thirds: every card with 50+ PSA-graded copies by its gem rate. The thirds above are what the other tabs
           split by; this shows whether the effect is steady or concentrated at the bottom. Ends of the range are thin.

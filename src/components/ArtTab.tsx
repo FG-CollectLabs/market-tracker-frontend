@@ -18,6 +18,11 @@ const TIERS = [
   ...["s", "top", "a", "b", "c", "unranked"].map((t) => ({ key: `poke:${t}`, label: `Pokémon ${t === "top" ? "Top" : t === "unranked" ? "unranked" : t.toUpperCase()}` })),
   ...TRAINER_BUCKETS.map((b) => ({ key: `trainer:${b.key}`, label: `Trainer ${b.label}` })),
 ];
+const QUALITY = [
+  { key: "none", label: "No visible cameo" }, { key: "poke_s", label: "S Pokémon" }, { key: "poke_top", label: "Top Pokémon" },
+  { key: "poke_a", label: "A Pokémon" }, { key: "poke_b", label: "B Pokémon" }, { key: "poke_low", label: "C / unranked" },
+  { key: "trainer_s", label: "S trainer" }, { key: "trainer_a", label: "A trainer" }, { key: "trainer_b", label: "B trainer" },
+];
 const MOODS = [
   ["cozy", "Cozy / slice of life"], ["cute_playful", "Cute / playful"], ["serene_scenic", "Serene / scenic"], ["action", "Action"],
   ["epic_majestic", "Epic / majestic"], ["dark_eerie", "Dark / eerie"], ["funny_quirky", "Funny / quirky"],
@@ -61,6 +66,17 @@ export default function ArtTab({ data }: { data: ReleaseCurves }) {
         <MatrixTable data={data} rows={TIERS} cols={LEVELS} grade={grade} lang={lang} corner="Main subject"
           cat={(r, l) => (r === "any" ? `cameo:${l}` : `${r}|cameo:${l}`)} selected={sel?.section === "cameo" ? sel.cat : undefined} onSelect={pick("cameo")} />
         {detail("cameo")}
+      </section>
+
+      <section className="rounded-lg border border-gray-800 bg-gray-900 p-4 space-y-2">
+        <h2 className="text-sm font-semibold text-gray-100">Cameo quality: who the best visible cameo is</h2>
+        <p className="text-xs text-gray-500 max-w-3xl">
+          Rows: the card's main subject. Columns: the highest-ranked major or noticeable cameo (hidden ones don't count here; nobody buys a card
+          for a cameo they have to hunt for). Does a low-ranked Pokémon do well with an S-tier cameo, or a D-list one?
+        </p>
+        <MatrixTable data={data} rows={TIERS} cols={QUALITY} grade={grade} lang={lang} corner="Main subject"
+          cat={(r, q) => (r === "any" ? `cameoq:${q}` : `${r}|cameoq:${q}`)} selected={sel?.section === "quality" ? sel.cat : undefined} onSelect={pick("quality")} />
+        {detail("quality")}
       </section>
 
       <section className="rounded-lg border border-gray-800 bg-gray-900 p-4 space-y-2">
