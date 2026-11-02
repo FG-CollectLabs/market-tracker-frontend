@@ -2256,6 +2256,7 @@ export interface BeatCard {
   why?: { label: string; detail: string; effect: "for" | "against" | "neutral" }[];
   verdict?: string;
   stretched?: boolean; // 2.5x+ its release price and near its high
+  pumped?: boolean; // at 85%+ of its high and up 30%+ on the year: projected from what pumped cards did next
   supported?: boolean; // stretched, but its groups' record backs it
 }
 export interface BeatGroup {
@@ -2284,6 +2285,12 @@ export interface BeatSP {
   s_threshold: number;
   groups: BeatGroup[];
   scored_cards: number;
+  pump_history?: {
+    lang: string;
+    years: { year: number; pumped_next_12m: number; rest_next_12m: number; cases: number; rest_cases: number }[];
+    equal_weight_next_12m: number;
+    cases: number;
+  }[];
 }
 export function fetchBeatSP(grade: "raw" | "psa-10", lang?: string): Promise<BeatSP> {
   return get(`/v1/analysis/beat-sp?grade=${grade}${lang && lang !== "all" ? `&lang=${lang}` : ""}`);
