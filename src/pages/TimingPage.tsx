@@ -14,6 +14,7 @@ import BeatSP from "../components/BeatSP";
 import PullDifficultyTab from "../components/PullDifficultyTab";
 import GemRateTab from "../components/GemRateTab";
 import ArtTab from "../components/ArtTab";
+import SplitCharts from "../components/SplitCharts";
 import { Toggle } from "../components/GroupMatrix";
 
 // Subtabs: each angle on which singles are worth holding.
@@ -424,6 +425,8 @@ export default function TimingPage() {
               (number = several sets); hover a month to see which.
             </p>
           </section>
+
+          <SplitCharts cat={cat} catLabel={CAT_LABEL[cat] ?? cat} lang={lang} start={start} setStart={setStart} />
 
           {prem && (
             <section className="rounded-lg border border-gray-800 bg-gray-900 p-4 space-y-2">

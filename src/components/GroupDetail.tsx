@@ -1,7 +1,7 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 import { fetchGroupCurve, type GroupCurve, type ReleaseCurves } from "../lib/api";
 import { groupLabel } from "../lib/groups";
-import { LineChart, Legend, SERIES } from "./HistoryCharts";
+import GroupChart, { BuyMonthSlider } from "./GroupChart";
 import GroupCards from "./GroupCards";
 
 // One curve group in depth: its release curve against the group it splits
@@ -36,18 +36,7 @@ export default function GroupDetail({ data, category, grade, lang, definition, o
   }, [category, grade, lang]);
   const label = groupLabel(category);
 
-  const chart = useMemo(() => {
-    if (!gc?.curve) return null;
-    const curves = [gc.curve, gc.parent_curve].filter(Boolean) as NonNullable<GroupCurve["curve"]>[];
-    const months = Math.max(...curves.map((c) => c.points[c.points.length - 1].month));
-    const xs = Array.from({ length: months + 1 }, (_, i) => String(i));
-    const series = curves.map((c, i) => {
-      const by = new Map(c.points.map((p) => [p.month, p.change * 100]));
-      return { label: i === 0 ? label : groupLabel(gc.parent), color: SERIES[i], dashed: i > 0, values: xs.map((m) => by.get(Number(m)) ?? null) };
-    });
-    return { xs, series };
-  }, [gc, label]);
-
+  const [start, setStart] = useState(0);
   const row = data.table.find((r) => r.category === category && r.grade === grade && r.lang === lang);
   const bottoms = data.bottoms.find((b) => b.category === category && b.grade === grade && b.lang === lang);
   const t = row?.trailing;
@@ -80,14 +69,11 @@ export default function GroupDetail({ data, category, grade, lang, definition, o
       {row?.provisional && <p className="text-xs text-amber-300">Provisional: as few as {row.min_sets} sets behind some months of this curve.</p>}
 
       <div className="rounded border border-gray-800 bg-gray-950/40 p-3 space-y-2">
-        <div className="flex flex-wrap items-baseline justify-between gap-2">
-          <h4 className="text-xs font-semibold text-gray-200">Price vs launch month{gc?.parent_curve ? ` · against ${groupLabel(gc.parent)}` : ""}</h4>
-          {chart && <Legend items={chart.series.map((s) => ({ label: s.label, color: s.color }))} />}
-        </div>
-        {!gc ? <p className="text-xs text-gray-500">Loading…</p> : chart ? (
-          <LineChart weeks={chart.xs} series={chart.series} fmt={(v) => pct(v / 100)} axisFmt={(v) => `${Math.round(v)}%`}
-            xLabel={(m) => `M${m}`} xTitle={(m) => `Month ${m} since release`} />
-        ) : <p className="text-xs text-gray-500">No curve for this group, grade and language yet (too few cards with prices).</p>}
+        <h4 className="text-xs font-semibold text-gray-200">
+          {start === 0 ? "Price vs launch month" : `Price vs month ${start} (bought at M${start})`}{gc?.parent_curve ? ` · dashed: ${groupLabel(gc.parent)}` : ""}
+        </h4>
+        <BuyMonthSlider start={start} onChange={setStart} />
+        <GroupChart category={category} grade={grade} lang={lang} start={start} />
       </div>
 
       <GroupCards category={category} label="Cards in this group" grade={grade} lang={lang} />
