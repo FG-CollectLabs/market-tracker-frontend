@@ -38,7 +38,7 @@ export default function BeatSP({ lang, catLabel }: { lang: CurveLang; catLabel: 
             <HelpDot width="w-[28rem]" help={
               <>
                 <p>Each card scores the <b>lower</b> of two yearly returns: its projected price two years out (its tier's release curve from where it is now, blended with its own trend, after the selling fee), and its own change over the last year. The curve alone is the same for every set of a tier; requiring the card's own year to agree is what separates sets.</p>
-                <p className="mt-1"><b>S</b>: the median card scores {data ? Math.round(data.s_threshold * 100) : 20}%+/yr. <b>A</b>: out of print, past the buy window, beating the S&amp;P ({data ? Math.round(data.benchmark * 100) : 10}%/yr), and not pumped. <b>Pumped</b>: at 85%+ of its high and up 30%+ over the year.</p>
+                <p className="mt-1"><b>S</b>: the median card scores {data ? Math.round(data.s_threshold * 100) : 20}%+/yr. <b>A</b>: out of print, past the buy window, beating the S&amp;P ({data ? Math.round(data.benchmark * 100) : 10}%/yr), and not pumped. <b>Pumped</b>: at 85%+ of its high and up 30%+ over the year; a pumped card is projected from what pumped cards did over the next 12 months, each year weighted equally, never the curve.</p>
                 <p className="mt-1">Past performance and a fitted curve, not a forecast.</p>
               </>
             } />
@@ -48,12 +48,26 @@ export default function BeatSP({ lang, catLabel }: { lang: CurveLang; catLabel: 
             what backs it (each group it belongs to against the whole market) and whether a card that's already run is momentum.
           </p>
         </div>
-        <span className="inline-flex rounded border border-gray-700 overflow-hidden text-xs">
-          {(["psa-10", "raw"] as const).map((g) => (
-            <button key={g} onClick={() => setGrade(g)} className={`px-2 py-0.5 ${grade === g ? "bg-indigo-600 text-white" : "text-gray-400 hover:text-gray-200"}`}>{g === "raw" ? "Raw" : "PSA 10"}</button>
-          ))}
-        </span>
       </div>
+      <div className="border-b border-gray-800 flex gap-1">
+        {([["raw", "Raw: buy and hold the card"], ["psa-10", "Graded: buy and hold a PSA 10"]] as const).map(([g, label]) => (
+          <button key={g} onClick={() => setGrade(g)}
+            className={`px-3 py-1.5 text-sm -mb-px border-b-2 ${grade === g ? "border-indigo-500 text-white" : "border-transparent text-gray-400 hover:text-gray-200"}`}>{label}</button>
+        ))}
+      </div>
+      {data?.pump_history?.filter((p) => p.lang === lang || lang === "all").map((p) => (
+        <div key={p.lang} className="rounded border border-amber-900/50 bg-amber-950/10 p-2 text-xs text-gray-300">
+          <b className="text-amber-200">What pumped cards did next</b>
+          <span className="text-gray-500"> ({p.lang === "ja" ? "Japanese" : "English"}, at 85%+ of their high and up 30%+ on the year; next 12 months)</span>
+          <div className="flex flex-wrap gap-x-4 gap-y-0.5 mt-1 tabular-nums">
+            {p.years.map((y) => (
+              <span key={y.year}>{y.year}: <span className={tone(y.pumped_next_12m)}>{pct(y.pumped_next_12m)}</span>
+                <span className="text-gray-500"> vs {pct(y.rest_next_12m)} for the rest · {y.cases.toLocaleString()}</span></span>
+            ))}
+            <span>Each year weighted once: <b className={tone(p.equal_weight_next_12m)}>{pct(p.equal_weight_next_12m)}</b>, the projection for a card that's pumped now</span>
+          </div>
+        </div>
+      ))}
       {error && <p className="text-xs text-red-400">{error}</p>}
       {!data && !error && <p className="text-xs text-gray-500">Loading…</p>}
       {data && (["S", "A"] as const).map((t) => {
@@ -114,6 +128,9 @@ export default function BeatSP({ lang, catLabel }: { lang: CurveLang; catLabel: 
                                         <td className="py-1 pr-2">
                                           <Link to={`/cards/${encodeURIComponent(c.display_key)}`} className="text-gray-100 hover:text-indigo-300">{c.name}</Link>
                                           <span className="text-gray-500"> #{c.number}</span>
+                                          {c.pumped && (
+                                            <span className="ml-1.5 px-1 rounded text-[10px] bg-amber-950/60 text-amber-300" title="At 85%+ of its high and up 30%+ on the year: projected from what pumped cards did next">pumped</span>
+                                          )}
                                           {c.stretched && (
                                             <span className={`ml-1.5 px-1 rounded text-[10px] ${c.supported ? "bg-emerald-950/60 text-emerald-300" : "bg-red-950/60 text-red-300"}`}
                                               title={c.verdict}>{c.supported ? "ran, with a record" : "momentum"}</span>
