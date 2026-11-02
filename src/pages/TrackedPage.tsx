@@ -2,6 +2,8 @@ import { Fragment, createContext, useCallback, useContext, useEffect, useMemo, u
 import WatchButton from "../components/WatchButton";
 import { CardMarketLinks } from "../components/MarketLinks";
 import { PhaseChip, SetTimingSummary, TargetChips, cardWindow, phaseOfWindow, tierOf } from "../components/BuyWindows";
+import Collapsible from "../components/Collapsible";
+import SetTiers from "../components/SetTiers";
 import { CardPrepButtons, PresetBar } from "../components/WatchTargets";
 import { CardGlance, WeeklyVsPc } from "../components/CardGlance";
 import { useSession } from "../lib/auth";
@@ -1130,8 +1132,19 @@ export default function TrackedPage() {
       {data && <FreshnessStrip sources={data.sources} code={code} onChange={reloadData} />}
 
       {setWin && (
+        <div className="mb-3">
+          <Collapsible id="set-timing" title="Timing">
+            <SetTimingSummary set={setWin} onPrint={(v) => setPrintStatus(setWin.code, v).then(() => setWinTick((t) => t + 1))} />
+          </Collapsible>
+        </div>
+      )}
+      {code && (
         <div className="mb-4">
-          <SetTimingSummary set={setWin} onPrint={(v) => setPrintStatus(setWin.code, v).then(() => setWinTick((t) => t + 1))} />
+          <Collapsible id="set-tiers" title="Rarity tiers: packs to pull and gem rates">
+            <section className="rounded-lg border border-gray-800 bg-gray-900/40 p-3">
+              <SetTiers code={code} />
+            </section>
+          </Collapsible>
         </div>
       )}
 
