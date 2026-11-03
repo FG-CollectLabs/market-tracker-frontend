@@ -1,7 +1,9 @@
-import { useState } from "react";
+import { useSearchParams } from "react-router-dom";
 import { OPEN_QUESTIONS, PATCH_NOTES, PHASES, type Status } from "../content/roadmap";
 import { DIAGRAM, SECTIONS } from "../content/architecture";
 import SystemStatus from "../components/SystemStatus";
+import InfraDiagram from "../components/InfraDiagram";
+import { ConsumedApis, PublishedApis } from "../components/ApiCatalog";
 
 const STATUS: Record<Status, { label: string; cls: string }> = {
   done: { label: "Done", cls: "bg-green-950/60 text-green-300 border-green-900" },
@@ -15,14 +17,27 @@ function Badge({ s }: { s: Status }) {
   return <span className={`shrink-0 px-1.5 py-0.5 rounded border text-[11px] font-medium ${STATUS[s].cls}`}>{STATUS[s].label}</span>;
 }
 
+const TABS = [
+  ["status", "Status"],
+  ["roadmap", "Roadmap"],
+  ["notes", "Patch notes"],
+  ["api", "API: published"],
+  ["uses", "API: uses"],
+  ["architecture", "Architecture"],
+] as const;
+type Tab = (typeof TABS)[number][0];
+
 // The development roadmap and patch notes (src/content/roadmap.ts). Changes
 // land through PRs, so GitHub's history of that file is the audit trail.
+// The open subtab is in ?tab= so it can be linked.
 export default function RoadmapPage() {
-  const [tab, setTab] = useState<"status" | "roadmap" | "notes" | "architecture">("status");
+  const [params, setParams] = useSearchParams();
+  const tab: Tab = TABS.find(([t]) => t === params.get("tab"))?.[0] ?? "status";
+  const setTab = (t: Tab) => setParams(t === "status" ? {} : { tab: t }, { replace: true });
   const counts = PHASES.flatMap((p) => p.items).reduce<Record<string, number>>((m, i) => ({ ...m, [i.status]: (m[i.status] ?? 0) + 1 }), {});
 
   return (
-    <div className="space-y-5 max-w-4xl">
+    <div className={`space-y-5 ${tab === "roadmap" || tab === "notes" ? "max-w-4xl" : "max-w-6xl"}`}>
       <div>
         <h1 className="text-xl font-semibold text-white">Developer</h1>
         <p className="text-sm text-gray-500">
@@ -35,19 +50,25 @@ export default function RoadmapPage() {
         </p>
       </div>
 
-      <div className="inline-flex rounded border border-gray-700 overflow-hidden text-sm">
-        {(["status", "roadmap", "notes", "architecture"] as const).map((t) => (
+      <div className="inline-flex flex-wrap rounded border border-gray-700 overflow-hidden text-sm">
+        {TABS.map(([t, label]) => (
           <button key={t} onClick={() => setTab(t)}
             className={`px-3 py-1 ${tab === t ? "bg-indigo-700 text-white" : "bg-gray-900 text-gray-400 hover:text-gray-200"}`}>
-            {t === "status" ? "Status" : t === "roadmap" ? "Roadmap" : t === "notes" ? "Patch notes" : "Architecture"}
+            {label}
           </button>
         ))}
       </div>
 
       {tab === "status" && <div className="max-w-6xl"><SystemStatus /></div>}
+      {tab === "api" && <PublishedApis />}
+      {tab === "uses" && <ConsumedApis />}
 
-      {tab === "status" ? null : tab === "architecture" ? (
+      {tab === "status" || tab === "api" || tab === "uses" ? null : tab === "architecture" ? (
         <div className="space-y-5 max-w-6xl">
+          <section className="rounded-lg border border-gray-800 bg-gray-900 p-4">
+            <h2 className="text-sm font-semibold text-gray-100 mb-3">Infrastructure</h2>
+            <InfraDiagram />
+          </section>
           <section className="rounded-lg border border-gray-800 bg-gray-900 p-4 overflow-x-auto">
             <h2 className="text-sm font-semibold text-gray-100 mb-3">How data flows</h2>
             <div className="flex items-stretch gap-2 min-w-[56rem]">

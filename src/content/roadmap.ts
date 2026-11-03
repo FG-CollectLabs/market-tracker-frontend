@@ -159,6 +159,16 @@ export const PHASES: Phase[] = [
 
 export const PATCH_NOTES: PatchNote[] = [
   {
+    date: "2026-11-03",
+    title: "Developer: API pages and an infrastructure diagram",
+    items: [
+      "API: published lists everything the tracker serves, grouped by who may call it (public, admin, read tokens, agent workers), which apps use each, and the MCP tools. The Pricing API's Swagger UI opens in place; a filter finds any endpoint.",
+      "API: uses lists every outside service the backend calls, what it gets, which job calls it and the credential's variable name.",
+      "Architecture opens with an infrastructure diagram: Cloudflare, the LXCs on the Proxmox host, agents, GitHub and Docker Hub, and the outside sources. Hover or tap a box to see what it does and what it talks to.",
+      "Subtabs are linkable (?tab=api).",
+    ],
+  },
+  {
     date: "2026-10-15",
     title: "Cost to grade, worked out; min-bid auctions",
     items: [
