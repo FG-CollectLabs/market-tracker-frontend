@@ -2,8 +2,12 @@ import { useEffect, useState } from "react";
 import WatchButton from "../components/WatchButton";
 import GradedMarket from "../components/GradedMarket";
 import CardBuyPanel from "../components/CardBuyPanel";
+import GradedCopiesBlock from "../components/GradedCopiesBlock";
+import { ptcgioSetCode, type IntakeCard } from "../lib/gradingApp";
 import { useParams, useSearchParams } from "react-router-dom";
 import {
+  fetchSets,
+  type SetRow,
   fetchCard,
   fetchCardSnapshots,
   fetchCardGraded,
@@ -407,6 +411,17 @@ export default function CardDetailPage() {
       .catch((e: unknown) => setCardError(String(e)));
   }, [displayKey]);
 
+  // The card's set (name and our code), for the grading app's intake link.
+  const [set, setSet] = useState<SetRow | null>(null);
+  useEffect(() => {
+    if (!card) return;
+    fetchSets().then((r) => setSet(r.sets.find((x) => x.id === card.set_id) ?? null)).catch(() => setSet(null));
+  }, [card]);
+  const intake: IntakeCard | null = card
+    ? { display_key: card.display_key, name: card.name, number: card.number, image_url: card.image_url,
+        set_name: set?.name, set_code: ptcgioSetCode(card.details?.tcgdex_id) ?? set?.code }
+    : null;
+
   if (!displayKey) return null;
 
   return (
@@ -460,7 +475,12 @@ export default function CardDetailPage() {
       {tab === "market" && <GradedMarket displayKey={displayKey} />}
       {tab === "snapshots" && <SnapshotsTab displayKey={displayKey} />}
       {tab === "listings" && <ListingsTab displayKey={displayKey} />}
-      {tab === "graded" && <GradedTab displayKey={displayKey} />}
+      {tab === "graded" && (
+        <>
+          {intake && <GradedCopiesBlock card={intake} />}
+          <GradedTab displayKey={displayKey} />
+        </>
+      )}
     </div>
   );
 }

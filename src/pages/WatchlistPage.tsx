@@ -5,6 +5,7 @@ import { useSession } from "../lib/auth";
 import { STANCE } from "../components/BuyingGuide";
 import { CardPrepButtons, PresetBar, TARGET_LABEL, TargetEditor, usePresets } from "../components/WatchTargets";
 import { cardThumb } from "../lib/thumb";
+import { gradingIntakeUrl } from "../lib/gradingApp";
 import { Spinner, ErrorMsg } from "../components/Spinner";
 import WatchSuggestions from "../components/WatchSuggestions";
 import { watchChanged } from "../components/WatchButton";
@@ -581,6 +582,13 @@ export default function WatchlistPage() {
                         <span className="text-gray-500 mr-1 print:hidden">{open ? "▾" : "▸"}</span>
                         <Link to={`/cards/${encodeURIComponent(it.display_key)}`} className="text-gray-100 hover:text-indigo-300 print:text-black">{it.name}</Link>
                         <div className="text-gray-500">#{it.number} · {INTENT_LABEL[it.intent]}</div>
+                        {target === "raw_grade" && (
+                          <a href={gradingIntakeUrl({ display_key: it.display_key, name: it.name, number: it.number, set_name: it.set_name, set_code: it.set_code, image_url: it.image_url })}
+                            target="_blank" rel="noreferrer" onClick={(e) => e.stopPropagation()}
+                            className="text-[11px] text-indigo-300 hover:text-indigo-200 print:hidden" title="Add a photographed graded copy of this card to the centering backtest (grading app)">
+                            Add graded copy →
+                          </a>
+                        )}
                         <div className="mt-0.5"><CardPrepButtons displayKey={it.display_key} /></div>
                         {it.note && <div className="text-gray-400 italic">{it.note}</div>}
                       </td>

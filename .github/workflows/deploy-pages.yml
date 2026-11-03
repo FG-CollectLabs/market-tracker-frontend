@@ -28,6 +28,8 @@ jobs:
       - run: npm run build
         env:
           VITE_API_URL: https://market.futuregadgetlabs.com
+          VITE_GRADING_URL: ${{ vars.VITE_GRADING_URL || 'https://grading.futuregadgetlabs.com' }}
+          VITE_GRADING_API_URL: ${{ vars.VITE_GRADING_API_URL || 'https://grading-api.futuregadgetlabs.com' }}
           VITE_GH_PAGES: "1"
           # Baked into the public JS bundle. Single-admin tool — fine because
           # this site/repo is private to the owner.
