@@ -2482,3 +2482,108 @@ export function fetchTimingNotes(topic: AnalysisTopic, id?: number): Promise<Tim
 export function runTimingAnalysis(topic: AnalysisTopic): Promise<{ id: number }> {
   return adminFetch("/v1/admin/jobs", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ kind: "agent_timing_analysis", topic }) });
 }
+
+// ---- Sell channels (final price vs market) ---------------------------------
+
+export interface ChannelDist {
+  n: number;
+  p10: number;
+  p25: number;
+  p50: number;
+  p75: number;
+  p90: number;
+  mean: number;
+}
+
+export interface ChannelCell {
+  key: string;
+  label?: string;
+  seller_ratio: ChannelDist;
+}
+
+export type ChannelKind = "consigner" | "platform" | "tier" | "baseline";
+
+export interface ChannelStats {
+  channel: string;
+  label: string;
+  kind: ChannelKind;
+  seller?: string;
+  sales: number;
+  approx: number;
+  cards: number;
+  seller_ratio: ChannelDist | null;
+  buyer_ratio: ChannelDist | null;
+  by_grade: ChannelCell[] | null;
+  by_price_band: ChannelCell[] | null;
+}
+
+export interface ChannelReport {
+  generated_at: string;
+  days: number;
+  method: string;
+  sales_placed: number;
+  sales_no_market: number;
+  channels: ChannelStats[];
+  tier_min_feedback: Record<string, number>;
+}
+
+export function fetchChannels(days = 180): Promise<ChannelReport> {
+  return get(`/v1/analysis/channels?days=${days}`);
+}
+
+export interface CardChannel {
+  channel: string;
+  label: string;
+  kind: ChannelKind;
+  basis: "grade_and_band" | "band" | "grade" | "channel" | "";
+  basis_n: number;
+  seller_ratio: ChannelDist | null;
+  p10_cents: number;
+  p25_cents: number;
+  expected_cents: number;
+  p75_cents: number;
+  p90_cents: number;
+  card_seller_ratio?: ChannelDist;
+}
+
+export interface CardChannels {
+  display_key: string;
+  grade: string;
+  market_cents: number;
+  market_sales: number;
+  price_band: string;
+  channels: CardChannel[];
+  method: string;
+  note?: string;
+}
+
+export function fetchCardChannels(displayKey: string, grade: string): Promise<CardChannels> {
+  return get(`/v1/cards/${encodeURIComponent(displayKey)}/channels?grade=${encodeURIComponent(grade)}`);
+}
+
+export interface EbaySellerRow {
+  username: string;
+  label?: string;
+  kind?: "consigner" | "dealer" | "individual";
+  tracked: boolean;
+  feedback_score?: number;
+  feedback_pct?: number;
+  listings_60d: number;
+  auctions_60d: number;
+  cards_60d: number;
+  sales_matched: number;
+  last_seen_at?: string;
+  consigner_candidate: boolean;
+}
+
+export function fetchEbaySellers(limit = 60): Promise<{ sellers: EbaySellerRow[]; tiers: Record<string, number> }> {
+  return adminFetch(`/v1/admin/ebay-sellers?limit=${limit}`);
+}
+
+export function saveEbaySeller(username: string, body: { tracked?: boolean; label?: string; kind?: string }): Promise<{ ok: boolean }> {
+  return adminFetch(`/v1/admin/ebay-sellers/${encodeURIComponent(username)}`, {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+}
