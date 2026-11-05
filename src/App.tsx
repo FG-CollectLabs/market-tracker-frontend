@@ -14,6 +14,7 @@ import RankingsPage from "./pages/RankingsPage";
 import GroupPage from "./pages/GroupPage";
 import CardClassesPage from "./pages/CardClassesPage";
 import RoadmapPage from "./pages/RoadmapPage";
+import ChannelsPage from "./pages/ChannelsPage";
 import WatchlistPage from "./pages/WatchlistPage";
 import AutomationPage from "./pages/AutomationPage";
 import SealedTodoPage from "./pages/SealedTodoPage";
@@ -53,6 +54,9 @@ function Nav() {
       </NavLink>
       <NavLink to="/watchlist" className={linkCls}>
         Watchlist
+      </NavLink>
+      <NavLink to="/channels" className={linkCls}>
+        Sell channels
       </NavLink>
       <NavLink to="/settings" className={linkCls}>
         Settings
@@ -97,6 +101,7 @@ export default function App() {
             <Route path="/sealed" element={<SealedTodoPage />} />
             <Route path="/roadmap" element={<RoadmapPage />} />
             <Route path="/watchlist" element={<WatchlistPage />} />
+            <Route path="/channels" element={<ChannelsPage />} />
             <Route path="/prep" element={<BuyingPrepPage />} />
             <Route path="/automation" element={<AutomationPage />} />
             {/* Old catalog list; the home page's "Show untracked sets" replaces it. */}
