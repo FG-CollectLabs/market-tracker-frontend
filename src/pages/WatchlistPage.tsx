@@ -501,6 +501,7 @@ export default function WatchlistPage() {
           <option value="under">Most under max</option>
           <option value="ending">Ending soonest</option>
           <option value="cheapest">Cheapest</option>
+          <option value="ev">Grade-odds EV</option>
         </select>
         <label className="flex items-center gap-1 text-gray-300 ml-2">
           <input type="checkbox" className="accent-indigo-500" checked={showPassed} onChange={(e) => setShowPassed(e.target.checked)} /> Show set-aside ({passedCount})

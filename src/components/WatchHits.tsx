@@ -1,13 +1,14 @@
 import { useCallback, useEffect, useState, type ReactNode } from "react";
 import { HIT_REASONS, clearHitReview, reviewHit, type HitReason, type TargetHit, type WatchTarget } from "../lib/api";
 import { TARGET_LABEL } from "./WatchTargets";
+import GradeOddsBadge from "./GradeOddsBadge";
 
 // The watchlist's live listings ("hits"): filters, one listing row with its
 // set-aside / note actions, the photo overlay and the strategies drawer.
 
 const usd = (c?: number | null) => (c == null ? "—" : `$${(c / 100).toFixed(2)}`);
 
-export type HitSort = "under" | "ending" | "cheapest";
+export type HitSort = "under" | "ending" | "cheapest" | "ev";
 
 export interface HitFilters {
   kind: "all" | "auction" | "buy_now";
@@ -85,6 +86,12 @@ export function sortHits(list: CardHit[], sort: HitSort): CardHit[] {
     if (passed(a.h) !== passed(b.h)) return passed(a.h) ? 1 : -1;
     if (sort === "ending") return end(a) - end(b) || b.under - a.under;
     if (sort === "cheapest") return a.h.all_in_cents - b.h.all_in_cents;
+    if (sort === "ev") {
+      // Grade-odds EV (Raw to grade) first, best first; the rest by how far under max.
+      const ea = a.h.grade_odds?.ev_cents, eb = b.h.grade_odds?.ev_cents;
+      if (ea != null && eb != null) return eb - ea;
+      if ((ea != null) !== (eb != null)) return ea != null ? -1 : 1;
+    }
     return b.under - a.under;
   });
 }
@@ -208,6 +215,7 @@ export function HitRow({ ch, displayKey, now, error, onOpen, onSetAside, onChang
           ? <a href={h.url} target="_blank" rel="noreferrer" className="text-indigo-300 hover:text-indigo-200 print:text-black block truncate">{h.title}</a>
           : <span className="text-gray-200 block truncate">{h.title}</span>}
         {h.review?.note && !editing && <div className="text-[11px] text-amber-200/80 print:text-black">{h.review.note}</div>}
+        {h.grade_odds && <div className="my-0.5"><GradeOddsBadge o={h.grade_odds} /></div>}
         <div className="text-[11px] text-gray-400 tabular-nums print:text-black">
           {h.kind === "auction" ? "Bid" : "Ask"} {h.shipping_cents ? <>{usd(h.price_cents - h.shipping_cents)} + {usd(h.shipping_cents)} ship</> : usd(h.price_cents)}
           {h.all_in_cents !== h.price_cents && <> · all-in <span className="text-gray-200 print:text-black">{usd(h.all_in_cents)}</span></>}

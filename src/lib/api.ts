@@ -1615,6 +1615,44 @@ export interface TargetHit {
   image_urls?: string[]; // every photo (eBay-hosted)
   shipping_cents?: number; // shipping included in price_cents
   review?: HitReview;
+  grade_odds?: GradeOdds; // raw eBay hits sent to the grading predictor
+}
+
+// ---- Grade odds (grading predictor) ------------------------------------------
+
+export type GradeOddsStatus = "pending" | "measuring" | "ready" | "unmeasurable" | "failed" | "timeout";
+
+export interface GradeOdds {
+  id: number;
+  source: "ebay" | "upload";
+  listing_id?: string;
+  source_ref?: string;
+  copy_id?: number;
+  status: GradeOddsStatus;
+  psa10_p?: number;
+  psa10_prior?: number;
+  psa_centering_cap?: string;
+  front?: { lr?: number; tb?: number };
+  back?: { lr?: number; tb?: number };
+  summary?: string; // "PSA 10 62% (prior 39%) · centering front 53/47 · back 58/42"
+  review_url?: string;
+  error?: string;
+  created_at: string;
+  ready_at?: string;
+  ev_cents?: number; // Raw to grade hits: expected value of grading with PSA
+  ev_note?: string;
+}
+
+export function fetchGradeOdds(displayKey: string): Promise<{ odds: GradeOdds[]; enabled: boolean; notes: string[] }> {
+  return get(`/v1/cards/${encodeURIComponent(displayKey)}/grade-odds`);
+}
+
+export async function uploadGradeOdds(displayKey: string, front: File, back: File, note?: string): Promise<GradeOdds> {
+  const fd = new FormData();
+  fd.append("front", front);
+  fd.append("back", back);
+  if (note) fd.append("note", note);
+  return adminFetch(`/v1/admin/cards/${encodeURIComponent(displayKey)}/grade-odds`, { method: "POST", body: fd });
 }
 
 // Your pass or note on a hit (one listing).
