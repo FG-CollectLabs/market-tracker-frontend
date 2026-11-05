@@ -2625,3 +2625,92 @@ export function saveEbaySeller(username: string, body: { tracked?: boolean; labe
     body: JSON.stringify(body),
   });
 }
+
+// ---- Raw sellers (Deals): big raw sellers with combined shipping ------------
+
+export interface ShipRule {
+  first_cents?: number;
+  each_add_cents?: number;
+  free_over_cents?: number;
+  note?: string;
+  text: string;
+}
+
+export interface RawSellerListing {
+  display_key: string;
+  name: string;
+  number: string;
+  set_code: string;
+  listing_id: string;
+  title: string;
+  url?: string;
+  image_url?: string;
+  image_count?: number;
+  item_cents: number;
+  listed_ship_cents: number;
+  add_cents: number; // item + what it adds to the basket's shipping
+  max_raw_cents: number;
+  max_grader: string;
+  under: number;
+  raw_market_cents?: number;
+  psa10_cents?: number;
+  p10?: number;
+  grade_odds?: GradeOdds;
+}
+
+export interface RawBasket {
+  items: number;
+  items_cents: number;
+  ship_cents: number;
+  listed_ship_cents: number;
+  total_cents: number;
+  per_card_cents: number;
+  headroom_cents: number;
+  note: string;
+}
+
+export interface RawSeller {
+  username: string;
+  label?: string;
+  feedback_score?: number;
+  feedback_pct?: number;
+  ship_rule: ShipRule;
+  live_raw: number;
+  priced: number;
+  under_max: number;
+  listings: RawSellerListing[];
+  basket?: RawBasket;
+}
+
+export function fetchRawSellers(): Promise<{ sellers: RawSeller[]; generated_at: string }> {
+  return get(`/v1/deals/raw-sellers`);
+}
+
+export interface RawSellerCandidate {
+  username: string;
+  label?: string;
+  raw_tracked: boolean;
+  feedback_score?: number;
+  feedback_pct?: number;
+  live_raw: number;
+  cards: number;
+  median_cents: number;
+  free_ship_pct: number;
+  median_ship_cents: number;
+  ship_rule: ShipRule;
+}
+
+export function fetchRawSellerCandidates(limit = 40): Promise<{ sellers: RawSellerCandidate[] }> {
+  return adminFetch(`/v1/admin/raw-sellers/candidates?limit=${limit}`);
+}
+
+export function saveRawSeller(username: string, body: {
+  raw_tracked?: boolean; label?: string; ship_first_cents?: number; ship_each_add_cents?: number;
+  free_ship_over_cents?: number; ship_note?: string; clear_ship_rule?: boolean;
+}): Promise<{ ok: boolean }> {
+  return adminFetch(`/v1/admin/ebay-sellers/${encodeURIComponent(username)}`, {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+}
