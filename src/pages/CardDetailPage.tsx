@@ -4,6 +4,7 @@ import GradedMarket from "../components/GradedMarket";
 import CardBuyPanel from "../components/CardBuyPanel";
 import GradedCopiesBlock from "../components/GradedCopiesBlock";
 import GradeOddsPanel from "../components/GradeOddsPanel";
+import CardChannelsPanel from "../components/CardChannelsPanel";
 import { ptcgioSetCode, type IntakeCard } from "../lib/gradingApp";
 import { useParams, useSearchParams } from "react-router-dom";
 import {
@@ -395,7 +396,7 @@ function ListingsTab({ displayKey }: { displayKey: string }) {
 
 // ---- Page ------------------------------------------------------------------
 
-type Tab = "market" | "snapshots" | "graded" | "listings";
+type Tab = "market" | "snapshots" | "graded" | "listings" | "channels";
 
 export default function CardDetailPage() {
   const { displayKey } = useParams<{ displayKey: string }>();
@@ -458,7 +459,7 @@ export default function CardDetailPage() {
 
       {/* Sub-tabs */}
       <div className="flex gap-1 border-b border-gray-800 mb-6">
-        {([["market", "Graded market"], ["snapshots", "Price History"], ["listings", "Listings"], ["graded", "Graded"]] as const).map(([id, label]) => (
+        {([["market", "Graded market"], ["snapshots", "Price History"], ["listings", "Listings"], ["graded", "Graded"], ["channels", "Sell channels"]] as const).map(([id, label]) => (
           <button
             key={id}
             onClick={() => setSearchParams({ tab: id }, { replace: true })}
@@ -476,6 +477,7 @@ export default function CardDetailPage() {
       {tab === "market" && <GradedMarket displayKey={displayKey} />}
       {tab === "snapshots" && <SnapshotsTab displayKey={displayKey} />}
       {tab === "listings" && <ListingsTab displayKey={displayKey} />}
+      {tab === "channels" && <CardChannelsPanel displayKey={displayKey} />}
       {tab === "graded" && (
         <>
           <GradeOddsPanel displayKey={displayKey} />
