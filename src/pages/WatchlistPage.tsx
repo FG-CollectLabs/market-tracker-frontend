@@ -1,5 +1,5 @@
 import { Fragment, useCallback, useEffect, useMemo, useState } from "react";
-import { Link } from "react-router-dom";
+import { Link, useSearchParams } from "react-router-dom";
 import { BUY_TARGETS, clearHitReview, fetchWatchlist, putTargets, reviewHit, unwatchCard, type BuyTarget, type HitReason, type PlaySummary, type WatchItem, type WatchIntent, type WatchTarget } from "../lib/api";
 import { useSession } from "../lib/auth";
 import { STANCE } from "../components/BuyingGuide";
@@ -12,6 +12,7 @@ import { watchChanged } from "../components/WatchButton";
 import ReleaseVs from "../components/ReleaseVs";
 import ReviewLog from "../components/ReviewLog";
 import { Drawer, HitRow, Reviewer, cardHits, loadHitFilters, saveHitFilters, sortHits, useNow, type CardHit, type HitFilters } from "../components/WatchHits";
+import ConsignerWatch from "../components/ConsignerWatch";
 
 const usd = (c?: number | null) => (c == null ? "—" : `$${(c / 100).toFixed(2)}`);
 const INTENT_LABEL: Record<WatchIntent, string> = { grade: "Grade", invest: "Invest", flip: "Flip", watch: "Watch" };
@@ -156,7 +157,7 @@ function cell(c: ColId, it: WatchItem, p: PlaySummary | undefined) {
 // The buy list, by set: each card's buy targets, and (click the row) the
 // live listings under them, which can be set aside with a reason or noted.
 // Prints cleanly (Ctrl+P / the Print button); open cards print their listings.
-export default function WatchlistPage() {
+function WatchCards() {
   const session = useSession();
   const presets = usePresets();
   const [items, setItems] = useState<WatchItem[] | null>(null);
@@ -711,6 +712,34 @@ export default function WatchlistPage() {
         <Drawer onClose={() => { setHistory(false); load(); }} title={<h2 className="text-sm font-semibold text-gray-100">Review history</h2>}>
           <ReviewLog />
         </Drawer>
+      )}
+    </div>
+  );
+}
+
+// Two views: the cards (targets and hits) and, per tracked consigner, their
+// listings of watchlist cards costed with combined shipping.
+export default function WatchlistPage() {
+  const [params, setParams] = useSearchParams();
+  const view = params.get("view") === "consigners" ? "consigners" : "cards";
+  const set = (k: string, v: string) => {
+    const n = new URLSearchParams(params);
+    if (v) n.set(k, v); else n.delete(k);
+    setParams(n, { replace: true });
+  };
+  return (
+    <div className="space-y-4">
+      <div className="inline-flex rounded border border-gray-700 overflow-hidden text-sm print:hidden" role="group" aria-label="Watchlist view">
+        {([["cards", "Cards"], ["consigners", "By consigner"]] as const).map(([k, l]) => (
+          <button key={k} onClick={() => set("view", k === "cards" ? "" : k)} aria-pressed={view === k}
+            className={`px-3 py-1 ${view === k ? "bg-indigo-700 text-white" : "bg-gray-900 text-gray-400 hover:text-gray-200"}`}>{l}</button>
+        ))}
+      </div>
+      {view === "cards" ? <WatchCards /> : (
+        <>
+          <h1 className="text-xl font-semibold text-white">Watchlist by consigner</h1>
+          <ConsignerWatch seller={params.get("seller") ?? ""} setSeller={(u) => set("seller", u)} />
+        </>
       )}
     </div>
   );

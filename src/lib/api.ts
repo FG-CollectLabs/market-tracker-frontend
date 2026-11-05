@@ -2714,3 +2714,119 @@ export function saveRawSeller(username: string, body: {
     body: JSON.stringify(body),
   });
 }
+
+// ---- Sell channels: explorer --------------------------------------------------
+
+export type ExploreDim = "grader" | "grade" | "rarity" | "band" | "lang";
+
+export interface ExploreGroup {
+  key: string;
+  label: string;
+  seller_ratio: ChannelDist;
+  buyer_ratio: ChannelDist;
+}
+
+export interface ExploreChannel {
+  channel: string;
+  label: string;
+  kind: ChannelKind;
+  seller_ratio: ChannelDist;
+  buyer_ratio: ChannelDist;
+  hist: number[];
+  hist_buyer: number[];
+  months: ExploreGroup[];
+  groups: ExploreGroup[];
+}
+
+export interface ExploreOption {
+  key: string;
+  label: string;
+  n: number;
+}
+
+export interface ExploreFilter {
+  grader?: string;
+  grade?: string;
+  rarity?: string;
+  band?: string;
+  lang?: string;
+}
+
+export interface ExploreReport {
+  generated_at: string;
+  days: number;
+  basis: "all" | "ebay";
+  by: ExploreDim;
+  filter: ExploreFilter & { channels?: string[] };
+  sales_placed: number;
+  sales_no_market: number;
+  hist_bins: { lo: number; step: number; n: number };
+  channels: ExploreChannel[];
+  options: Record<ExploreDim | "channel", ExploreOption[]>;
+  min_group_n: number;
+  method: string;
+}
+
+export function fetchChannelExplore(days: number, basis: "all" | "ebay", by: ExploreDim, f: ExploreFilter, channels: string[]): Promise<ExploreReport> {
+  const q = new URLSearchParams({ days: String(days), basis, by });
+  for (const [k, v] of Object.entries(f)) if (v) q.set(k, v);
+  if (channels.length) q.set("channels", channels.join(","));
+  return get(`/v1/analysis/channels/explore?${q}`);
+}
+
+// ---- Watchlist by consigner -------------------------------------------------------
+
+export interface ConsignerListing {
+  display_key: string;
+  name: string;
+  number: string;
+  set_code: string;
+  set_name: string;
+  card_image_url?: string;
+  source: string;
+  listing_id: string;
+  kind: "auction" | "buy_now";
+  grade_key: string;
+  title: string;
+  url?: string;
+  image_url?: string;
+  image_count?: number;
+  ends_at?: string;
+  bids?: number;
+  price_cents: number;
+  listed_ship_cents: number;
+  item_cents: number;
+  expected?: boolean;
+  expected_note?: string;
+  market_cents?: number;
+  target: string;
+  max_cents: number;
+  max_kind: "target" | "market";
+  solo_cents: number;
+  add_cents: number;
+  vs_max: number;
+  status: "under" | "stretch" | "market";
+  review?: HitReview;
+}
+
+export interface ConsignerTab {
+  username: string;
+  label: string;
+  ship_rule: ShipRule;
+  live: number;
+  under: number;
+  stretch: number;
+  at_market: number;
+  passed: number;
+  channel_p50: number | null;
+  channel_n: number;
+  listings?: ConsignerListing[];
+  basket?: RawBasket;
+  stretch_basket?: RawBasket;
+}
+
+export function fetchWatchConsigners(seller: string, stretch: number): Promise<{ stretch: number; consigners: ConsignerTab[] }> {
+  const q = new URLSearchParams({ stretch: String(stretch) });
+  if (seller) q.set("seller", seller);
+  return adminFetch(`/v1/admin/watchlist/consigners?${q}`);
+}
