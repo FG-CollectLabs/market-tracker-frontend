@@ -1,3 +1,4 @@
+import HuntTab from "../components/HuntTab";
 import { Fragment, useEffect, useMemo, useState } from "react";
 import { Link, useParams, useSearchParams } from "react-router-dom";
 import {
@@ -24,7 +25,7 @@ import { newest } from "../lib/freshness";
 
 // ---- shared ----------------------------------------------------------------
 
-type Tab = "market" | "cards" | "sealed" | "graded";
+type Tab = "market" | "cards" | "sealed" | "graded" | "hunt";
 
 function TabBar({ active, onChange }: { active: Tab; onChange: (t: Tab) => void }) {
   const tabs: { id: Tab; label: string }[] = [
@@ -32,9 +33,10 @@ function TabBar({ active, onChange }: { active: Tab; onChange: (t: Tab) => void 
     { id: "cards", label: "Cards" },
     { id: "sealed", label: "Sealed" },
     { id: "graded", label: "Graded ROI" },
+    { id: "hunt", label: "Hunt list" },
   ];
   return (
-    <div className="flex gap-1 border-b border-gray-800 mb-6">
+    <div className="flex gap-1 border-b border-gray-800 mb-6 overflow-x-auto">
       {tabs.map((t) => (
         <button
           key={t.id}
@@ -1487,6 +1489,7 @@ export default function SetDetailPage() {
       {tab === "cards" && <CardsTab game={game} code={code} />}
       {tab === "sealed" && <SealedTab game={game} code={code} />}
       {tab === "graded" && <GradedTab game={game} code={code} />}
+      {tab === "hunt" && <HuntTab game={game} code={code} />}
     </div>
   );
 }
