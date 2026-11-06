@@ -1,4 +1,5 @@
-import { HashRouter, NavLink, Routes, Route } from "react-router-dom";
+import { useEffect, useRef, useState } from "react";
+import { HashRouter, NavLink, Routes, Route, useLocation } from "react-router-dom";
 import SetsPage from "./pages/SetsPage";
 import SetDetailPage from "./pages/SetDetailPage";
 import CardDetailPage from "./pages/CardDetailPage";
@@ -22,6 +23,79 @@ import { SignIn } from "./components/SignIn";
 import { Mark } from "./brand/Mark";
 import { COMPANY_NAME, PRODUCT_NAME } from "./brand/brand";
 
+// The nav: a few groups, each a dropdown of pages (Sets and Developer stand
+// alone). A group shows as active when one of its pages is open.
+const NAV: { label: string; to?: string; items?: { to: string; label: string; hint: string }[] }[] = [
+  { label: "Sets", to: "/" },
+  {
+    label: "Buying",
+    items: [
+      { to: "/watchlist", label: "Watchlist", hint: "Your cards, their targets and hits; by consigner; hunt list" },
+      { to: "/deals", label: "Deals", hint: "This week's auctions, ending soon, raw sellers" },
+      { to: "/windows", label: "Buy windows", hint: "When each tier usually bottoms" },
+      { to: "/prep", label: "Buying prep", hint: "Bid plans for the weekly auctions" },
+      { to: "/sealed", label: "Sealed TODO", hint: "Sealed products to price or buy" },
+    ],
+  },
+  {
+    label: "Analytics",
+    items: [
+      { to: "/timing", label: "Timing", hint: "Release curves and buy timing" },
+      { to: "/rankings", label: "Rankings", hint: "Cards ranked by play" },
+      { to: "/channels", label: "Sell channels", hint: "What cards sell for by platform and consigner" },
+      { to: "/promos", label: "Promos", hint: "Card classes: promos, exotics" },
+    ],
+  },
+  {
+    label: "Settings",
+    items: [
+      { to: "/settings", label: "Settings", hint: "Grading costs, fees, value source" },
+      { to: "/automation", label: "Automation", hint: "Scheduled jobs and card priority" },
+      { to: "/developer", label: "Developer", hint: "APIs, architecture, roadmap" },
+    ],
+  },
+  { label: "Developer", to: "/developer" }, // also under Settings: phones hide this one
+];
+
+function NavGroup({ g }: { g: (typeof NAV)[number] }) {
+  const [open, setOpen] = useState(false);
+  const loc = useLocation();
+  const ref = useRef<HTMLDivElement>(null);
+  useEffect(() => setOpen(false), [loc.pathname, loc.search]);
+  useEffect(() => {
+    if (!open) return;
+    const close = (e: MouseEvent) => { if (!ref.current?.contains(e.target as Node)) setOpen(false); };
+    const esc = (e: KeyboardEvent) => { if (e.key === "Escape") setOpen(false); };
+    document.addEventListener("mousedown", close);
+    document.addEventListener("keydown", esc);
+    return () => { document.removeEventListener("mousedown", close); document.removeEventListener("keydown", esc); };
+  }, [open]);
+  const active = g.items?.some((i) => loc.pathname === i.to || loc.pathname.startsWith(i.to + "/")) ?? false;
+  return (
+    <div ref={ref} className="relative" onPointerEnter={(e) => e.pointerType === "mouse" && setOpen(true)} onPointerLeave={(e) => e.pointerType === "mouse" && setOpen(false)}>
+      <button onClick={() => setOpen(!open)} aria-expanded={open} aria-haspopup="menu"
+        className={`text-sm flex items-center gap-1 py-3 ${active ? "text-white" : "text-gray-400 hover:text-gray-200"}`}>
+        {g.label}<span className={`text-[9px] transition-transform ${open ? "rotate-180" : ""}`}>▾</span>
+      </button>
+      {open && (
+        <div role="menu" className="absolute left-0 top-full -mt-1 w-64 rounded-lg border border-gray-800 bg-gray-900 shadow-xl py-1 z-40">
+          {g.items!.map((i) => (
+            <NavLink key={i.to} to={i.to} role="menuitem"
+              className={({ isActive }) => `block px-3 py-2 ${isActive ? "bg-gray-800/80" : "hover:bg-gray-800/60"}`}>
+              {({ isActive }) => (
+                <>
+                  <div className={`text-sm ${isActive ? "text-white" : "text-gray-200"}`}>{i.label}</div>
+                  <div className="text-[11px] text-gray-500">{i.hint}</div>
+                </>
+              )}
+            </NavLink>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function Nav() {
   const linkCls = ({ isActive }: { isActive: boolean }) =>
     isActive
@@ -29,54 +103,18 @@ function Nav() {
       : "text-gray-400 hover:text-gray-200 text-sm transition-colors";
 
   return (
-    <nav className="h-12 border-b border-gray-800 px-6 flex items-center gap-6 sticky top-0 bg-gray-950 z-30 print:hidden">
+    <nav className="h-12 border-b border-gray-800 px-3 sm:px-6 flex items-center gap-3 sm:gap-6 sticky top-0 bg-gray-950 z-30 print:hidden">
       <NavLink to="/" className="flex items-center gap-2 shrink-0" title={`${PRODUCT_NAME} · ${COMPANY_NAME}`}>
         <Mark height={32} />
-        <span className="flex flex-col leading-none">
+        <span className="hidden sm:flex flex-col leading-none">
           <span className="font-bold text-white tracking-tight text-sm">{PRODUCT_NAME}</span>
           <span className="mt-0.5 text-[8px] font-semibold tracking-[0.2em] text-gray-400 uppercase">{COMPANY_NAME}</span>
         </span>
       </NavLink>
-      <NavLink to="/" end className={linkCls}>
-        Sets
-      </NavLink>
-      <NavLink to="/windows" className={linkCls}>
-        Buy windows
-      </NavLink>
-      <NavLink to="/deals" className={linkCls}>
-        Deals
-      </NavLink>
-      <NavLink to="/timing" className={linkCls}>
-        Timing
-      </NavLink>
-      <NavLink to="/prep" className={linkCls}>
-        Buying prep
-      </NavLink>
-      <NavLink to="/watchlist" className={linkCls}>
-        Watchlist
-      </NavLink>
-      <NavLink to="/channels" className={linkCls}>
-        Sell channels
-      </NavLink>
-      <NavLink to="/settings" className={linkCls}>
-        Settings
-      </NavLink>
-      <NavLink to="/rankings" className={linkCls}>
-        Rankings
-      </NavLink>
-      <NavLink to="/promos" className={linkCls}>
-        Promos
-      </NavLink>
-      <NavLink to="/automation" className={linkCls}>
-        Automation
-      </NavLink>
-      <NavLink to="/sealed" className={linkCls}>
-        Sealed TODO
-      </NavLink>
-      <NavLink to="/developer" className={linkCls}>
-        Developer
-      </NavLink>
-      <SignIn />
+      {NAV.map((g) => g.to
+        ? <NavLink key={g.label} to={g.to} end={g.to === "/"} className={(a) => `${linkCls(a)} ${g.to === "/developer" ? "hidden sm:inline" : ""}`}>{g.label}</NavLink>
+        : <NavGroup key={g.label} g={g} />)}
+      <div className="ml-auto"><SignIn /></div>
     </nav>
   );
 }
