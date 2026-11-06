@@ -3,6 +3,8 @@ import { fetchChannels, fetchEbaySellers, saveEbaySeller, type ChannelKind, type
 import { useSession } from "../lib/auth";
 import { Spinner, ErrorMsg } from "../components/Spinner";
 import RatioStrip, { StripAxis, fmtX } from "../components/RatioStrip";
+import ChannelExplore from "../components/ChannelExplore";
+import { useSearchParams } from "react-router-dom";
 
 const GROUPS: { kind: ChannelKind; title: string; hint: string }[] = [
   { kind: "consigner", title: "Consigners", hint: "Tracked eBay consigners, each on its own line." },
@@ -33,6 +35,7 @@ function Row({ c }: { c: ChannelStats }) {
           <div className="text-[11px] text-gray-500 pl-4 tabular-nums">
             {c.sales.toLocaleString()} sales · {c.cards.toLocaleString()} cards
             {c.approx > 0 && <> · {c.approx} pre-close bids</>}
+            {c.channel === "fanatics_auction" && c.buyer_ratio && <> · buyer pays {fmtX(c.buyer_ratio.p50)} with the 20% premium</>}
           </div>
         </td>
         <td className="py-2 px-2 w-[45%] min-w-[11rem]"><RatioStrip d={d} approx={c.approx > 0 && c.approx === c.sales} title={c.label} /></td>
@@ -127,11 +130,15 @@ export default function ChannelsPage() {
   const [rep, setRep] = useState<ChannelReport | null>(null);
   const [err, setErr] = useState<string | null>(null);
   const session = useSession();
+  const [params, setParams] = useSearchParams();
+  const view = params.get("view") === "explore" ? "explore" : "overview";
+  const setView = (v: string) => { const n = new URLSearchParams(params); if (v === "overview") n.delete("view"); else n.set("view", v); setParams(n, { replace: true }); };
   useEffect(() => {
+    if (view !== "overview") return;
     setRep(null);
     setErr(null);
     fetchChannels(days).then(setRep).catch((e) => setErr(String(e)));
-  }, [days]);
+  }, [days, view]);
 
   return (
     <div className="space-y-5 max-w-6xl">
@@ -143,19 +150,31 @@ export default function ChannelsPage() {
             Read a row as "selling here, you typically get this much of market"; the bar is the range to expect.
           </p>
         </div>
-        <div className="inline-flex rounded border border-gray-700 overflow-hidden text-sm">
-          {[90, 180, 365].map((d) => (
-            <button key={d} onClick={() => setDays(d)}
-              className={`px-3 py-1 ${days === d ? "bg-indigo-700 text-white" : "bg-gray-900 text-gray-400 hover:text-gray-200"}`}>
-              {d} days
-            </button>
-          ))}
+        <div className="text-right">
+          <div className="inline-flex rounded border border-gray-700 overflow-hidden text-sm" title="Which sales are counted: only those from the last 90, 180 or 365 days">
+            {[90, 180, 365].map((d) => (
+              <button key={d} onClick={() => setDays(d)}
+                className={`px-3 py-1 ${days === d ? "bg-indigo-700 text-white" : "bg-gray-900 text-gray-400 hover:text-gray-200"}`}>
+                {d} days
+              </button>
+            ))}
+          </div>
+          <div className="text-[11px] text-gray-500 mt-1">Counts only sales from the last {days} days</div>
         </div>
       </div>
 
-      {err && <ErrorMsg msg={err} />}
-      {!rep && !err && <Spinner />}
-      {rep && (
+      <div className="flex flex-wrap items-end gap-1 border-b border-gray-800 text-sm">
+        {[["overview", "Overview"], ["explore", "Explore by category"]].map(([k, l]) => (
+          <button key={k} onClick={() => setView(k)}
+            className={`px-3 py-1.5 -mb-px border-b-2 ${view === k ? "border-indigo-500 text-white" : "border-transparent text-gray-400 hover:text-gray-200"}`}>{l}</button>
+        ))}
+      </div>
+
+      {view === "explore" && <ChannelExplore days={days} />}
+
+      {view === "overview" && err && <ErrorMsg msg={err} />}
+      {view === "overview" && !rep && !err && <Spinner />}
+      {view === "overview" && rep && (
         <>
           <section className="rounded-lg border border-gray-800 bg-gray-900 p-4 overflow-x-auto">
             <table className="w-full">
