@@ -794,7 +794,7 @@ export interface AnalysisSettings {
   sourcing_pct: number;
   capital_rate: number;
   use_timing: boolean;
-  value_source?: "pricecharting" | "comps"; // where a grade's market value comes from
+  value_source?: "pricecharting" | "comps" | "ebay"; // where a grade's market value comes from
   sell_fee_pct: number;
   exit_fee_pct: number;
   premium_pct: number;
@@ -2829,4 +2829,63 @@ export function fetchWatchConsigners(seller: string, stretch: number): Promise<{
   const q = new URLSearchParams({ stretch: String(stretch) });
   if (seller) q.set("seller", seller);
   return adminFetch(`/v1/admin/watchlist/consigners?${q}`);
+}
+
+// ---- Hunt list (which raw cards to hunt and pre-grade) ---------------------------
+
+export type ValueSource = "pricecharting" | "comps" | "ebay";
+
+export interface HuntPlay {
+  cost_cents: number;
+  proceeds_cents: number;
+  profit_cents: number;
+  multiple: number;
+  roi: number;
+  yearly?: number;
+  years: number;
+  note?: string;
+}
+
+export interface HuntRow {
+  display_key: string;
+  name: string;
+  number: string;
+  image_url?: string;
+  months_since_release?: number;
+  raw_cents: number;
+  psa10_cents: number;
+  psa9_cents?: number;
+  value_sources: Record<string, string>;
+  p10: number;
+  p9?: number;
+  premium_now: number;
+  premium_then: number;
+  psa10_sales_per_week: number;
+  raw_sales_per_week: number;
+  psa10_days_per_sale?: number;
+  raw_listed: number;
+  slow: boolean;
+  growth?: { raw: number; psa10: number; psa9: number; extrapolated: boolean; extrap_yearly?: Record<string, number>; curve: string };
+  flip_now?: HuntPlay;
+  grade_later?: HuntPlay;
+  grade_now_hold?: HuntPlay;
+  hold_raw?: HuntPlay;
+  if_ten_profit_cents?: number;
+  fee_timing_gain?: number;
+  score?: number;
+  notes?: string[];
+}
+
+export interface HuntReport {
+  set: string;
+  params: { years: number; grade_at_years: number; fee_growth: number; value_source: ValueSource; sell_fee_pct: number; exit_fee_pct: number; sourcing_pct: number; benchmark: number };
+  rows: HuntRow[];
+  skipped: number;
+  method: string;
+}
+
+export function fetchHunt(game: string, code: string, o: { years: number; gradeAt: number; feeGrowth: number; valueSource?: ValueSource }): Promise<HuntReport> {
+  const q = new URLSearchParams({ years: String(o.years), grade_at: String(o.gradeAt), fee_growth: String(o.feeGrowth) });
+  if (o.valueSource) q.set("value_source", o.valueSource);
+  return get(`/v1/sets/${encodeURIComponent(game)}/${encodeURIComponent(code)}/hunt?${q}`);
 }

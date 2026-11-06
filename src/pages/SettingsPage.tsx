@@ -166,11 +166,12 @@ export default function SettingsPage() {
           <Pct value={s.capital_rate} onChange={(v) => set({ capital_rate: v })} />
           <span className="text-gray-500"> / yr</span>
         </Field>
-        <Field label="Value graded cards from" hint="PriceCharting: its price when fresh (our sales only override it when they're 1.75x off). Sold comps: like 130point, the median of the last 90 days of eBay sales (accepted best offers included) and Fanatics sales when there are 3 or more, PriceCharting otherwise. Every score, break-even and watchlist value follows this.">
-          <select value={s.value_source ?? "pricecharting"} onChange={(e) => set({ value_source: e.target.value as "pricecharting" | "comps" })}
+        <Field label="Value graded cards from" hint="PriceCharting: its price when fresh (our sales only override it when they're 1.75x off). Sold comps: like 130point, the median of the last 90 days of eBay sales (accepted best offers included) and Fanatics sales when there are 3 or more, PriceCharting otherwise. eBay sold: the same, eBay sales only, so Fanatics fire sales don't drag values down. Every score, break-even and watchlist value follows this.">
+          <select value={s.value_source ?? "pricecharting"} onChange={(e) => set({ value_source: e.target.value as "pricecharting" | "comps" | "ebay" })}
             className="bg-gray-950 border border-gray-700 rounded px-1.5 py-0.5 text-gray-200">
             <option value="pricecharting">PriceCharting</option>
             <option value="comps">Sold comps (130point-style)</option>
+            <option value="ebay">eBay sold only (no Fanatics)</option>
           </select>
         </Field>
         <Field label="Price slabs for when they come back" hint="Adjust the 10's price by how cards usually move over the turnaround, based on the release curves (e.g. a 3-month-old set usually keeps falling).">
