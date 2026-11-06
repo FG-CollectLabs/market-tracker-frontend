@@ -2889,3 +2889,69 @@ export function fetchHunt(game: string, code: string, o: { years: number; gradeA
   if (o.valueSource) q.set("value_source", o.valueSource);
   return get(`/v1/sets/${encodeURIComponent(game)}/${encodeURIComponent(code)}/hunt?${q}`);
 }
+
+// ---- Watchlist hunt listings (consigner / raw-seller raw copies, hunt-ranked) -----
+
+export interface HuntListing {
+  display_key: string;
+  name: string;
+  number: string;
+  set_code: string;
+  card_image_url?: string;
+  seller: string;
+  seller_label: string;
+  listing_id: string;
+  kind: "auction" | "buy_now";
+  title: string;
+  url?: string;
+  image_url?: string;
+  image_count?: number;
+  ends_at?: string;
+  bids?: number;
+  price_cents: number;
+  listed_ship_cents: number;
+  item_cents: number;
+  expected?: boolean;
+  add_cents: number;
+  raw_market_cents: number;
+  vs_raw: number;
+  psa10_cents: number;
+  p10: number;
+  psa10_sales_per_week: number;
+  slow: boolean;
+  card_score?: number;
+  grade_later?: HuntPlay;
+  flip_now?: HuntPlay;
+  if_ten_profit_cents?: number;
+  score?: number;
+  beats_benchmark: boolean;
+  grade_odds?: GradeOdds;
+  review?: HitReview;
+  notes?: string[];
+}
+
+export interface HuntSeller {
+  username: string;
+  label: string;
+  kind: "consigner" | "raw_seller";
+  ship_rule: ShipRule;
+  live: number;
+  priced: number;
+  beat: number;
+  basket?: RawBasket;
+}
+
+export interface HuntListingsReport {
+  params: HuntReport["params"];
+  sellers: HuntSeller[];
+  listings: HuntListing[];
+  passed: number;
+  method: string;
+}
+
+export function fetchWatchHunt(o: { seller?: string; years: number; gradeAt: number; feeGrowth: number; valueSource?: ValueSource }): Promise<HuntListingsReport> {
+  const q = new URLSearchParams({ years: String(o.years), grade_at: String(o.gradeAt), fee_growth: String(o.feeGrowth) });
+  if (o.seller) q.set("seller", o.seller);
+  if (o.valueSource) q.set("value_source", o.valueSource);
+  return adminFetch(`/v1/admin/watchlist/hunt?${q}`);
+}

@@ -13,6 +13,7 @@ import ReleaseVs from "../components/ReleaseVs";
 import ReviewLog from "../components/ReviewLog";
 import { Drawer, HitRow, Reviewer, cardHits, loadHitFilters, saveHitFilters, sortHits, useNow, type CardHit, type HitFilters } from "../components/WatchHits";
 import ConsignerWatch from "../components/ConsignerWatch";
+import HuntListings from "../components/HuntListings";
 
 const usd = (c?: number | null) => (c == null ? "—" : `$${(c / 100).toFixed(2)}`);
 const INTENT_LABEL: Record<WatchIntent, string> = { grade: "Grade", invest: "Invest", flip: "Flip", watch: "Watch" };
@@ -738,7 +739,15 @@ export default function WatchlistPage() {
       {view === "cards" ? <WatchCards /> : (
         <>
           <h1 className="text-xl font-semibold text-white">Watchlist by consigner</h1>
-          <ConsignerWatch seller={params.get("seller") ?? ""} setSeller={(u) => set("seller", u)} />
+          <div className="flex flex-wrap items-end gap-1 border-b border-gray-800 text-sm print:hidden">
+            {([["", "Watchlist cards"], ["hunt", "Hunt list"]] as const).map(([k, l]) => (
+              <button key={k || "cards"} onClick={() => set("sub", k)}
+                className={`px-3 py-1.5 -mb-px border-b-2 ${(params.get("sub") ?? "") === k ? "border-indigo-500 text-white" : "border-transparent text-gray-400 hover:text-gray-200"}`}>{l}</button>
+            ))}
+          </div>
+          {params.get("sub") === "hunt"
+            ? <HuntListings seller={params.get("seller") ?? ""} setSeller={(u) => set("seller", u)} />
+            : <ConsignerWatch seller={params.get("seller") ?? ""} setSeller={(u) => set("seller", u)} />}
         </>
       )}
     </div>
