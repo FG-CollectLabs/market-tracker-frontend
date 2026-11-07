@@ -3,6 +3,7 @@ import { Link } from "react-router-dom";
 import { checkListingGradeOdds, fetchWatchHunt, type GradeOdds, type HuntListing, type HuntListingsReport, type ValueSource } from "../lib/api";
 import { Spinner, ErrorMsg } from "./Spinner";
 import GradeOddsBadge from "./GradeOddsBadge";
+import AdjEVCell, { OddsFlag } from "./AdjEVCell";
 
 // Hunt list across consigners and raw sellers: every raw copy they have
 // listed of a tracked or watched card, priced at what the copy costs in an
@@ -28,6 +29,7 @@ export default function HuntListings({ seller, setSeller }: { seller: string; se
   const [kind, setKind] = useState<"" | "auction" | "buy_now">("");
   const [beatOnly, setBeatOnly] = useState(true);
   const [hideSlow, setHideSlow] = useState(false);
+  const [sort, setSort] = useState<"score" | "adj_ev" | "grade_later">("score");
   const [shown, setShown] = useState(PAGE);
   const [rep, setRep] = useState<HuntListingsReport | null>(null);
   const [err, setErr] = useState<string | null>(null);
@@ -44,8 +46,12 @@ export default function HuntListings({ seller, setSeller }: { seller: string; se
     return () => { live = false; };
   }, [source, years, gradeEarly]);
 
-  const rows = useMemo(() => (rep?.listings ?? []).filter((l) =>
-    (!seller || l.seller === seller) && (!kind || l.kind === kind) && (!beatOnly || l.beats_benchmark) && (!hideSlow || !l.slow)), [rep, seller, kind, beatOnly, hideSlow]);
+  const rows = useMemo(() => {
+    const out = (rep?.listings ?? []).filter((l) =>
+      (!seller || l.seller === seller) && (!kind || l.kind === kind) && (!beatOnly || l.beats_benchmark) && (!hideSlow || !l.slow));
+    const val = (l: HuntListing) => sort === "adj_ev" ? l.adj_ev?.ev_cents : sort === "grade_later" ? l.grade_later?.yearly : l.score;
+    return sort === "score" ? out : [...out].sort((a, b) => (val(b) ?? -Infinity) - (val(a) ?? -Infinity));
+  }, [rep, seller, kind, beatOnly, hideSlow, sort]);
   useEffect(() => setShown(PAGE), [seller, kind, beatOnly, hideSlow]);
 
   const sel = "rounded border border-gray-700 bg-gray-950 px-2 py-1 text-xs text-gray-200";
@@ -56,7 +62,9 @@ export default function HuntListings({ seller, setSeller }: { seller: string; se
         Raw copies your consigners and raw sellers have listed, ranked by the <Link to="/" className="text-indigo-300 hover:text-indigo-200">set hunt lists</Link>,
         but priced at what each copy costs you: the item (auctions at their expected close, the raw market) plus what it adds to an order
         from that seller. Grading later is the play: buy raw now, grade {gradeEarly === 0.5 ? "6 months" : `${gradeEarly} year${gradeEarly === 1 ? "" : "s"}`} before selling at year {years}.
-        Pre-grader odds show on copies that have been sent to it.
+        Adj. EV prices grading each copy with the pre-grader's odds: measured from its photos once it's been checked (the best copies are
+        sent automatically, a share of the daily cap), the card's baseline until then. Flag measured odds that look wrong; the pre-grader
+        learns from it.
       </p>
 
       {err && <ErrorMsg msg={err} />}
@@ -104,6 +112,11 @@ export default function HuntListings({ seller, setSeller }: { seller: string; se
             <select value={kind} onChange={(e) => setKind(e.target.value as typeof kind)} className={sel}>
               <option value="">Auctions + Buy Now</option><option value="auction">Auctions</option><option value="buy_now">Buy Now</option>
             </select>
+            <label className="flex items-center gap-1.5">Sort
+              <select value={sort} onChange={(e) => setSort(e.target.value as typeof sort)} className={sel}>
+                <option value="score">Hunt score</option><option value="adj_ev">Adj. EV (pre-grade odds)</option><option value="grade_later">Grade later, yearly</option>
+              </select>
+            </label>
             <label className="flex items-center gap-1.5"><input type="checkbox" checked={beatOnly} onChange={(e) => setBeatOnly(e.target.checked)} /> Beats the S&amp;P ({pct(rep.params.benchmark)}/yr) only</label>
             <label className="flex items-center gap-1.5"><input type="checkbox" checked={hideSlow} onChange={(e) => setHideSlow(e.target.checked)} /> Hide slow sellers</label>
             <span className="text-gray-500 tabular-nums">{rows.length} copies{rep.passed > 0 && ` · ${rep.passed} passed on hidden`}</span>
@@ -123,6 +136,7 @@ export default function HuntListings({ seller, setSeller }: { seller: string; se
                     <th className="py-2 px-2 font-medium text-right">PSA 10</th>
                     <th className="py-2 px-2 font-medium text-right" title="PSA population 10 rate">10 odds</th>
                     <th className="py-2 px-2 font-medium">Pre-grade</th>
+                    <th className="py-2 px-2 font-medium text-right" title="Grading EV with odds for this copy: measured from its photos, or the card's baseline until it's measured. Hover a value for the working.">Adj. EV</th>
                     <th className="py-2 px-2 font-medium text-right text-gray-300" title="Grade later at this copy's cost: yearly return">Grade later</th>
                     <th className="py-2 px-2 font-medium text-right" title="Grade now, sell when it's back: ROI at this cost">Flip now</th>
                     <th className="py-2 px-2 font-medium text-right" title="Grade later and it comes back a 10: profit">If it 10s</th>
@@ -180,7 +194,12 @@ function Row({ l, bench }: { l: HuntListing; bench: number }) {
       </td>
       <td className={`${td} text-gray-300`}>{usd(l.psa10_cents)}</td>
       <td className={`${td} text-gray-300`}>{l.p10 ? `${Math.round(l.p10 * 100)}%` : "–"}</td>
-      <td className="py-1.5 px-2">{l.grade_odds ? <GradeOddsBadge o={l.grade_odds} compact /> : <CheckCentering listingId={l.listing_id} photos={l.image_count} />}</td>
+      <td className="py-1.5 px-2">
+        {l.grade_odds
+          ? <span className="inline-flex flex-wrap items-center gap-1"><GradeOddsBadge o={l.grade_odds} compact /><OddsFlag odds={l.grade_odds} shown={l.adj_ev} /></span>
+          : <CheckCentering listingId={l.listing_id} photos={l.image_count} />}
+      </td>
+      <td className="py-1.5 px-2 text-right"><AdjEVCell ev={l.adj_ev} /></td>
       <td className={`${td} font-semibold ${y == null ? "text-gray-600" : y < 0 ? "text-red-300" : y >= bench ? "text-green-300" : "text-gray-300"}`}>{pct(y, 1)}</td>
       <td className={`${td} ${l.flip_now && l.flip_now.roi > 0 ? "text-gray-200" : "text-red-300"}`}>{l.flip_now ? pct(l.flip_now.roi) : "–"}</td>
       <td className={`${td} text-gray-300`}>{usd(l.if_ten_profit_cents)}</td>
