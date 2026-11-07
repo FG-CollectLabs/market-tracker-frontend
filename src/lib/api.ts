@@ -1643,6 +1643,8 @@ export interface GradeOdds {
   ev_cents?: number; // Raw to grade hits: expected value of grading with PSA
   ev_note?: string;
   feedback?: OddsVerdict; // your latest verdict on these odds
+  snapshot_version?: number; // the predictor snapshot these odds came from
+  model_version?: string;
 }
 
 // Grading EV with odds tailored to the copy (measured) or the card's
@@ -1658,6 +1660,7 @@ export interface AdjEV {
   cgc_note?: string;
   caveat: string;
   pending?: boolean;
+  basis?: string; // where the predictor's levels for this card come from
 }
 
 export type OddsVerdict = "looks_right" | "false_positive" | "false_negative" | "bad_measurement" | "wrong_card" | "unusable_photos";

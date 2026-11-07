@@ -21,6 +21,7 @@ export default function AdjEVCell({ ev }: { ev?: AdjEV }) {
     ev.note,
     `PSA 10 odds used: ${(ev.p10 * 100).toFixed(0)}%${ev.population_p10 ? ` (population ${(ev.population_p10 * 100).toFixed(0)}%)` : ""}`,
     ev.centering_cap ? `Centering caps PSA at ${ev.centering_cap}` : "",
+    ev.basis ? `Pre-grader ${ev.basis}` : "",
     ev.cgc_note ?? "",
     ev.caveat,
   ].filter(Boolean).join("\n");
@@ -75,7 +76,8 @@ export function OddsFlag({ odds, shown }: { odds: GradeOdds; shown?: AdjEV }) {
     setBusy(true); setErr(null);
     try {
       await sendOddsFeedback(odds.id, { verdict, issues, note: note.trim() || undefined,
-        odds_shown: { psa10_p: odds.psa10_p, psa10_prior: odds.psa10_prior, summary: odds.summary, adj_ev: shown } });
+        odds_shown: { psa10_p: odds.psa10_p, psa10_prior: odds.psa10_prior, summary: odds.summary, adj_ev: shown,
+          snapshot_version: odds.snapshot_version, model_version: odds.model_version } });
       setDone(verdict); setOpen(false);
     } catch (e) { setErr(String(e)); } finally { setBusy(false); }
   };
