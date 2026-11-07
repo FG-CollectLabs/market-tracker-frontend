@@ -22,20 +22,24 @@ export default function AdjEVCell({ ev }: { ev?: AdjEV }) {
     `PSA 10 odds used: ${(ev.p10 * 100).toFixed(0)}%${ev.population_p10 ? ` (population ${(ev.population_p10 * 100).toFixed(0)}%)` : ""}`,
     ev.centering_cap ? `Centering caps PSA at ${ev.centering_cap}` : "",
     ev.basis ? `Pre-grader ${ev.basis}` : "",
-    ev.cgc_note ?? "",
+    ev.pop_note ? `At the public gem rate: ${ev.pop_note}` : "",
     ev.caveat,
   ].filter(Boolean).join("\n");
   return (
     <span className="inline-flex flex-col items-end gap-0.5" title={tip}>
       {ev.ev_cents != null
-        ? <span className={`tabular-nums font-semibold ${ev.ev_cents >= 0 ? "text-green-300" : "text-red-300"}`}>{usd(ev.ev_cents)}</span>
+        ? <span className={`tabular-nums font-semibold ${ev.ev_cents >= 0 ? "text-green-300" : "text-red-300"}`} title="EV with the adjusted odds">{usd(ev.ev_cents)}</span>
         : <span className="text-gray-500">no tier</span>}
+      {ev.pop_ev_cents != null && (
+        <span className="text-[10px] text-gray-500 tabular-nums" title={`At the public gem rate${ev.population_p10 ? ` (${(ev.population_p10 * 100).toFixed(0)}%)` : ""}: ${ev.pop_note ?? ""}`}>
+          gem rate {usd(ev.pop_ev_cents)}
+        </span>
+      )}
       <span className="flex items-center gap-1">
         <span className={`px-1 rounded border text-[10px] ${s.cls}`} title={s.hint}>{s.label}{ev.pending ? " · measuring" : ""}</span>
         <span className="text-[10px] text-gray-500 tabular-nums">{(ev.p10 * 100).toFixed(0)}%</span>
       </span>
       {ev.centering_cap && <span className="text-[10px] text-amber-300">cap PSA {ev.centering_cap}</span>}
-      {ev.cgc_ev_cents != null && <span className="text-[10px] text-gray-500 tabular-nums" title={ev.cgc_note}>CGC {usd(ev.cgc_ev_cents)}*</span>}
     </span>
   );
 }
@@ -115,6 +119,49 @@ export function OddsFlag({ odds, shown }: { odds: GradeOdds; shown?: AdjEV }) {
           {err && <div className="text-red-300">{err}</div>}
         </div>
       )}
+    </span>
+  );
+}
+
+const pc = (p?: number) => (p == null ? "–" : `${(p * 100).toFixed(0)}%`);
+
+// PSA 10 odds two ways: the public gem rate and the adjusted (this copy's
+// measured odds, or the card's baseline until it's measured).
+export function PSAOddsCell({ ev, popFallback }: { ev?: AdjEV; popFallback?: number }) {
+  const pop = ev?.population_p10 ?? popFallback;
+  return (
+    <span className="inline-flex flex-col items-end tabular-nums" title="Gem rate: the card's PSA population 10 rate. Adjusted: the pre-grader's odds for this copy (the gem rate until its photos are measured).">
+      <span className="text-gray-300"><span className="text-[10px] text-gray-500">gem </span>{pc(pop)}</span>
+      {ev && (
+        <span className={ev.ev_source === "measured" ? "text-green-300" : "text-gray-400"}>
+          <span className="text-[10px] text-gray-500">adj </span>{pc(ev.p10)}
+        </span>
+      )}
+    </span>
+  );
+}
+
+const CGC_GRADES: [string, string][] = [["10 pristine", "Pristine"], ["10", "10"], ["9", "9"]];
+
+// CGC: Pristine / 10 / 9 odds (adjusted, population on hover) and the EV at
+// adjusted and population odds.
+export function CGCCell({ ev }: { ev?: AdjEV }) {
+  const g = ev?.cgc;
+  if (!g) return <span className="text-gray-600">–</span>;
+  const tip = [
+    g.source === "listing_based" ? "No CGC population for this card: listing-based odds (optimistic)." : "Odds: the card's CGC population, adjusted by the pre-grader's centering effect for this copy.",
+    `Population: ${CGC_GRADES.map(([k, l]) => `${l} ${pc(g.population?.[k])}`).join(" · ")}`,
+    g.note ? `Adjusted: ${g.note}` : "",
+    g.pop_note ? `At population odds: ${g.pop_note}` : "",
+  ].filter(Boolean).join("\n");
+  return (
+    <span className="inline-flex flex-col items-end gap-0.5 tabular-nums" title={tip}>
+      <span className="text-[11px] text-gray-300 whitespace-nowrap">{CGC_GRADES.map(([k, l]) => `${l} ${pc(g.odds[k])}`).join(" · ")}</span>
+      {g.ev_cents != null
+        ? <span className={`font-semibold ${g.ev_cents >= 0 ? "text-green-300" : "text-red-300"}`}>{usd(g.ev_cents)}</span>
+        : <span className="text-gray-500 text-[11px]">no tier</span>}
+      {g.pop_ev_cents != null && <span className="text-[10px] text-gray-500">gem rate {usd(g.pop_ev_cents)}</span>}
+      {g.source === "listing_based" && <span className="text-[10px] text-amber-300">optimistic</span>}
     </span>
   );
 }
