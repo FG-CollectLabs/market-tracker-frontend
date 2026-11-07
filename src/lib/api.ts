@@ -1616,6 +1616,7 @@ export interface TargetHit {
   shipping_cents?: number; // shipping included in price_cents
   review?: HitReview;
   grade_odds?: GradeOdds; // raw eBay hits sent to the grading predictor
+  adj_ev?: AdjEV; // Raw to grade: grading EV with tailored odds
 }
 
 // ---- Grade odds (grading predictor) ------------------------------------------
@@ -1641,6 +1642,45 @@ export interface GradeOdds {
   ready_at?: string;
   ev_cents?: number; // Raw to grade hits: expected value of grading with PSA
   ev_note?: string;
+  feedback?: OddsVerdict; // your latest verdict on these odds
+}
+
+// Grading EV with odds tailored to the copy (measured) or the card's
+// no-photo baseline.
+export interface AdjEV {
+  ev_cents?: number;
+  ev_source: "measured" | "card_baseline" | "listing_based" | "what_if";
+  p10: number;
+  population_p10?: number;
+  centering_cap?: string;
+  note: string;
+  cgc_ev_cents?: number;
+  cgc_note?: string;
+  caveat: string;
+  pending?: boolean;
+}
+
+export type OddsVerdict = "looks_right" | "false_positive" | "false_negative" | "bad_measurement" | "wrong_card" | "unusable_photos";
+export type OddsIssue = "corner_whitening" | "corner_ding" | "edge_wear" | "surface_scratch" | "print_line" | "dent_or_crease"
+  | "centering_mismeasured" | "outline_wrong" | "sleeve_or_glare" | "back_not_shown" | "stock_photo" | "other";
+
+export function sendOddsFeedback(oddsId: number, body: { verdict: OddsVerdict; issues: OddsIssue[]; note?: string; odds_shown?: unknown }): Promise<{ id: number; forwarded: boolean }> {
+  return adminFetch(`/v1/admin/grade-odds/${oddsId}/feedback`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+}
+
+export interface WhatIfOdds {
+  graders: Record<string, { grader: string; p: Record<string, number>; prior?: Record<string, number>; prior_source?: string; centering_cap?: string }>;
+  ev?: AdjEV;
+  buy_cents: number;
+  prices: Record<string, number | null>;
+}
+
+export function fetchWhatIfOdds(displayKey: string, c: { flr: number; ftb: number; blr: number; btb: number; fcorner?: number; bcorner?: number; buyCents?: number }): Promise<WhatIfOdds> {
+  const q = new URLSearchParams({ front_lr: String(c.flr), front_tb: String(c.ftb), back_lr: String(c.blr), back_tb: String(c.btb) });
+  if (c.fcorner != null) q.set("front_corner_offround", String(c.fcorner));
+  if (c.bcorner != null) q.set("back_corner_offround", String(c.bcorner));
+  if (c.buyCents) q.set("buy_cents", String(c.buyCents));
+  return get(`/v1/cards/${encodeURIComponent(displayKey)}/grade-odds/whatif?${q}`);
 }
 
 export function fetchGradeOdds(displayKey: string): Promise<{ odds: GradeOdds[]; enabled: boolean; notes: string[] }> {
@@ -2934,6 +2974,7 @@ export interface HuntListing {
   score?: number;
   beats_benchmark: boolean;
   grade_odds?: GradeOdds;
+  adj_ev?: AdjEV;
   review?: HitReview;
   notes?: string[];
 }

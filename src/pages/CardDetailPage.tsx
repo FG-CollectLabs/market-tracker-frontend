@@ -4,6 +4,7 @@ import GradedMarket from "../components/GradedMarket";
 import CardBuyPanel from "../components/CardBuyPanel";
 import GradedCopiesBlock from "../components/GradedCopiesBlock";
 import GradeOddsPanel from "../components/GradeOddsPanel";
+import GradeOddsWhatIf from "../components/GradeOddsWhatIf";
 import CardChannelsPanel from "../components/CardChannelsPanel";
 import { ptcgioSetCode, type IntakeCard } from "../lib/gradingApp";
 import { useParams, useSearchParams } from "react-router-dom";
@@ -481,6 +482,7 @@ export default function CardDetailPage() {
       {tab === "graded" && (
         <>
           <GradeOddsPanel displayKey={displayKey} />
+          <GradeOddsWhatIf displayKey={displayKey} />
           {intake && <GradedCopiesBlock card={intake} />}
           <GradedTab displayKey={displayKey} />
         </>

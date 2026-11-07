@@ -3,6 +3,7 @@ import { fetchGradeOdds, uploadGradeOdds, type GradeOdds } from "../lib/api";
 import { useSession } from "../lib/auth";
 import { ErrorMsg } from "./Spinner";
 import GradeOddsBadge from "./GradeOddsBadge";
+import { OddsFlag } from "./AdjEVCell";
 
 // Grade odds for raw copies of this card from the grading predictor: raw
 // eBay listings sent automatically (Raw to grade hits) and photos you upload.
@@ -68,7 +69,7 @@ export default function GradeOddsPanel({ displayKey }: { displayKey: string }) {
               <span className="text-[11px] text-gray-500 w-28 shrink-0 tabular-nums">
                 {new Date(o.created_at).toLocaleDateString()} · {o.source === "ebay" ? "eBay" : "upload"}
               </span>
-              <GradeOddsBadge o={o} />
+              <GradeOddsBadge o={o} /> {session && <OddsFlag odds={o} />}
               {o.source === "ebay" && o.source_ref && (
                 <a href={o.source_ref} target="_blank" rel="noreferrer" className="text-[11px] text-indigo-300 hover:text-indigo-200">listing</a>
               )}
