@@ -1655,6 +1655,14 @@ export async function uploadGradeOdds(displayKey: string, front: File, back: Fil
   return adminFetch(`/v1/admin/cards/${encodeURIComponent(displayKey)}/grade-odds`, { method: "POST", body: fd });
 }
 
+// One listing you're considering (Hunt list): its first two photos go to the
+// grading predictor; returns the odds row (status measuring until ready).
+export function checkListingGradeOdds(listingId: string, source = "ebay"): Promise<GradeOdds> {
+  return adminFetch("/v1/admin/grade-odds/listing", {
+    method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ source, listing_id: listingId }),
+  });
+}
+
 // Your pass or note on a hit (one listing).
 export interface HitReview {
   status: "pass" | "note" | "interested";
