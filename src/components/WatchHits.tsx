@@ -3,6 +3,7 @@ import { HIT_REASONS, clearHitReview, reviewHit, type HitReason, type TargetHit,
 import { TARGET_LABEL } from "./WatchTargets";
 import GradeOddsBadge from "./GradeOddsBadge";
 import AdjEVCell, { OddsFlag } from "./AdjEVCell";
+import { BoughtButton } from "./BoughtToGrade";
 
 // The watchlist's live listings ("hits"): filters, one listing row with its
 // set-aside / note actions, the photo overlay and the strategies drawer.
@@ -220,6 +221,9 @@ export function HitRow({ ch, displayKey, now, error, onOpen, onSetAside, onChang
           <div className="my-0.5 flex flex-wrap items-start gap-2">
             {h.grade_odds && <GradeOddsBadge o={h.grade_odds} />}
             {h.grade_odds && <OddsFlag odds={h.grade_odds} shown={h.adj_ev} />}
+            {h.source === "ebay" && h.grade_key === "raw" && (
+              <BoughtButton listingId={h.listing_id} priceCents={h.all_in_cents} shown={{ adj_ev: h.adj_ev, odds: h.grade_odds }} initial={!!h.grade_odds?.bought_at} />
+            )}
             {h.adj_ev && <span className="text-[11px] text-gray-500 inline-flex items-start gap-1">Adj. EV <AdjEVCell ev={h.adj_ev} /></span>}
           </div>
         )}

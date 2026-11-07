@@ -4,6 +4,7 @@ import { checkListingGradeOdds, fetchWatchHunt, type GradeOdds, type HuntListing
 import { Spinner, ErrorMsg } from "./Spinner";
 import GradeOddsBadge from "./GradeOddsBadge";
 import AdjEVCell, { OddsFlag } from "./AdjEVCell";
+import { BoughtButton } from "./BoughtToGrade";
 
 // Hunt list across consigners and raw sellers: every raw copy they have
 // listed of a tracked or watched card, priced at what the copy costs in an
@@ -198,6 +199,9 @@ function Row({ l, bench }: { l: HuntListing; bench: number }) {
         {l.grade_odds
           ? <span className="inline-flex flex-wrap items-center gap-1"><GradeOddsBadge o={l.grade_odds} compact /><OddsFlag odds={l.grade_odds} shown={l.adj_ev} /></span>
           : <CheckCentering listingId={l.listing_id} photos={l.image_count} />}
+        {(l.image_count == null || l.image_count >= 2 || l.grade_odds) && (
+          <div className="mt-0.5"><BoughtButton listingId={l.listing_id} priceCents={l.price_cents} shown={{ adj_ev: l.adj_ev, odds: l.grade_odds }} initial={!!l.grade_odds?.bought_at} /></div>
+        )}
       </td>
       <td className="py-1.5 px-2 text-right"><AdjEVCell ev={l.adj_ev} /></td>
       <td className={`${td} font-semibold ${y == null ? "text-gray-600" : y < 0 ? "text-red-300" : y >= bench ? "text-green-300" : "text-gray-300"}`}>{pct(y, 1)}</td>
