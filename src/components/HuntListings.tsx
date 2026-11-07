@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
-import { fetchWatchHunt, type HuntListing, type HuntListingsReport, type ValueSource } from "../lib/api";
+import { checkListingGradeOdds, fetchWatchHunt, type GradeOdds, type HuntListing, type HuntListingsReport, type ValueSource } from "../lib/api";
 import { Spinner, ErrorMsg } from "./Spinner";
 import GradeOddsBadge from "./GradeOddsBadge";
 
@@ -180,11 +180,34 @@ function Row({ l, bench }: { l: HuntListing; bench: number }) {
       </td>
       <td className={`${td} text-gray-300`}>{usd(l.psa10_cents)}</td>
       <td className={`${td} text-gray-300`}>{l.p10 ? `${Math.round(l.p10 * 100)}%` : "–"}</td>
-      <td className="py-1.5 px-2">{l.grade_odds ? <GradeOddsBadge o={l.grade_odds} compact /> : <span className="text-gray-600" title="Not sent to the pre-grader yet">–</span>}</td>
+      <td className="py-1.5 px-2">{l.grade_odds ? <GradeOddsBadge o={l.grade_odds} compact /> : <CheckCentering listingId={l.listing_id} photos={l.image_count} />}</td>
       <td className={`${td} font-semibold ${y == null ? "text-gray-600" : y < 0 ? "text-red-300" : y >= bench ? "text-green-300" : "text-gray-300"}`}>{pct(y, 1)}</td>
       <td className={`${td} ${l.flip_now && l.flip_now.roi > 0 ? "text-gray-200" : "text-red-300"}`}>{l.flip_now ? pct(l.flip_now.roi) : "–"}</td>
       <td className={`${td} text-gray-300`}>{usd(l.if_ten_profit_cents)}</td>
       <td className="py-1.5 px-3 text-right tabular-nums text-white">{pct(l.score, 1)}</td>
     </tr>
+  );
+}
+
+// Not sent yet: send this one listing's photos to the grading predictor.
+function CheckCentering({ listingId, photos }: { listingId: string; photos?: number }) {
+  const [busy, setBusy] = useState(false);
+  const [odds, setOdds] = useState<GradeOdds | null>(null);
+  const [err, setErr] = useState<string | null>(null);
+  if (odds) return <GradeOddsBadge o={odds} compact />;
+  if (photos != null && photos < 2) return <span className="text-gray-600 text-[11px]" title="Needs a front and a back photo">1 photo</span>;
+  return (
+    <span className="text-[11px]">
+      <button disabled={busy}
+        onClick={async () => {
+          setBusy(true); setErr(null);
+          try { setOdds(await checkListingGradeOdds(listingId)); } catch (e) { setErr(String(e)); } finally { setBusy(false); }
+        }}
+        title="Send this listing's first two photos (front, back) to the grading predictor; the odds show here in a few minutes"
+        className="px-1.5 py-0.5 rounded border border-gray-700 text-indigo-300 hover:text-indigo-200 hover:border-indigo-700 disabled:opacity-50">
+        {busy ? "sending…" : "check centering"}
+      </button>
+      {err && <span className="block text-red-300" title={err}>couldn't send</span>}
+    </span>
   );
 }
