@@ -1650,8 +1650,21 @@ export interface GradeOdds {
 
 // Grading EV with odds tailored to the copy (measured) or the card's
 // no-photo baseline.
+export interface GraderEV {
+  odds: Record<string, number>; // "10 pristine", "10", "9", "lower"
+  population?: Record<string, number>;
+  ev_cents?: number;
+  pop_ev_cents?: number;
+  source: "population_anchored" | "listing_based";
+  note?: string;
+  pop_note?: string;
+}
+
 export interface AdjEV {
   ev_cents?: number;
+  pop_ev_cents?: number; // PSA at the card's population gem rate
+  pop_note?: string;
+  cgc?: GraderEV;
   ev_source: "measured" | "card_baseline" | "listing_based" | "what_if";
   p10: number;
   population_p10?: number;

@@ -3,7 +3,7 @@ import { Link } from "react-router-dom";
 import { checkListingGradeOdds, fetchWatchHunt, type GradeOdds, type HuntListing, type HuntListingsReport, type ValueSource } from "../lib/api";
 import { Spinner, ErrorMsg } from "./Spinner";
 import GradeOddsBadge from "./GradeOddsBadge";
-import AdjEVCell, { OddsFlag } from "./AdjEVCell";
+import AdjEVCell, { CGCCell, OddsFlag, PSAOddsCell } from "./AdjEVCell";
 import { BoughtButton } from "./BoughtToGrade";
 
 // Hunt list across consigners and raw sellers: every raw copy they have
@@ -30,7 +30,7 @@ export default function HuntListings({ seller, setSeller }: { seller: string; se
   const [kind, setKind] = useState<"" | "auction" | "buy_now">("");
   const [beatOnly, setBeatOnly] = useState(true);
   const [hideSlow, setHideSlow] = useState(false);
-  const [sort, setSort] = useState<"score" | "adj_ev" | "grade_later">("score");
+  const [sort, setSort] = useState<"score" | "adj_ev" | "cgc_ev" | "best_ev" | "grade_later">("score");
   const [shown, setShown] = useState(PAGE);
   const [rep, setRep] = useState<HuntListingsReport | null>(null);
   const [err, setErr] = useState<string | null>(null);
@@ -50,7 +50,12 @@ export default function HuntListings({ seller, setSeller }: { seller: string; se
   const rows = useMemo(() => {
     const out = (rep?.listings ?? []).filter((l) =>
       (!seller || l.seller === seller) && (!kind || l.kind === kind) && (!beatOnly || l.beats_benchmark) && (!hideSlow || !l.slow));
-    const val = (l: HuntListing) => sort === "adj_ev" ? l.adj_ev?.ev_cents : sort === "grade_later" ? l.grade_later?.yearly : l.score;
+    const best = (l: HuntListing) => {
+      const a = l.adj_ev?.ev_cents, c = l.adj_ev?.cgc?.ev_cents;
+      return a == null ? c : c == null ? a : Math.max(a, c);
+    };
+    const val = (l: HuntListing) => sort === "adj_ev" ? l.adj_ev?.ev_cents : sort === "cgc_ev" ? l.adj_ev?.cgc?.ev_cents
+      : sort === "best_ev" ? best(l) : sort === "grade_later" ? l.grade_later?.yearly : l.score;
     return sort === "score" ? out : [...out].sort((a, b) => (val(b) ?? -Infinity) - (val(a) ?? -Infinity));
   }, [rep, seller, kind, beatOnly, hideSlow, sort]);
   useEffect(() => setShown(PAGE), [seller, kind, beatOnly, hideSlow]);
@@ -115,7 +120,7 @@ export default function HuntListings({ seller, setSeller }: { seller: string; se
             </select>
             <label className="flex items-center gap-1.5">Sort
               <select value={sort} onChange={(e) => setSort(e.target.value as typeof sort)} className={sel}>
-                <option value="score">Hunt score</option><option value="adj_ev">Adj. EV (pre-grade odds)</option><option value="grade_later">Grade later, yearly</option>
+                <option value="score">Hunt score</option><option value="best_ev">Best EV (PSA or CGC)</option><option value="adj_ev">PSA EV (adjusted)</option><option value="cgc_ev">CGC EV (adjusted)</option><option value="grade_later">Grade later, yearly</option>
               </select>
             </label>
             <label className="flex items-center gap-1.5"><input type="checkbox" checked={beatOnly} onChange={(e) => setBeatOnly(e.target.checked)} /> Beats the S&amp;P ({pct(rep.params.benchmark)}/yr) only</label>
@@ -135,9 +140,10 @@ export default function HuntListings({ seller, setSeller }: { seller: string; se
                     <th className="py-2 px-2 font-medium text-right" title="Item (auctions: expected close) + what it adds to an order's shipping">Your cost</th>
                     <th className="py-2 px-2 font-medium text-right" title="Raw market (eBay sold by default) and your cost against it">Raw market</th>
                     <th className="py-2 px-2 font-medium text-right">PSA 10</th>
-                    <th className="py-2 px-2 font-medium text-right" title="PSA population 10 rate">10 odds</th>
+                    <th className="py-2 px-2 font-medium text-right" title="PSA 10 odds: the public gem rate, and adjusted for this copy by the pre-grader">PSA 10 odds</th>
                     <th className="py-2 px-2 font-medium">Pre-grade</th>
-                    <th className="py-2 px-2 font-medium text-right" title="Grading EV with odds for this copy: measured from its photos, or the card's baseline until it's measured. Hover a value for the working.">Adj. EV</th>
+                    <th className="py-2 px-2 font-medium text-right" title="PSA grading EV with the adjusted odds, and (smaller) at the public gem rate. Hover for the working.">PSA EV</th>
+                    <th className="py-2 px-2 font-medium text-right" title="CGC Pristine / 10 / 9 odds (the card's CGC population, adjusted for this copy) and the EV at those and at the population's odds">CGC</th>
                     <th className="py-2 px-2 font-medium text-right text-gray-300" title="Grade later at this copy's cost: yearly return">Grade later</th>
                     <th className="py-2 px-2 font-medium text-right" title="Grade now, sell when it's back: ROI at this cost">Flip now</th>
                     <th className="py-2 px-2 font-medium text-right" title="Grade later and it comes back a 10: profit">If it 10s</th>
@@ -194,7 +200,7 @@ function Row({ l, bench }: { l: HuntListing; bench: number }) {
         <div className={`text-[10px] ${l.vs_raw <= 1 ? "text-green-300/80" : "text-gray-500"}`}>{l.vs_raw <= 1 ? `${Math.round((1 - l.vs_raw) * 100)}% under` : `${Math.round((l.vs_raw - 1) * 100)}% over`}</div>
       </td>
       <td className={`${td} text-gray-300`}>{usd(l.psa10_cents)}</td>
-      <td className={`${td} text-gray-300`}>{l.p10 ? `${Math.round(l.p10 * 100)}%` : "–"}</td>
+      <td className={td}><PSAOddsCell ev={l.adj_ev} popFallback={l.p10 || undefined} /></td>
       <td className="py-1.5 px-2">
         {l.grade_odds
           ? <span className="inline-flex flex-wrap items-center gap-1"><GradeOddsBadge o={l.grade_odds} compact /><OddsFlag odds={l.grade_odds} shown={l.adj_ev} /></span>
@@ -204,6 +210,7 @@ function Row({ l, bench }: { l: HuntListing; bench: number }) {
         )}
       </td>
       <td className="py-1.5 px-2 text-right"><AdjEVCell ev={l.adj_ev} /></td>
+      <td className="py-1.5 px-2 text-right"><CGCCell ev={l.adj_ev} /></td>
       <td className={`${td} font-semibold ${y == null ? "text-gray-600" : y < 0 ? "text-red-300" : y >= bench ? "text-green-300" : "text-gray-300"}`}>{pct(y, 1)}</td>
       <td className={`${td} ${l.flip_now && l.flip_now.roi > 0 ? "text-gray-200" : "text-red-300"}`}>{l.flip_now ? pct(l.flip_now.roi) : "–"}</td>
       <td className={`${td} text-gray-300`}>{usd(l.if_ten_profit_cents)}</td>
