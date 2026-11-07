@@ -1,3 +1,4 @@
+import { SignIn } from "./SignIn";
 export function Spinner() {
   return (
     <div className="flex items-center justify-center py-12">
@@ -7,5 +8,13 @@ export function Spinner() {
 }
 
 export function ErrorMsg({ msg }: { msg: string }) {
+  if (/Sign in with Google/.test(msg)) {
+    return (
+      <div className="py-4 flex flex-wrap items-center gap-3 text-sm">
+        <span className="text-amber-300">This page needs you signed in.</span>
+        <SignIn reloadAfter />
+      </div>
+    );
+  }
   return <p className="text-red-400 text-sm py-4">{msg}</p>;
 }
