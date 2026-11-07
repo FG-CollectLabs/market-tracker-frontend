@@ -1644,6 +1644,7 @@ export interface GradeOdds {
   ev_note?: string;
   feedback?: OddsVerdict; // your latest verdict on these odds
   snapshot_version?: number; // the predictor snapshot these odds came from
+  bought_at?: string; // you marked this copy bought
   model_version?: string;
 }
 
@@ -3006,4 +3007,51 @@ export function fetchWatchHunt(o: { seller?: string; years: number; gradeAt: num
   if (o.seller) q.set("seller", o.seller);
   if (o.valueSource) q.set("value_source", o.valueSource);
   return adminFetch(`/v1/admin/watchlist/hunt?${q}`);
+}
+
+// ---- Bought to grade (raw copies bought, and the grade each came back with) ----
+
+export function markBought(body: { listing_id?: string; odds_id?: number; price_cents?: number; bought?: boolean; shown?: unknown }): Promise<{ odds_id: number; bought: boolean; price_cents?: number; forwarded: boolean }> {
+  return adminFetch("/v1/admin/grade-odds/bought", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+}
+
+export function recordOutcome(oddsId: number, body: { grader: string; grade: string; cert_number?: string; graded_at?: string }): Promise<{ id: number; forwarded: boolean }> {
+  return adminFetch(`/v1/admin/grade-odds/${oddsId}/outcome`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+}
+
+export interface GradeOutcome {
+  id: number;
+  grader: string;
+  grade: string;
+  cert_number?: string;
+  graded_at?: string;
+  created_at: string;
+  forwarded: boolean;
+  forward_error?: string;
+}
+
+export interface BoughtCopy {
+  odds: GradeOdds;
+  display_key: string;
+  name: string;
+  number: string;
+  set_code: string;
+  image_url?: string;
+  title?: string;
+  bought_at: string;
+  bought_cents?: number;
+  shown?: { adj_ev?: AdjEV; psa10_p?: number } & Record<string, unknown>;
+  bought_forwarded: boolean;
+  outcome?: GradeOutcome;
+}
+
+export interface BoughtReport {
+  copies: BoughtCopy[];
+  summary: { bought: number; graded: number; psa_graded: number; psa_tens: number; psa_expected_tens?: number; psa_brier?: number };
+  grades: Record<string, Record<string, boolean>>;
+  note: string;
+}
+
+export function fetchBought(): Promise<BoughtReport> {
+  return adminFetch("/v1/admin/grade-odds/bought");
 }
