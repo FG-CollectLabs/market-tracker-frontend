@@ -30,8 +30,12 @@ function firebaseAuth(): Promise<Auth | null> {
     let cfg: AuthConfig;
     try {
       const r = await fetch(`${BASE}/v1/auth/config`);
-      cfg = r.ok ? await r.json() : { firebase: null, firebase_enabled: false };
+      if (!r.ok) throw new Error(`HTTP ${r.status}`);
+      cfg = await r.json();
     } catch {
+      // The API didn't answer (a blip or a redeploy): don't remember "no
+      // sign-in" for the whole visit; the next call asks again.
+      authPromise = null;
       return null;
     }
     if (!cfg.firebase_enabled || !cfg.firebase) return null;
@@ -47,6 +51,12 @@ function firebaseAuth(): Promise<Auth | null> {
     return auth;
   })();
   return authPromise;
+}
+
+// True after the last config check failed to reach the API (vs the API
+// saying sign-in isn't configured).
+export function authUnreachable(): boolean {
+  return authPromise == null;
 }
 
 export function currentSession(): Session | null {
@@ -82,12 +92,18 @@ export function useAuth(): { available: boolean | null; session: Session | null 
   useEffect(() => {
     const l = () => setSession(currentSession());
     listeners.add(l);
-    firebaseAuth().then((a) => {
+    let tries = 0;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const check = () => firebaseAuth().then((a) => {
       setAvailable(a != null);
       l();
+      // Not answered yet: try again a few times (5 s, 10 s, 20 s...).
+      if (a == null && authPromise == null && tries < 6) timer = setTimeout(check, 5000 * 2 ** tries++);
     });
+    check();
     return () => {
       listeners.delete(l);
+      if (timer) clearTimeout(timer);
     };
   }, []);
   return { available, session };
