@@ -220,7 +220,7 @@ function Row({ l, bench }: { l: HuntListing; bench: number }) {
 }
 
 // Not sent yet: send this one listing's photos to the grading predictor.
-function CheckCentering({ listingId, photos }: { listingId: string; photos?: number }) {
+export function CheckCentering({ listingId, photos }: { listingId: string; photos?: number }) {
   const [busy, setBusy] = useState(false);
   const [odds, setOdds] = useState<GradeOdds | null>(null);
   const [err, setErr] = useState<string | null>(null);

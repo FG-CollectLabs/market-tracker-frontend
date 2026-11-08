@@ -1655,7 +1655,7 @@ export interface GraderEV {
   population?: Record<string, number>;
   ev_cents?: number;
   pop_ev_cents?: number;
-  source: "population_anchored" | "listing_based";
+  source: "population_anchored" | "listing_based" | "population";
   note?: string;
   pop_note?: string;
 }
@@ -1665,7 +1665,7 @@ export interface AdjEV {
   pop_ev_cents?: number; // PSA at the card's population gem rate
   pop_note?: string;
   cgc?: GraderEV;
-  ev_source: "measured" | "card_baseline" | "listing_based" | "what_if";
+  ev_source: "measured" | "card_baseline" | "listing_based" | "what_if" | "population"; // population: no pre-grader odds, the card's own gem rates
   p10: number;
   population_p10?: number;
   centering_cap?: string;
@@ -2994,6 +2994,26 @@ export interface HuntListing {
   adj_ev?: AdjEV;
   review?: HitReview;
   notes?: string[];
+  watched?: boolean; // the card is on the watchlist
+  timing?: CopyTiming;
+}
+
+// Where the card sits on its tier's raw release curve, and this copy's cost
+// against the card's expected low.
+export interface CopyTiming {
+  phase: "falling" | "bottom" | "recovering" | "unknown";
+  window: "before" | "in" | "past" | "well_past" | "unknown";
+  month: number; // since release
+  window_from: number;
+  window_to: number;
+  months_past_window?: number;
+  exp_low_cents?: number;
+  copy_vs_low?: number; // -0.1 = this copy costs 10% under the expected low
+  market_vs_low?: number;
+  to_low?: number; // falling: typical drop still to come
+  low_month?: number;
+  after_low_yearly?: number;
+  now_vs_release?: number;
 }
 
 export interface HuntSeller {
@@ -3020,6 +3040,14 @@ export function fetchWatchHunt(o: { seller?: string; years: number; gradeAt: num
   if (o.seller) q.set("seller", o.seller);
   if (o.valueSource) q.set("value_source", o.valueSource);
   return adminFetch(`/v1/admin/watchlist/hunt?${q}`);
+}
+
+// Consigner board: every raw copy the tracked consigners have listed of a
+// tracked or watched card (hunt list or not), auctions soonest first.
+export function fetchConsignerBoard(o: { years: number; gradeAt: number; feeGrowth: number; valueSource?: ValueSource }): Promise<HuntListingsReport> {
+  const q = new URLSearchParams({ years: String(o.years), grade_at: String(o.gradeAt), fee_growth: String(o.feeGrowth) });
+  if (o.valueSource) q.set("value_source", o.valueSource);
+  return adminFetch(`/v1/admin/watchlist/board?${q}`);
 }
 
 // ---- Bought to grade (raw copies bought, and the grade each came back with) ----
