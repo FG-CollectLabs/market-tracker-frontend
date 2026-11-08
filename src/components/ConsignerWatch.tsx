@@ -219,6 +219,7 @@ function RuleEditor({ tab, onSaved }: { tab: ConsignerTab; onSaved: () => void }
   const [first, setFirst] = useState(fromCents(tab.ship_rule.first_cents));
   const [each, setEach] = useState(fromCents(tab.ship_rule.each_add_cents));
   const [free, setFree] = useState(fromCents(tab.ship_rule.free_over_cents));
+  const [cap, setCap] = useState(fromCents(tab.ship_rule.cap_cents));
   const [note, setNote] = useState(tab.ship_rule.note ?? "");
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
@@ -226,9 +227,10 @@ function RuleEditor({ tab, onSaved }: { tab: ConsignerTab; onSaved: () => void }
     setFirst(fromCents(tab.ship_rule.first_cents));
     setEach(fromCents(tab.ship_rule.each_add_cents));
     setFree(fromCents(tab.ship_rule.free_over_cents));
+    setCap(fromCents(tab.ship_rule.cap_cents));
     setNote(tab.ship_rule.note ?? "");
   }, [tab.username, tab.ship_rule]);
-  const bad = [first, each, free].some((v) => v.trim() !== "" && !(parseFloat(v) >= 0));
+  const bad = [first, each, free, cap].some((v) => v.trim() !== "" && !(parseFloat(v) >= 0));
   const inp = "w-20 rounded border border-gray-700 bg-gray-950 px-1.5 py-0.5 text-gray-200 tabular-nums";
   if (!open) return <button onClick={() => setOpen(true)} className="text-xs text-indigo-300 hover:text-indigo-200">Edit combined-shipping rule</button>;
   return (
@@ -237,10 +239,11 @@ function RuleEditor({ tab, onSaved }: { tab: ConsignerTab; onSaved: () => void }
       <input value={first} onChange={(e) => setFirst(e.target.value)} placeholder="first $" className={inp} aria-label="First item shipping" />
       <input value={each} onChange={(e) => setEach(e.target.value)} placeholder="each +$" className={inp} aria-label="Each additional item" />
       <input value={free} onChange={(e) => setFree(e.target.value)} placeholder="free over $" className={inp} aria-label="Free shipping over" />
+      <input value={cap} onChange={(e) => setCap(e.target.value)} placeholder="max $/order" className={inp} aria-label="Most an order's shipping costs" />
       <input value={note} onChange={(e) => setNote(e.target.value)} placeholder="note (e.g. auctions won the same week)" className="w-64 rounded border border-gray-700 bg-gray-950 px-1.5 py-0.5 text-gray-200" />
       <button disabled={busy || bad} onClick={() => {
         setBusy(true);
-        saveRawSeller(tab.username, { ship_first_cents: toCents(first), ship_each_add_cents: toCents(each), free_ship_over_cents: toCents(free), ship_note: note })
+        saveRawSeller(tab.username, { ship_first_cents: toCents(first), ship_each_add_cents: toCents(each), free_ship_over_cents: toCents(free), ship_cap_cents: toCents(cap), ship_note: note })
           .then(() => { setOpen(false); onSaved(); }).catch((e) => setErr(String(e))).finally(() => setBusy(false));
       }} className="px-2 py-0.5 rounded border border-indigo-800 bg-indigo-950/50 text-indigo-200 disabled:opacity-40">Save</button>
       <button disabled={busy} onClick={() => {

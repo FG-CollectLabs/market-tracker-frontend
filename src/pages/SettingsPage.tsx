@@ -1,4 +1,4 @@
-import { useEffect, useState, type ReactNode } from "react";
+import { Fragment, useEffect, useState, type ReactNode } from "react";
 import { fetchSettings, saveSettings, type AnalysisSettings, type Grader, type ServiceTier, type SnipeRules, type CCRules } from "../lib/api";
 import { useSession } from "../lib/auth";
 import { Spinner, ErrorMsg } from "../components/Spinner";
@@ -281,6 +281,19 @@ export default function SettingsPage() {
         </Field>
         <Field label="Cracked CGC 10s that come back a PSA 10" hint="The rest are counted as PSA 9s. Used by the CGC 10 → PSA score.">
           <Pct value={s.crack_cgc10_to_psa10_rate} onChange={(v) => set({ crack_cgc10_to_psa10_rate: v })} step={5} />
+        </Field>
+        <Field label="Regrade rates (Consigner board → Graded)" hint="Of slabs at each grade, the share that come back the target's top grade when cracked and resubmitted (PSA: 10; CGC: 10 or Pristine; CGC 10 → CGC: Pristine). Starting assumptions: adjust as your Bought to grade outcomes come in. PSA 9 → CGC and CGC 10 → PSA use the two rates above.">
+          <div className="grid grid-cols-[auto_auto] gap-x-3 gap-y-1 text-xs">
+            {(s.regrade_rates ?? []).map((r, i) => (
+              <Fragment key={`${r.from}>${r.to}`}>
+                <span className="text-gray-400 self-center whitespace-nowrap">{r.from.toUpperCase().replace("-", " ")} → {r.to.toUpperCase()}</span>
+                <Pct value={r.rate} step={1} onChange={(v) => set({ regrade_rates: (s.regrade_rates ?? []).map((x, j) => (j === i ? { ...x, rate: Math.min(1, Math.max(0, v)) } : x)) })} />
+              </Fragment>
+            ))}
+          </div>
+        </Field>
+        <Field label="Slabs damaged cracking them open" hint="Valued at the raw price in every regrade play.">
+          <Pct value={s.crack_damage_pct ?? 0.02} onChange={(v) => set({ crack_damage_pct: Math.min(0.5, Math.max(0, v)) })} step={0.5} />
         </Field>
         <Field label="Sets go out of print after" hint="Months after release. Out-of-print sets never say buy raw to grade (copies left are unlikely to be pack fresh); mark a set in or out of print by hand on its page.">
           <input type="number" min={0} max={240} value={s.out_of_print_months} className={`${inputCls} w-16`}
