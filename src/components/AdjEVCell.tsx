@@ -12,6 +12,7 @@ const SOURCE: Record<AdjEV["ev_source"], { label: string; cls: string; hint: str
   card_baseline: { label: "baseline", cls: "border-gray-700 text-gray-400", hint: "Not measured yet: the card's odds at typical centering, anchored to its PSA gem rate" },
   listing_based: { label: "optimistic", cls: "border-amber-900 text-amber-300", hint: "No PSA gem rate to anchor to: odds from listings, which over-represent 10s" },
   what_if: { label: "what-if", cls: "border-indigo-900 text-indigo-300", hint: "Odds at the centering you set" },
+  population: { label: "gem rate", cls: "border-gray-700 text-gray-500", hint: "No pre-grader odds for this card yet: its own PSA gem rate and CGC population" },
 };
 
 export default function AdjEVCell({ ev }: { ev?: AdjEV }) {
@@ -149,14 +150,25 @@ export function CGCCell({ ev }: { ev?: AdjEV }) {
   const g = ev?.cgc;
   if (!g) return <span className="text-gray-600">–</span>;
   const tip = [
-    g.source === "listing_based" ? "No CGC population for this card: listing-based odds (optimistic)." : "Odds: the card's CGC population, adjusted by the pre-grader's centering effect for this copy.",
+    g.source === "listing_based" ? "No CGC population for this card: listing-based odds (optimistic)."
+      : g.source === "population" ? "No pre-grader odds yet: the card's CGC population (gem rates)."
+      : "Odds: the card's CGC population, adjusted by the pre-grader's centering effect for this copy.",
     `Population: ${CGC_GRADES.map(([k, l]) => `${l} ${pc(g.population?.[k])}`).join(" · ")}`,
     g.note ? `Adjusted: ${g.note}` : "",
     g.pop_note ? `At population odds: ${g.pop_note}` : "",
   ].filter(Boolean).join("\n");
   return (
     <span className="inline-flex flex-col items-end gap-0.5 tabular-nums" title={tip}>
-      <span className="text-[11px] text-gray-300 whitespace-nowrap">{CGC_GRADES.map(([k, l]) => `${l} ${pc(g.odds[k])}`).join(" · ")}</span>
+      {g.population && (
+        <span className="text-[11px] text-gray-400 whitespace-nowrap" title="CGC gem rates: the card's CGC population">
+          <span className="text-[10px] text-gray-500">gem </span>{CGC_GRADES.map(([k, l]) => `${l} ${pc(g.population?.[k])}`).join(" · ")}
+        </span>
+      )}
+      {g.source !== "population" && (
+        <span className={`text-[11px] whitespace-nowrap ${ev?.ev_source === "measured" ? "text-green-300" : "text-gray-300"}`} title="Adjusted for this copy by the pre-grader (the card's baseline until its photos are measured)">
+          <span className="text-[10px] text-gray-500">adj </span>{CGC_GRADES.map(([k, l]) => `${l} ${pc(g.odds[k])}`).join(" · ")}
+        </span>
+      )}
       {g.ev_cents != null
         ? <span className={`font-semibold ${g.ev_cents >= 0 ? "text-green-300" : "text-red-300"}`}>{usd(g.ev_cents)}</span>
         : <span className="text-gray-500 text-[11px]">no tier</span>}

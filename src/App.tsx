@@ -30,7 +30,7 @@ const NAV: { label: string; to?: string; items?: { to: string; label: string; hi
   {
     label: "Buying",
     items: [
-      { to: "/watchlist", label: "Watchlist", hint: "Your cards, their targets and hits; by consigner; hunt list" },
+      { to: "/watchlist", label: "Watchlist", hint: "Your cards, their targets and hits; by consigner; hunt list; consigner board" },
       { to: "/deals", label: "Deals", hint: "This week's auctions, ending soon, raw sellers" },
       { to: "/windows", label: "Buy windows", hint: "When each tier usually bottoms" },
       { to: "/prep", label: "Buying prep", hint: "Bid plans for the weekly auctions" },

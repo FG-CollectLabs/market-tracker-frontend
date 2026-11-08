@@ -14,6 +14,7 @@ import ReviewLog from "../components/ReviewLog";
 import { Drawer, HitRow, Reviewer, cardHits, loadHitFilters, saveHitFilters, sortHits, useNow, type CardHit, type HitFilters } from "../components/WatchHits";
 import ConsignerWatch from "../components/ConsignerWatch";
 import HuntListings from "../components/HuntListings";
+import ConsignerBoard from "../components/ConsignerBoard";
 import BoughtToGrade from "../components/BoughtToGrade";
 
 const usd = (c?: number | null) => (c == null ? "—" : `$${(c / 100).toFixed(2)}`);
@@ -723,7 +724,8 @@ function WatchCards() {
 // listings of watchlist cards costed with combined shipping.
 export default function WatchlistPage() {
   const [params, setParams] = useSearchParams();
-  const view = params.get("view") === "consigners" ? "consigners" : params.get("view") === "bought" ? "bought" : "cards";
+  const v = params.get("view");
+  const view = v === "consigners" || v === "bought" || v === "board" ? v : "cards";
   const set = (k: string, v: string) => {
     const n = new URLSearchParams(params);
     if (v) n.set(k, v); else n.delete(k);
@@ -732,12 +734,17 @@ export default function WatchlistPage() {
   return (
     <div className="space-y-4">
       <div className="inline-flex rounded border border-gray-700 overflow-hidden text-sm print:hidden" role="group" aria-label="Watchlist view">
-        {([["cards", "Cards"], ["consigners", "By consigner"], ["bought", "Bought to grade"]] as const).map(([k, l]) => (
+        {([["cards", "Cards"], ["consigners", "By consigner"], ["board", "Consigner board"], ["bought", "Bought to grade"]] as const).map(([k, l]) => (
           <button key={k} onClick={() => set("view", k === "cards" ? "" : k)} aria-pressed={view === k}
             className={`px-3 py-1 ${view === k ? "bg-indigo-700 text-white" : "bg-gray-900 text-gray-400 hover:text-gray-200"}`}>{l}</button>
         ))}
       </div>
-      {view === "bought" ? (
+      {view === "board" ? (
+        <>
+          <h1 className="text-xl font-semibold text-white">Consigner board</h1>
+          <ConsignerBoard seller={params.get("seller") ?? ""} setSeller={(u) => set("seller", u)} />
+        </>
+      ) : view === "bought" ? (
         <>
           <h1 className="text-xl font-semibold text-white">Bought to grade</h1>
           <BoughtToGrade />
