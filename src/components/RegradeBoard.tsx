@@ -3,6 +3,9 @@ import { Link } from "react-router-dom";
 import { fetchRegrade, type RegradeListing, type RegradePlay, type RegradeReport, type ValueSource } from "../lib/api";
 import { Spinner, ErrorMsg } from "./Spinner";
 import GradeOddsBadge from "./GradeOddsBadge";
+import { CheckCentering } from "./HuntListings";
+import ActionCell, { ShowFilter, countShows, showOf, type Show } from "./ActionCell";
+import type { HitReview } from "../lib/api";
 
 // Graded side of the Consigner board: slabs below the premium grade from the
 // tracked consigners, each priced as a crack-and-resubmit (PSA, CGC; CGC 10s
@@ -57,6 +60,9 @@ export default function RegradeBoard({ seller, setSeller }: { seller: string; se
   const [ending, setEnding] = useState<Ending>("");
   const [kind, setKind] = useState<"" | "auction" | "buy_now">("");
   const [posOnly, setPosOnly] = useState(true);
+  const [show, setShow] = useState<Show>("open");
+  const [rv, setRv] = useState<Record<string, HitReview | undefined>>({});
+  const reviewOf = (l: RegradeListing) => (l.listing_id in rv ? rv[l.listing_id] : l.review);
   const [sort, setSort] = useState<Sort>("best_ev");
   const [shown, setShown] = useState(PAGE);
   const [rep, setRep] = useState<RegradeReport | null>(null);
@@ -74,16 +80,20 @@ export default function RegradeBoard({ seller, setSeller }: { seller: string; se
     return () => { live = false; };
   }, [source]);
 
-  const rows = useMemo(() => {
+  const base = useMemo(() => {
     const until = endsBefore(ending);
-    const out = (rep?.listings ?? []).filter((l) =>
+    return (rep?.listings ?? []).filter((l) =>
       (!seller || l.seller === seller) && (!grader || l.grader === grader) && (!kind || l.kind === kind) &&
       (!ending || (l.ends_at && new Date(l.ends_at).getTime() < until)) && (!posOnly || (l.best?.ev_cents ?? -1) > 0));
+  }, [rep, seller, grader, kind, ending, posOnly]);
+  const showCounts = useMemo(() => countShows(base, reviewOf), [base, rv]); // eslint-disable-line react-hooks/exhaustive-deps
+  const rows = useMemo(() => {
+    const out = base.filter((l) => show === "all" || showOf(reviewOf(l)) === show);
     const val = (l: RegradeListing) => sort === "best_ev" ? l.best?.ev_cents : sort === "roi" ? l.best?.roi
       : sort === "discount" ? (l.vs_hold == null ? undefined : -l.vs_hold) : undefined;
     return sort === "ending" ? out : [...out].sort((a, b) => (val(b) ?? -Infinity) - (val(a) ?? -Infinity));
-  }, [rep, seller, grader, kind, ending, posOnly, sort]);
-  useEffect(() => setShown(PAGE), [seller, grader, kind, ending, posOnly, sort]);
+  }, [base, show, rv, sort]); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => setShown(PAGE), [seller, grader, kind, ending, posOnly, sort, show]);
 
   const sel = "rounded border border-gray-700 bg-gray-950 px-2 py-1 text-xs text-gray-200";
   const page = rows.slice(0, shown);
@@ -144,7 +154,8 @@ export default function RegradeBoard({ seller, setSeller }: { seller: string; se
                 <option value="ebay">eBay sold</option><option value="comps">Sold comps</option><option value="pricecharting">PriceCharting</option><option value="">Settings default</option>
               </select>
             </label>
-            <span className="text-gray-500 tabular-nums">{rows.length} slabs{rep.passed > 0 && ` · ${rep.passed} passed on hidden`}</span>
+            <ShowFilter show={show} setShow={setShow} counts={showCounts} />
+            <span className="text-gray-500 tabular-nums">{rows.length} slabs</span>
           </div>
 
           {rows.length === 0 ? <p className="text-sm text-gray-500">Nothing matches right now.</p> : (
@@ -153,6 +164,7 @@ export default function RegradeBoard({ seller, setSeller }: { seller: string; se
                 <thead className="text-gray-500 text-left max-lg:!static">
                   <tr>
                     <th className="py-2 px-3 font-medium">Card</th>
+                    <th className="py-2 px-2 font-medium" title="Bid (with your max) or pass; then report won / lost">Action</th>
                     <th className="py-2 px-2 font-medium">Slab</th>
                     <th className="py-2 px-2 font-medium">Seller</th>
                     <th className="py-2 px-2 font-medium">Ends</th>
@@ -171,8 +183,8 @@ export default function RegradeBoard({ seller, setSeller }: { seller: string; se
                     const head = sort === "ending" && (i === 0 || dayLabel(page[i - 1].ends_at) !== day);
                     return (
                       <Fragment key={l.listing_id}>
-                        {head && <tr className="border-t border-gray-800 bg-gray-950/60"><td colSpan={11} className="py-1.5 px-3 text-[11px] font-semibold text-gray-300 uppercase tracking-wide">{day}</td></tr>}
-                        <Row l={l} />
+                        {head && <tr className="border-t border-gray-800 bg-gray-950/60"><td colSpan={12} className="py-1.5 px-3 text-[11px] font-semibold text-gray-300 uppercase tracking-wide">{day}</td></tr>}
+                        <Row l={l} review={reviewOf(l)} onReview={(r) => setRv((m) => ({ ...m, [l.listing_id]: r }))} />
                       </Fragment>
                     );
                   })}
@@ -201,13 +213,15 @@ export default function RegradeBoard({ seller, setSeller }: { seller: string; se
 function Play({ p }: { p: RegradePlay }) {
   const top = p.to === "psa" ? "PSA 10" : "CGC 10+";
   return (
-    <div className="whitespace-nowrap tabular-nums" title={p.note}>
+    <div className="whitespace-nowrap tabular-nums" title={[p.reason, p.basis ? `Basis: ${p.basis}` : "", p.odds_ratio ? `This copy: ${p.odds_ratio.toFixed(2)}× the odds of a typical slab of its grade` : "", p.note].filter(Boolean).join("\n")}>
       <span className="text-gray-400">→ {p.to.toUpperCase()}</span>{" "}
-      <span className={p.rate_source === "measured" ? "text-green-300" : p.rate_source === "centering_cap" ? "text-red-300" : "text-gray-300"}>
+      <span className={p.rate_source === "measured" || p.rate_source === "predictor" ? "text-green-300" : p.rate_source === "centering_cap" ? "text-red-300" : "text-gray-300"}>
         {pc(p.rate)} {top}
       </span>
       {p.rate_source === "measured" && <span className="text-[10px] text-gray-500"> (base {pc(p.base_rate)})</span>}
+      {p.rate_source === "predictor" && <span className="text-[10px] text-gray-500"> (crack outcomes)</span>}
       {p.rate_source === "centering_cap" && <span className="text-[10px] text-red-300/80"> centering cap</span>}
+      {p.reason && <div className="text-[10px] text-gray-500 max-w-[18rem] truncate">{p.reason}</div>}
       {" · "}
       <span className={p.ev_cents >= 0 ? "text-green-300" : "text-red-300"}>{usd(p.ev_cents)}</span>
       <span className="text-[10px] text-gray-500"> {p.roi >= 0 ? "+" : ""}{(p.roi * 100).toFixed(0)}%</span>
@@ -218,7 +232,9 @@ function Play({ p }: { p: RegradePlay }) {
   );
 }
 
-function Row({ l }: { l: RegradeListing }) {
+const MEASURABLE = new Set(["psa", "cgc", "bgs"]);
+
+function Row({ l, review, onReview }: { l: RegradeListing; review?: HitReview; onReview: (r: HitReview | undefined) => void }) {
   const td = "py-1.5 px-2 text-right tabular-nums whitespace-nowrap";
   const v = l.vs_hold;
   return (
@@ -237,6 +253,8 @@ function Row({ l }: { l: RegradeListing }) {
           </div>
         </div>
       </td>
+      <td className="py-1.5 px-2"><ActionCell listingId={l.listing_id} displayKey={l.display_key} priceCents={l.price_cents} review={review}
+        shown={{ grade_key: l.grade_key, add_cents: l.add_cents, hold_cents: l.hold_cents, best: l.best, plays: l.plays, odds: l.grade_odds }} onChange={onReview} /></td>
       <td className="py-1.5 px-2 whitespace-nowrap"><span className="px-1.5 py-0.5 rounded border border-gray-700 text-gray-200">{gradeLabel(l.grade_key)}</span></td>
       <td className="py-1.5 px-2 whitespace-nowrap text-gray-400">{l.seller_label}</td>
       <td className="py-1.5 px-2 whitespace-nowrap text-gray-300">
@@ -258,7 +276,9 @@ function Row({ l }: { l: RegradeListing }) {
       </td>
       <td className="py-1.5 px-2">{l.plays?.length ? l.plays.map((p) => <Play key={p.to} p={p} />) : <span className="text-gray-600" title={l.notes?.join("\n")}>–</span>}</td>
       <td className="py-1.5 px-2">
-        {l.grade_odds ? <GradeOddsBadge o={l.grade_odds} compact /> : <span className="text-[11px] text-gray-600" title="Slab photos go to the pre-grader once it accepts slabs">not measured</span>}
+        {l.grade_odds ? <GradeOddsBadge o={l.grade_odds} compact />
+          : MEASURABLE.has(l.grader) ? <CheckCentering listingId={l.listing_id} photos={l.image_count} />
+          : <span className="text-[11px] text-gray-600" title="The pre-grader measures PSA, CGC and BGS slabs only">not measurable</span>}
       </td>
       <td className={`py-1.5 px-3 text-right tabular-nums whitespace-nowrap font-semibold ${l.best == null ? "text-gray-600" : l.best.ev_cents >= 0 ? "text-green-300" : "text-red-300"}`}>
         {l.best ? <>{usd(l.best.ev_cents)}<div className="text-[10px] font-normal text-gray-500">→ {l.best.to.toUpperCase()}</div></> : "–"}

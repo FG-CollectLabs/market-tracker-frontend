@@ -1648,6 +1648,16 @@ export interface GradeOdds {
   snapshot_version?: number; // the predictor snapshot these odds came from
   bought_at?: string; // you marked this copy bought
   model_version?: string;
+  explain?: Record<string, OddsExplain>; // per grader (PSA, CGC, ...): why the odds are what they are
+}
+
+// The pre-grader's explanation of a copy's odds.
+export interface OddsExplain {
+  top: string; // "PSA 10"
+  summary: string; // one-line reason
+  axes?: { axis: string; measured: string; effect_pp: number; typical?: string; note?: string }[]; // largest effect first
+  percentile?: number; // better centered than this % of graded copies
+  percentile_of?: string;
 }
 
 // Grading EV with odds tailored to the copy (measured) or the card's
@@ -1730,7 +1740,12 @@ export interface HitReview {
   note?: string;
   price_cents?: number; // the price when reviewed
   reviewed_at: string;
+  result?: BidResult; // what came of the bid
+  result_cents?: number; // won: paid all-in; lost: what it went for
+  in_hand?: "gradable" | "not_gradable";
 }
+
+export type BidResult = "won" | "lost" | "no_bid";
 
 // Pass on a hit (hidden from then on) or keep a note on it.
 // Why a hit was set aside: a false positive (a case, the wrong card), damaged
@@ -1745,7 +1760,7 @@ export const HIT_REASONS: { key: Exclude<HitReason, "no_back_photo">; label: str
   { key: "other", label: "Other", hint: "Say why in the note" },
 ];
 
-export function reviewHit(h: { source: string; listing_id: string; display_key: string; status: "pass" | "note" | "interested"; reason?: HitReason; note?: string; price_cents?: number; max_bid_cents?: number }): Promise<{ saved: boolean }> {
+export function reviewHit(h: { source: string; listing_id: string; display_key: string; status: "pass" | "note" | "interested"; reason?: HitReason; note?: string; price_cents?: number; max_bid_cents?: number; shown?: unknown }): Promise<{ saved: boolean }> {
   return adminFetch(`/v1/admin/watch-hits/review`, { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify(h) });
 }
 
@@ -3039,7 +3054,7 @@ export interface HuntListingsReport {
 }
 
 export function fetchWatchHunt(o: { seller?: string; years: number; gradeAt: number; feeGrowth: number; valueSource?: ValueSource }): Promise<HuntListingsReport> {
-  const q = new URLSearchParams({ years: String(o.years), grade_at: String(o.gradeAt), fee_growth: String(o.feeGrowth) });
+  const q = new URLSearchParams({ years: String(o.years), grade_at: String(o.gradeAt), fee_growth: String(o.feeGrowth), include_passed: "1" });
   if (o.seller) q.set("seller", o.seller);
   if (o.valueSource) q.set("value_source", o.valueSource);
   return adminFetch(`/v1/admin/watchlist/hunt?${q}`);
@@ -3061,7 +3076,10 @@ export interface RegradePlay {
   to: "psa" | "cgc";
   rate: number; // share expected back at the top grade, used
   base_rate: number; // from Settings
-  rate_source: "settings" | "measured" | "centering_cap";
+  rate_source: "settings" | "measured" | "predictor" | "centering_cap";
+  reason?: string; // the pre-grader's read of why the slab got its grade
+  basis?: string;
+  odds_ratio?: number; // this copy vs a typical slab of its grade
   top_cents: number;
   miss_cents: number;
   fee_cents: number;
@@ -3121,6 +3139,67 @@ export function fetchRegrade(o: { valueSource?: ValueSource } = {}): Promise<Reg
   const q = new URLSearchParams();
   if (o.valueSource) q.set("value_source", o.valueSource);
   return adminFetch(`/v1/admin/watchlist/regrade?${q}`);
+}
+
+// ---- Bids and results: max bid -> won/lost -> in hand -> graded -> sold ----
+
+export type BidStage = "bidding" | "report" | "in_transit" | "to_grade" | "not_gradable" | "graded" | "sold" | "lost" | "no_bid";
+
+export interface BidRow {
+  source: string;
+  listing_id: string;
+  display_key?: string;
+  card_name?: string;
+  card_number?: string;
+  set_code?: string;
+  card_image_url?: string;
+  title?: string;
+  url?: string;
+  image_url?: string;
+  grade_key?: string;
+  seller?: string;
+  kind?: "auction" | "buy_now";
+  ends_at?: string;
+  now_cents?: number;
+  live: boolean;
+  max_bid_cents?: number;
+  reviewed_at: string;
+  result?: BidResult;
+  result_cents?: number;
+  result_at?: string;
+  in_hand?: "gradable" | "not_gradable";
+  in_hand_note?: string;
+  graded_grader?: string;
+  graded_grade?: string;
+  graded_fee_cents?: number;
+  sold_cents?: number;
+  sold_fees_cents?: number;
+  sold_channel?: string;
+  sold_at?: string;
+  expected_top?: number; // top-grade chance shown when you bid
+  stage: BidStage;
+  profit_cents?: number;
+}
+
+export interface BidStats {
+  bids: number; reported: number; won: number; lost: number; no_bid: number;
+  win_rate?: number; paid_vs_max?: number;
+  checked_in_hand: number; gradable: number; gradable_rate?: number;
+  graded: number; tens: number; ten_rate?: number; expected_ten_rate?: number;
+  sold: number; invested_sold_cents: number; profit_cents: number; roi?: number;
+}
+
+export function fetchBids(days = 365): Promise<{ bids: BidRow[]; stats: BidStats }> {
+  return adminFetch(`/v1/admin/watch-hits/bids?days=${days}`);
+}
+
+export function saveBidResult(body: {
+  source: string; listing_id: string; display_key?: string;
+  step: "result" | "in_hand" | "graded" | "sold" | "clear_result" | "clear_in_hand" | "clear_graded" | "clear_sold";
+  result?: BidResult; cents?: number; in_hand?: "gradable" | "not_gradable"; note?: string;
+  grader?: string; grade?: string; fee_cents?: number; sold_cents?: number; sold_fees_cents?: number; sold_channel?: string;
+}): Promise<{ saved: boolean; predictor?: string }> {
+  return adminFetch(`/v1/admin/watch-hits/result`, { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
 }
 
 // ---- Bought to grade (raw copies bought, and the grade each came back with) ----

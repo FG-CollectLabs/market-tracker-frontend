@@ -6,6 +6,8 @@ import GradeOddsBadge from "./GradeOddsBadge";
 import AdjEVCell, { CGCCell, OddsFlag, PSAOddsCell } from "./AdjEVCell";
 import { BoughtButton } from "./BoughtToGrade";
 import { CheckCentering } from "./HuntListings";
+import ActionCell, { ExplainChip, ShowFilter, countShows, showOf, type Show } from "./ActionCell";
+import type { HitReview } from "../lib/api";
 
 // Consigner board: every raw copy the tracked consigners have listed of a
 // tracked card, hunt list or not. For gradable gems of cards you aren't
@@ -74,6 +76,9 @@ export default function ConsignerBoard({ seller, setSeller }: { seller: string; 
   const [gradable, setGradable] = useState<Gradable>("");
   const [sort, setSort] = useState<Sort>("ending");
   const [shown, setShown] = useState(PAGE);
+  const [show, setShow] = useState<Show>("open");
+  const [rv, setRv] = useState<Record<string, HitReview | undefined>>({});
+  const reviewOf = (l: HuntListing) => (l.listing_id in rv ? rv[l.listing_id] : l.review);
   const [rep, setRep] = useState<HuntListingsReport | null>(null);
   const [err, setErr] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
@@ -89,9 +94,9 @@ export default function ConsignerBoard({ seller, setSeller }: { seller: string; 
     return () => { live = false; };
   }, [source]);
 
-  const rows = useMemo(() => {
+  const base = useMemo(() => {
     const until = endsBefore(ending);
-    const out = (rep?.listings ?? []).filter((l) => {
+    return (rep?.listings ?? []).filter((l) => {
       if (seller && l.seller !== seller) return false;
       if (kind && l.kind !== kind) return false;
       if (ending && (!l.ends_at || new Date(l.ends_at).getTime() >= until)) return false;
@@ -107,11 +112,15 @@ export default function ConsignerBoard({ seller, setSeller }: { seller: string; 
       if (gradable === "ev_pos" && !((best(l) ?? -1) > 0)) return false;
       return true;
     });
+  }, [rep, seller, kind, ending, watch, win, nearLow, gradable]);
+  const counts = useMemo(() => countShows(base, reviewOf), [base, rv]); // eslint-disable-line react-hooks/exhaustive-deps
+  const rows = useMemo(() => {
+    const out = base.filter((l) => show === "all" || showOf(reviewOf(l)) === show);
     const val = (l: HuntListing) => sort === "best_ev" ? best(l) : sort === "adj_p10" ? l.adj_ev?.p10
       : sort === "vs_low" ? (l.timing?.copy_vs_low == null ? undefined : -l.timing.copy_vs_low) : l.score;
     return sort === "ending" ? out : [...out].sort((a, b) => (val(b) ?? -Infinity) - (val(a) ?? -Infinity));
-  }, [rep, seller, kind, ending, watch, win, nearLow, gradable, sort]);
-  useEffect(() => setShown(PAGE), [seller, kind, ending, watch, win, nearLow, gradable, sort]);
+  }, [base, show, rv, sort]); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => setShown(PAGE), [seller, kind, ending, watch, win, nearLow, gradable, sort, show]);
 
   const sel = "rounded border border-gray-700 bg-gray-950 px-2 py-1 text-xs text-gray-200";
   const cur = rep?.sellers.find((s) => s.username === seller);
@@ -193,7 +202,8 @@ export default function ConsignerBoard({ seller, setSeller }: { seller: string; 
                 <option value="ebay">eBay sold</option><option value="comps">Sold comps</option><option value="pricecharting">PriceCharting</option><option value="">Settings default</option>
               </select>
             </label>
-            <span className="text-gray-500 tabular-nums">{rows.length} copies{rep.passed > 0 && ` · ${rep.passed} passed on hidden`}</span>
+            <ShowFilter show={show} setShow={setShow} counts={counts} />
+            <span className="text-gray-500 tabular-nums">{rows.length} copies</span>
           </div>
 
           {rows.length === 0 ? <p className="text-sm text-gray-500">Nothing matches right now.</p> : (
@@ -202,6 +212,7 @@ export default function ConsignerBoard({ seller, setSeller }: { seller: string; 
                 <thead className="text-gray-500 text-left max-lg:!static">
                   <tr>
                     <th className="py-2 px-3 font-medium">Card</th>
+                    <th className="py-2 px-2 font-medium" title="Bid (with your max) or pass; then report won / lost">Action</th>
                     <th className="py-2 px-2 font-medium">Seller</th>
                     <th className="py-2 px-2 font-medium">Ends</th>
                     <th className="py-2 px-2 font-medium text-right" title="Ask or current bid, with its listed shipping">Now</th>
@@ -222,8 +233,8 @@ export default function ConsignerBoard({ seller, setSeller }: { seller: string; 
                     const head = sort === "ending" && (i === 0 || dayLabel(page[i - 1].ends_at) !== day);
                     return (
                       <Fragment key={l.listing_id}>
-                        {head && <tr className="border-t border-gray-800 bg-gray-950/60"><td colSpan={13} className="py-1.5 px-3 text-[11px] font-semibold text-gray-300 uppercase tracking-wide">{day}</td></tr>}
-                        <Row l={l} bench={rep.params.benchmark} />
+                        {head && <tr className="border-t border-gray-800 bg-gray-950/60"><td colSpan={14} className="py-1.5 px-3 text-[11px] font-semibold text-gray-300 uppercase tracking-wide">{day}</td></tr>}
+                        <Row l={l} bench={rep.params.benchmark} review={reviewOf(l)} onReview={(r) => setRv((m) => ({ ...m, [l.listing_id]: r }))} />
                       </Fragment>
                     );
                   })}
@@ -263,7 +274,7 @@ function Timing({ t }: { t?: CopyTiming }) {
   );
 }
 
-function Row({ l, bench }: { l: HuntListing; bench: number }) {
+function Row({ l, bench, review, onReview }: { l: HuntListing; bench: number; review?: HitReview; onReview: (r: HitReview | undefined) => void }) {
   const td = "py-1.5 px-2 text-right tabular-nums whitespace-nowrap";
   const y = l.grade_later?.yearly;
   const v = l.timing?.copy_vs_low;
@@ -285,6 +296,8 @@ function Row({ l, bench }: { l: HuntListing; bench: number }) {
           </div>
         </div>
       </td>
+      <td className="py-1.5 px-2"><ActionCell listingId={l.listing_id} displayKey={l.display_key} priceCents={l.price_cents} review={review}
+        shown={{ adj_ev: l.adj_ev, odds: l.grade_odds, add_cents: l.add_cents, raw_market_cents: l.raw_market_cents, grade_later: l.grade_later, timing: l.timing }} onChange={onReview} /></td>
       <td className="py-1.5 px-2 whitespace-nowrap text-gray-400">{l.seller_label}</td>
       <td className="py-1.5 px-2 whitespace-nowrap text-gray-300">
         {l.kind === "auction" ? <>{endsAt(l.ends_at)}{l.bids != null && <div className="text-[10px] text-gray-500">{l.bids} bids</div>}</> : <span className="text-gray-400">Buy Now</span>}
@@ -306,7 +319,8 @@ function Row({ l, bench }: { l: HuntListing; bench: number }) {
       <td className={td}><PSAOddsCell ev={l.adj_ev} popFallback={l.p10 || undefined} /></td>
       <td className="py-1.5 px-2">
         {l.grade_odds
-          ? <span className="inline-flex flex-wrap items-center gap-1"><GradeOddsBadge o={l.grade_odds} compact /><OddsFlag odds={l.grade_odds} shown={l.adj_ev} /></span>
+          ? <><span className="inline-flex flex-wrap items-center gap-1"><GradeOddsBadge o={l.grade_odds} compact /><OddsFlag odds={l.grade_odds} shown={l.adj_ev} /></span>
+              <ExplainChip e={l.grade_odds.explain?.PSA} /></>
           : <CheckCentering listingId={l.listing_id} photos={l.image_count} />}
         {(l.image_count == null || l.image_count >= 2 || l.grade_odds) && (
           <div className="mt-0.5"><BoughtButton listingId={l.listing_id} priceCents={l.price_cents} shown={{ adj_ev: l.adj_ev, odds: l.grade_odds }} initial={!!l.grade_odds?.bought_at} /></div>
