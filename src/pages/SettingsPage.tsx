@@ -292,6 +292,9 @@ export default function SettingsPage() {
             ))}
           </div>
         </Field>
+        <Field label="Suggested max bid: win share" hint="The suggested max bid beats this share of the consigner's recent raw auction finals (measured against each card's raw market), never above what the copy is worth to you. Higher wins more often and pays more.">
+          <Pct value={s.bid_win_share ?? 0.7} onChange={(v) => set({ bid_win_share: Math.min(0.95, Math.max(0.5, v)) })} step={5} />
+        </Field>
         <Field label="Slabs damaged cracking them open" hint="Valued at the raw price in every regrade play.">
           <Pct value={s.crack_damage_pct ?? 0.02} onChange={(v) => set({ crack_damage_pct: Math.min(0.5, Math.max(0, v)) })} step={0.5} />
         </Field>

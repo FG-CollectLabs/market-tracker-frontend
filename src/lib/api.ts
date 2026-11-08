@@ -813,6 +813,7 @@ export interface AnalysisSettings {
   crack_cgc10_to_psa10_rate: number;
   regrade_rates?: RegradeRate[]; // regrade board: per slab grade and target, the share back at the target's top grade
   crack_damage_pct?: number;
+  bid_win_share?: number; // suggested max bid: the share of a consigner's raw finals it beats
   ebay_ship_cents: number;
   vault_inbound_cents: number;
   vault_withdraw_cents: number;
@@ -3014,6 +3015,23 @@ export interface HuntListing {
   notes?: string[];
   watched?: boolean; // the card is on the watchlist
   timing?: CopyTiming;
+  item_number?: string; // eBay item number (Gixen, eBay search)
+  suggested_bid?: BidSuggestion;
+}
+
+// Suggested max bid: wins most of this consigner's auctions without paying
+// more than the copy is worth to you.
+export interface BidSuggestion {
+  item_cents: number; // the bid to enter (eBay / Gixen, before shipping and tax)
+  all_in_cents: number; // what the copy costs you at that bid
+  win_cents?: number; // item bid at the win quantile
+  win_share: number;
+  win_basis?: string;
+  value_cap_cents?: number; // item bid at the value cap
+  value_basis?: string;
+  limited_by: "market" | "value" | "value_only" | "market_only";
+  over_max?: boolean; // the current bid is already past it
+  note: string;
 }
 
 // Where the card sits on its tier's raw release curve, and this copy's cost
@@ -3108,6 +3126,7 @@ export interface RegradeListing {
   bids?: number;
   grade_key: string;
   grader: string;
+  item_number?: string;
   price_cents: number;
   listed_ship_cents: number;
   item_cents: number;

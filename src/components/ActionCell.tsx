@@ -44,8 +44,8 @@ export function countShows<T>(rows: T[], review: (r: T) => HitReview | undefined
   return c;
 }
 
-export default function ActionCell({ listingId, displayKey, priceCents, review, shown, onChange }: {
-  listingId: string; displayKey: string; priceCents?: number; review?: HitReview; shown?: unknown;
+export default function ActionCell({ listingId, displayKey, priceCents, review, shown, onChange, suggestCents }: {
+  listingId: string; displayKey: string; priceCents?: number; review?: HitReview; shown?: unknown; suggestCents?: number;
   onChange: (r: HitReview | undefined) => void;
 }) {
   const [mode, setMode] = useState<"" | "bid" | "pass" | "won" | "lost">("");
@@ -72,7 +72,7 @@ export default function ActionCell({ listingId, displayKey, priceCents, review, 
 
   let body;
   if (mode === "bid") {
-    body = bidForm("Max bid, all-in", () => run(async () => {
+    body = bidForm("Your max bid (the item price you'll enter in Gixen)", () => run(async () => {
       const max = toCents(val);
       await reviewHit({ source: "ebay", listing_id: listingId, display_key: displayKey, status: "interested", max_bid_cents: max, price_cents: priceCents, shown });
       return { ...(review ?? {}), status: "interested", max_bid_cents: max, reviewed_at: now() } as HitReview;
@@ -119,7 +119,7 @@ export default function ActionCell({ listingId, displayKey, priceCents, review, 
     body = (
       <span className="inline-flex flex-col gap-0.5 text-[11px]">
         <button onClick={() => { setVal(review.max_bid_cents != null ? (review.max_bid_cents / 100).toFixed(2) : ""); setMode("bid"); }}
-          className="text-left text-indigo-200" title="Your max bid, all-in: click to change">Bid ≤ {usd(review.max_bid_cents)}</button>
+          className="text-left text-indigo-200" title="Your max bid (the item price in Gixen): click to change">Bid ≤ {usd(review.max_bid_cents)}</button>
         <span className="inline-flex gap-1">
           <button className={`${btn} border-green-900 text-green-300`} onClick={() => setMode("won")}>Won</button>
           <button className={`${btn} border-gray-700 text-gray-300`} onClick={() => setMode("lost")}>Lost</button>
@@ -133,7 +133,8 @@ export default function ActionCell({ listingId, displayKey, priceCents, review, 
   } else {
     body = (
       <span className="inline-flex gap-1">
-        <button className={`${btn} border-indigo-800 text-indigo-200`} onClick={() => setMode("bid")} title="Plan to bid: set your max (all-in)">Bid</button>
+        <button className={`${btn} border-indigo-800 text-indigo-200`} title="Plan to bid: set your max (pre-filled with the suggested max bid)"
+          onClick={() => { setVal(suggestCents != null ? (suggestCents / 100).toFixed(2) : ""); setMode("bid"); }}>Bid</button>
         <button className={`${btn} border-gray-700 text-gray-400`} onClick={() => setMode("pass")} title="Set aside (moves to Passed)">Pass</button>
       </span>
     );
