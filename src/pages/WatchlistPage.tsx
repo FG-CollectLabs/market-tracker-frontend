@@ -15,6 +15,7 @@ import { Drawer, HitRow, Reviewer, cardHits, loadHitFilters, saveHitFilters, sor
 import ConsignerWatch from "../components/ConsignerWatch";
 import HuntListings from "../components/HuntListings";
 import ConsignerBoard from "../components/ConsignerBoard";
+import RegradeBoard from "../components/RegradeBoard";
 import BoughtToGrade from "../components/BoughtToGrade";
 
 const usd = (c?: number | null) => (c == null ? "—" : `$${(c / 100).toFixed(2)}`);
@@ -741,8 +742,18 @@ export default function WatchlistPage() {
       </div>
       {view === "board" ? (
         <>
-          <h1 className="text-xl font-semibold text-white">Consigner board</h1>
-          <ConsignerBoard seller={params.get("seller") ?? ""} setSeller={(u) => set("seller", u)} />
+          <div className="flex flex-wrap items-center gap-3">
+            <h1 className="text-xl font-semibold text-white">Consigner board</h1>
+            <div className="inline-flex rounded border border-gray-700 overflow-hidden text-sm" role="group" aria-label="Raw or graded">
+              {([["", "Raw"], ["graded", "Graded"]] as const).map(([k, l]) => (
+                <button key={k || "raw"} onClick={() => set("copies", k)} aria-pressed={(params.get("copies") ?? "") === k}
+                  className={`px-3 py-1 ${(params.get("copies") ?? "") === k ? "bg-indigo-700 text-white" : "bg-gray-900 text-gray-400 hover:text-gray-200"}`}>{l}</button>
+              ))}
+            </div>
+          </div>
+          {params.get("copies") === "graded"
+            ? <RegradeBoard seller={params.get("seller") ?? ""} setSeller={(u) => set("seller", u)} />
+            : <ConsignerBoard seller={params.get("seller") ?? ""} setSeller={(u) => set("seller", u)} />}
         </>
       ) : view === "bought" ? (
         <>

@@ -811,6 +811,8 @@ export interface AnalysisSettings {
   out_of_print_months: number;
   crack_psa9_to_cgc10_rate: number;
   crack_cgc10_to_psa10_rate: number;
+  regrade_rates?: RegradeRate[]; // regrade board: per slab grade and target, the share back at the target's top grade
+  crack_damage_pct?: number;
   ebay_ship_cents: number;
   vault_inbound_cents: number;
   vault_withdraw_cents: number;
@@ -2697,6 +2699,7 @@ export interface ShipRule {
   first_cents?: number;
   each_add_cents?: number;
   free_over_cents?: number;
+  cap_cents?: number; // an order's shipping never goes above this
   note?: string;
   text: string;
 }
@@ -2771,7 +2774,7 @@ export function fetchRawSellerCandidates(limit = 40): Promise<{ sellers: RawSell
 
 export function saveRawSeller(username: string, body: {
   raw_tracked?: boolean; label?: string; ship_first_cents?: number; ship_each_add_cents?: number;
-  free_ship_over_cents?: number; ship_note?: string; clear_ship_rule?: boolean;
+  free_ship_over_cents?: number; ship_cap_cents?: number; ship_note?: string; clear_ship_rule?: boolean;
 }): Promise<{ ok: boolean }> {
   return adminFetch(`/v1/admin/ebay-sellers/${encodeURIComponent(username)}`, {
     method: "PUT",
@@ -3048,6 +3051,76 @@ export function fetchConsignerBoard(o: { years: number; gradeAt: number; feeGrow
   const q = new URLSearchParams({ years: String(o.years), grade_at: String(o.gradeAt), fee_growth: String(o.feeGrowth) });
   if (o.valueSource) q.set("value_source", o.valueSource);
   return adminFetch(`/v1/admin/watchlist/board?${q}`);
+}
+
+// ---- Regrade board: slabs below the premium grade, cracked and resubmitted ----
+
+export interface RegradeRate { from: string; to: "psa" | "cgc"; rate: number }
+
+export interface RegradePlay {
+  to: "psa" | "cgc";
+  rate: number; // share expected back at the top grade, used
+  base_rate: number; // from Settings
+  rate_source: "settings" | "measured" | "centering_cap";
+  top_cents: number;
+  miss_cents: number;
+  fee_cents: number;
+  tier: string;
+  ev_cents: number;
+  roi: number;
+  break_even_rate: number; // share back at the top grade that nets $0 (over 1: never pays)
+  note: string;
+}
+
+export interface RegradeListing {
+  display_key: string;
+  name: string;
+  number: string;
+  set_code: string;
+  card_image_url?: string;
+  seller: string;
+  seller_label: string;
+  listing_id: string;
+  kind: "auction" | "buy_now";
+  title: string;
+  url?: string;
+  image_url?: string;
+  image_count?: number;
+  ends_at?: string;
+  bids?: number;
+  grade_key: string;
+  grader: string;
+  price_cents: number;
+  listed_ship_cents: number;
+  item_cents: number;
+  expected?: boolean;
+  add_cents: number;
+  hold_cents?: number;
+  vs_hold?: number;
+  hold_ev_cents?: number;
+  psa10_cents?: number;
+  psa_gem_rate?: number;
+  plays?: RegradePlay[];
+  best?: RegradePlay;
+  grade_odds?: GradeOdds;
+  watched?: boolean;
+  review?: HitReview;
+  notes?: string[];
+}
+
+export interface RegradeReport {
+  sellers: HuntSeller[];
+  listings: RegradeListing[];
+  rates: RegradeRate[];
+  crack_damage_pct: number;
+  passed: number;
+  method: string;
+}
+
+export function fetchRegrade(o: { valueSource?: ValueSource } = {}): Promise<RegradeReport> {
+  const q = new URLSearchParams();
+  if (o.valueSource) q.set("value_source", o.valueSource);
+  return adminFetch(`/v1/admin/watchlist/regrade?${q}`);
 }
 
 // ---- Bought to grade (raw copies bought, and the grade each came back with) ----
