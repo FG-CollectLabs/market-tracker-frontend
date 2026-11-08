@@ -5,6 +5,7 @@ import { Spinner, ErrorMsg } from "./Spinner";
 import GradeOddsBadge from "./GradeOddsBadge";
 import AdjEVCell, { CGCCell, OddsFlag, PSAOddsCell } from "./AdjEVCell";
 import { BoughtButton } from "./BoughtToGrade";
+import { ItemNumber, SuggestedBid } from "./BidCells";
 import ActionCell, { ExplainChip, ShowFilter, countShows, showOf, type Show } from "./ActionCell";
 import type { HitReview } from "../lib/api";
 
@@ -148,6 +149,7 @@ export default function HuntListings({ seller, setSeller }: { seller: string; se
                     <th className="py-2 px-2 font-medium">Type</th>
                     <th className="py-2 px-2 font-medium text-right" title="Ask or current bid, with its listed shipping">Now</th>
                     <th className="py-2 px-2 font-medium text-right" title="Item (auctions: expected close) + what it adds to an order's shipping">Your cost</th>
+                    <th className="py-2 px-2 font-medium text-right" title="Suggested max bid, the item price to enter in eBay or Gixen: beats most of this consigner's recent finals, never above what the copy is worth to you. Click to copy; hover for the working.">Max bid</th>
                     <th className="py-2 px-2 font-medium text-right" title="Raw market (eBay sold by default) and your cost against it">Raw market</th>
                     <th className="py-2 px-2 font-medium text-right">PSA 10</th>
                     <th className="py-2 px-2 font-medium text-right" title="PSA 10 odds: the public gem rate, and adjusted for this copy by the pre-grader">PSA 10 odds</th>
@@ -194,10 +196,11 @@ function Row({ l, bench, review, onReview }: { l: HuntListing; bench: number; re
             {l.url
               ? <a href={l.url} target="_blank" rel="noreferrer" className="block truncate max-w-[22rem] text-indigo-300/80 hover:text-indigo-200">{l.title}</a>
               : <div className="truncate max-w-[22rem] text-gray-500">{l.title}</div>}
+            <ItemNumber n={l.item_number} />
           </div>
         </div>
       </td>
-      <td className="py-1.5 px-2"><ActionCell listingId={l.listing_id} displayKey={l.display_key} priceCents={l.price_cents} review={review}
+      <td className="py-1.5 px-2"><ActionCell listingId={l.listing_id} displayKey={l.display_key} priceCents={l.price_cents} review={review} suggestCents={l.suggested_bid?.item_cents}
         shown={{ adj_ev: l.adj_ev, odds: l.grade_odds, add_cents: l.add_cents, raw_market_cents: l.raw_market_cents, grade_later: l.grade_later, timing: l.timing }} onChange={onReview} /></td>
       <td className="py-1.5 px-2 whitespace-nowrap text-gray-400">{l.seller_label}</td>
       <td className="py-1.5 px-2 whitespace-nowrap text-gray-400">
@@ -208,6 +211,7 @@ function Row({ l, bench, review, onReview }: { l: HuntListing; bench: number; re
         {usd(l.add_cents)}
         {l.expected && <div className="text-[10px] text-gray-500">expected close</div>}
       </td>
+      <td className="py-1.5 px-2 text-right"><SuggestedBid b={l.suggested_bid} /></td>
       <td className={`${td} text-gray-300`}>
         {usd(l.raw_market_cents)}
         <div className={`text-[10px] ${l.vs_raw <= 1 ? "text-green-300/80" : "text-gray-500"}`}>{l.vs_raw <= 1 ? `${Math.round((1 - l.vs_raw) * 100)}% under` : `${Math.round((l.vs_raw - 1) * 100)}% over`}</div>

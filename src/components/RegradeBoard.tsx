@@ -4,6 +4,7 @@ import { fetchRegrade, type RegradeListing, type RegradePlay, type RegradeReport
 import { Spinner, ErrorMsg } from "./Spinner";
 import GradeOddsBadge from "./GradeOddsBadge";
 import { CheckCentering } from "./HuntListings";
+import { ItemNumber } from "./BidCells";
 import ActionCell, { ShowFilter, countShows, showOf, type Show } from "./ActionCell";
 import type { HitReview } from "../lib/api";
 
@@ -250,6 +251,7 @@ function Row({ l, review, onReview }: { l: RegradeListing; review?: HitReview; o
             {l.url
               ? <a href={l.url} target="_blank" rel="noreferrer" className="block truncate max-w-[22rem] text-indigo-300/80 hover:text-indigo-200">{l.title}</a>
               : <div className="truncate max-w-[22rem] text-gray-500">{l.title}</div>}
+            <ItemNumber n={l.item_number} />
           </div>
         </div>
       </td>
