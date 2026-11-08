@@ -5,6 +5,8 @@ import { Spinner, ErrorMsg } from "./Spinner";
 import GradeOddsBadge from "./GradeOddsBadge";
 import AdjEVCell, { CGCCell, OddsFlag, PSAOddsCell } from "./AdjEVCell";
 import { BoughtButton } from "./BoughtToGrade";
+import ActionCell, { ExplainChip, ShowFilter, countShows, showOf, type Show } from "./ActionCell";
+import type { HitReview } from "../lib/api";
 
 // Hunt list across consigners and raw sellers: every raw copy they have
 // listed of a tracked or watched card, priced at what the copy costs in an
@@ -32,6 +34,9 @@ export default function HuntListings({ seller, setSeller }: { seller: string; se
   const [hideSlow, setHideSlow] = useState(false);
   const [sort, setSort] = useState<"score" | "adj_ev" | "cgc_ev" | "best_ev" | "grade_later">("score");
   const [shown, setShown] = useState(PAGE);
+  const [show, setShow] = useState<Show>("open");
+  const [rv, setRv] = useState<Record<string, HitReview | undefined>>({});
+  const reviewOf = (l: HuntListing) => (l.listing_id in rv ? rv[l.listing_id] : l.review);
   const [rep, setRep] = useState<HuntListingsReport | null>(null);
   const [err, setErr] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
@@ -47,9 +52,12 @@ export default function HuntListings({ seller, setSeller }: { seller: string; se
     return () => { live = false; };
   }, [source, years, gradeEarly]);
 
+  const base = useMemo(() => (rep?.listings ?? []).filter((l) =>
+    (!seller || l.seller === seller) && (!kind || l.kind === kind) && (!beatOnly || l.beats_benchmark) && (!hideSlow || !l.slow)),
+  [rep, seller, kind, beatOnly, hideSlow]);
+  const counts = useMemo(() => countShows(base, reviewOf), [base, rv]); // eslint-disable-line react-hooks/exhaustive-deps
   const rows = useMemo(() => {
-    const out = (rep?.listings ?? []).filter((l) =>
-      (!seller || l.seller === seller) && (!kind || l.kind === kind) && (!beatOnly || l.beats_benchmark) && (!hideSlow || !l.slow));
+    const out = base.filter((l) => show === "all" || showOf(reviewOf(l)) === show);
     const best = (l: HuntListing) => {
       const a = l.adj_ev?.ev_cents, c = l.adj_ev?.cgc?.ev_cents;
       return a == null ? c : c == null ? a : Math.max(a, c);
@@ -57,8 +65,8 @@ export default function HuntListings({ seller, setSeller }: { seller: string; se
     const val = (l: HuntListing) => sort === "adj_ev" ? l.adj_ev?.ev_cents : sort === "cgc_ev" ? l.adj_ev?.cgc?.ev_cents
       : sort === "best_ev" ? best(l) : sort === "grade_later" ? l.grade_later?.yearly : l.score;
     return sort === "score" ? out : [...out].sort((a, b) => (val(b) ?? -Infinity) - (val(a) ?? -Infinity));
-  }, [rep, seller, kind, beatOnly, hideSlow, sort]);
-  useEffect(() => setShown(PAGE), [seller, kind, beatOnly, hideSlow]);
+  }, [base, show, rv, sort]); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => setShown(PAGE), [seller, kind, beatOnly, hideSlow, show]);
 
   const sel = "rounded border border-gray-700 bg-gray-950 px-2 py-1 text-xs text-gray-200";
   const cur = rep?.sellers.find((s) => s.username === seller);
@@ -125,7 +133,8 @@ export default function HuntListings({ seller, setSeller }: { seller: string; se
             </label>
             <label className="flex items-center gap-1.5"><input type="checkbox" checked={beatOnly} onChange={(e) => setBeatOnly(e.target.checked)} /> Beats the S&amp;P ({pct(rep.params.benchmark)}/yr) only</label>
             <label className="flex items-center gap-1.5"><input type="checkbox" checked={hideSlow} onChange={(e) => setHideSlow(e.target.checked)} /> Hide slow sellers</label>
-            <span className="text-gray-500 tabular-nums">{rows.length} copies{rep.passed > 0 && ` · ${rep.passed} passed on hidden`}</span>
+            <ShowFilter show={show} setShow={setShow} counts={counts} />
+            <span className="text-gray-500 tabular-nums">{rows.length} copies</span>
           </div>
 
           {rows.length === 0 ? <p className="text-sm text-gray-500">Nothing matches right now.</p> : (
@@ -134,6 +143,7 @@ export default function HuntListings({ seller, setSeller }: { seller: string; se
                 <thead className="text-gray-500 text-left max-lg:!static">
                   <tr>
                     <th className="py-2 px-3 font-medium">Card</th>
+                    <th className="py-2 px-2 font-medium" title="Bid (with your max) or pass; then report won / lost">Action</th>
                     <th className="py-2 px-2 font-medium">Seller</th>
                     <th className="py-2 px-2 font-medium">Type</th>
                     <th className="py-2 px-2 font-medium text-right" title="Ask or current bid, with its listed shipping">Now</th>
@@ -150,7 +160,8 @@ export default function HuntListings({ seller, setSeller }: { seller: string; se
                     <th className="py-2 px-3 font-medium text-right">Score</th>
                   </tr>
                 </thead>
-                <tbody>{rows.slice(0, shown).map((l) => <Row key={l.listing_id} l={l} bench={rep.params.benchmark} />)}</tbody>
+                <tbody>{rows.slice(0, shown).map((l) => <Row key={l.listing_id} l={l} bench={rep.params.benchmark} review={reviewOf(l)}
+                  onReview={(r) => setRv((m) => ({ ...m, [l.listing_id]: r }))} />)}</tbody>
               </table>
               {rows.length > shown && (
                 <button onClick={() => setShown(shown + PAGE)} className="w-full py-2 text-xs text-indigo-300 hover:text-indigo-200 border-t border-gray-800">
@@ -166,7 +177,7 @@ export default function HuntListings({ seller, setSeller }: { seller: string; se
   );
 }
 
-function Row({ l, bench }: { l: HuntListing; bench: number }) {
+function Row({ l, bench, review, onReview }: { l: HuntListing; bench: number; review?: HitReview; onReview: (r: HitReview | undefined) => void }) {
   const td = "py-1.5 px-2 text-right tabular-nums whitespace-nowrap";
   const y = l.grade_later?.yearly;
   return (
@@ -186,6 +197,8 @@ function Row({ l, bench }: { l: HuntListing; bench: number }) {
           </div>
         </div>
       </td>
+      <td className="py-1.5 px-2"><ActionCell listingId={l.listing_id} displayKey={l.display_key} priceCents={l.price_cents} review={review}
+        shown={{ adj_ev: l.adj_ev, odds: l.grade_odds, add_cents: l.add_cents, raw_market_cents: l.raw_market_cents, grade_later: l.grade_later, timing: l.timing }} onChange={onReview} /></td>
       <td className="py-1.5 px-2 whitespace-nowrap text-gray-400">{l.seller_label}</td>
       <td className="py-1.5 px-2 whitespace-nowrap text-gray-400">
         {l.kind === "auction" ? <>Auction · {endsIn(l.ends_at)}{l.bids != null && <span className="text-gray-600"> · {l.bids} bids</span>}</> : "Buy Now"}
@@ -203,7 +216,8 @@ function Row({ l, bench }: { l: HuntListing; bench: number }) {
       <td className={td}><PSAOddsCell ev={l.adj_ev} popFallback={l.p10 || undefined} /></td>
       <td className="py-1.5 px-2">
         {l.grade_odds
-          ? <span className="inline-flex flex-wrap items-center gap-1"><GradeOddsBadge o={l.grade_odds} compact /><OddsFlag odds={l.grade_odds} shown={l.adj_ev} /></span>
+          ? <><span className="inline-flex flex-wrap items-center gap-1"><GradeOddsBadge o={l.grade_odds} compact /><OddsFlag odds={l.grade_odds} shown={l.adj_ev} /></span>
+              <ExplainChip e={l.grade_odds.explain?.PSA} /></>
           : <CheckCentering listingId={l.listing_id} photos={l.image_count} />}
         {(l.image_count == null || l.image_count >= 2 || l.grade_odds) && (
           <div className="mt-0.5"><BoughtButton listingId={l.listing_id} priceCents={l.price_cents} shown={{ adj_ev: l.adj_ev, odds: l.grade_odds }} initial={!!l.grade_odds?.bought_at} /></div>
