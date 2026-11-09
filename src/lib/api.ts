@@ -345,7 +345,7 @@ export async function triggerGradedRefresh(
 // The answer to an upload: a CSV export is stored at once (kind "csv"); a
 // saved HTML page becomes a worker job to poll.
 export type GemRateUploadResult =
-  | { kind: "csv"; grader: string; cards: number; rows_written: number; unknown_cards?: string[]; dropped_variants?: string[]; week: string }
+  | { kind: "csv"; grader: string; cards: number; rows_written: number; unknown_cards?: string[]; dropped_variants?: string[]; week: string; warnings?: string[] }
   | { kind?: undefined; job_id: string; status: string };
 
 export async function uploadGemRatePage(game: string, setCode: string, source: "psa-pop" | "cgc-pop", file: File): Promise<GemRateUploadResult> {
