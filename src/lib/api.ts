@@ -250,6 +250,11 @@ export interface ROICard {
   psa_total_pop: number | null;
   cgc_gem_pop: number | null;
   cgc_total_pop: number | null;
+  psa_9_pop?: number | null;
+  cgc_pristine_pop?: number | null; // Pristine + Perfect 10, inside cgc_gem_pop
+  cgc_9_5_pop?: number | null;
+  cgc_pristine_cents?: number | null; // 90-day sales median
+  cgc_9_5_cents?: number | null;
   // When each value above was captured.
   raw_price_at?: string | null;
   psa_9_at?: string | null;

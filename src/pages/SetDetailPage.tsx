@@ -15,10 +15,12 @@ import {
   type SealedRow,
   type SetRow,
   type ROICard,
+  fetchSettings,
 } from "../lib/api";
 import { Spinner, ErrorMsg } from "../components/Spinner";
 import { PriceCell, SourceBadge } from "../components/PriceCell";
-import { formatCents, formatPct, computeROI, evColor, GRADING_FEES, type ROIResult, type ROIOptions } from "../lib/roi";
+import { formatCents, formatPct, evColor, GRADING_FEES } from "../lib/roi";
+import { gradeEv, type GradeEvResult, type GraderCfg, type GraderEv } from "../lib/gradeEv";
 import { useGamePrefs } from "../lib/prefs";
 import { getPokemonSetId, ptcgioCardUrl } from "../lib/ptcgio";
 import { AsOf, FreshnessChips } from "../components/AsOf";
@@ -695,34 +697,36 @@ function FetchPricesPanel({ game, code, set }: { game: string; code: string; set
 
 // ---- Graded ROI tab --------------------------------------------------------
 
-type SortKey = "number" | "psa_gem" | "cgc_gem" | "psa_regrade_ev" | "psa_grade_raw_ev" | "cgc_auction_ev" | "cgc_takehome_ev" | "psa_regrade_roi" | "psa_grade_raw_roi" | "psa_10_uplift" | "psa_9_uplift" | "raw_price" | "psa_9_price" | "psa_10_price" | "xirr" | "psa_total_pop";
+type SortKey = "number" | "raw_price" | "psa_9_price" | "psa_10_price" | "psa_gem" | "cgc_gem" | "pristine_gem" | "psa_total_pop" | "psa_10_uplift"
+  | "psa_ev" | "psa_roi" | "psa_ann" | "cgc_ev" | "cgc_roi" | "cgc_ann" | "best_ev";
 type SortDir = "asc" | "desc";
 
-type ColId = "raw" | "psa9" | "psa10" | "cgc10" | "psa_gem" | "cgc_gem" | "pop" | "uplift10" | "uplift9" | "ev_raw" | "ev_raw_roi" | "ev_psa9" | "ev_psa9_roi" | "cgc_ev" | "xirr" | "best";
+type ColId = "raw" | "psa9" | "psa10" | "cgc10" | "pristine" | "psa_gem" | "cgc_gem" | "pop" | "uplift10"
+  | "psa_ev" | "psa_roi" | "psa_ann" | "cgc_ev" | "cgc_roi" | "cgc_ann" | "best";
 
 const ALL_COLS: { id: ColId; label: string }[] = [
-  { id: "raw",        label: "Raw" },
-  { id: "psa9",       label: "PSA 9" },
-  { id: "psa10",      label: "PSA 10" },
-  { id: "cgc10",      label: "CGC 10" },
-  { id: "psa_gem",    label: "PSA gem%" },
-  { id: "cgc_gem",    label: "CGC gem%" },
-  { id: "pop",        label: "Pop" },
-  { id: "uplift10",   label: "10↑raw" },
-  { id: "uplift9",    label: "9↑raw" },
-  { id: "ev_raw",     label: "PSA→raw" },
-  { id: "ev_raw_roi", label: "→raw ROI%" },
-  { id: "ev_psa9",    label: "PSA→9" },
-  { id: "ev_psa9_roi",label: "→9 ROI%" },
-  { id: "cgc_ev",     label: "CGC EV" },
-  { id: "xirr",       label: "XIRR/yr" },
-  { id: "best",       label: "Best" },
+  { id: "raw",      label: "Raw" },
+  { id: "psa9",     label: "PSA 9" },
+  { id: "psa10",    label: "PSA 10" },
+  { id: "cgc10",    label: "CGC 10" },
+  { id: "pristine", label: "Pristine" },
+  { id: "psa_gem",  label: "PSA gem%" },
+  { id: "cgc_gem",  label: "CGC gem% (Pristine)" },
+  { id: "pop",      label: "Pop" },
+  { id: "uplift10", label: "10↑raw" },
+  { id: "psa_ev",   label: "PSA EV $" },
+  { id: "psa_roi",  label: "PSA ROI" },
+  { id: "psa_ann",  label: "PSA /yr" },
+  { id: "cgc_ev",   label: "CGC EV $" },
+  { id: "cgc_roi",  label: "CGC ROI" },
+  { id: "cgc_ann",  label: "CGC /yr" },
+  { id: "best",     label: "Best" },
 ];
-const DEFAULT_HIDDEN = new Set<ColId>(["cgc10", "uplift9", "ev_raw", "ev_raw_roi", "cgc_ev", "xirr"]);
+const DEFAULT_HIDDEN = new Set<ColId>(["psa9", "cgc10", "pristine", "uplift10"]);
 
 interface CardWithROI {
   card: ROICard;
-  roi: ROIResult;
+  ev: GradeEvResult;
 }
 
 function EvCell({ ev }: { ev: number | null }) {
@@ -734,6 +738,22 @@ function EvCell({ ev }: { ev: number | null }) {
   );
 }
 
+function PctCell({ v }: { v: number | null | undefined }) {
+  if (v == null) return <span className="text-gray-600">—</span>;
+  const txt = v > 9.99 ? ">999%" : `${v > 0 ? "+" : ""}${(v * 100).toFixed(0)}%`;
+  return <span className={`tabular-nums font-mono text-[11px] ${v > 0 ? "text-green-400" : "text-red-400"}`}>{txt}</span>;
+}
+
+// Compounded yearly return assumes the money goes round again every
+// turnaround; the simple rate (ROI × 365 / days) doesn't.
+const annTitle = (g: GraderEv | null) =>
+  g ? `~${g.days} days to get it back · compounded ${g.annualized > 9.99 ? ">999" : (g.annualized * 100).toFixed(0)}%/yr · simple ${(g.roi * 365 / g.days * 100).toFixed(0)}%/yr` : undefined;
+
+function GradeEvCell({ g }: { g: GraderEv | null }) {
+  if (!g) return <span className="text-gray-600">—</span>;
+  return <span title={g.note}><EvCell ev={g.evCents} /></span>;
+}
+
 function GemBadge({ rate }: { rate: number | null }) {
   if (rate == null) return <span className="text-gray-600">—</span>;
   const pct = rate * 100;
@@ -741,37 +761,7 @@ function GemBadge({ rate }: { rate: number | null }) {
   return <span className={`tabular-nums font-mono text-xs ${color}`}>{pct.toFixed(1)}%</span>;
 }
 
-function XirrCell({ xirr }: { xirr: number | null }) {
-  if (xirr == null) return <span className="text-gray-600">—</span>;
-  const pct = xirr * 100;
-  const color = xirr > 0.5 ? "text-emerald-400" : xirr > 0 ? "text-green-400" : "text-red-400";
-  return (
-    <span className={`tabular-nums font-mono text-xs ${color}`}>
-      {pct >= 0 ? "+" : ""}{pct.toFixed(0)}%
-    </span>
-  );
-}
 
-function StrategyBadge({ strategy }: { strategy: ROIResult["bestStrategy"] }) {
-  if (!strategy) return <span className="text-gray-600">—</span>;
-  const map: Record<NonNullable<ROIResult["bestStrategy"]>, string> = {
-    psa_regrade: "bg-blue-900 text-blue-300",
-    cgc_auction: "bg-purple-900 text-purple-300",
-    cgc_takehome: "bg-violet-900 text-violet-300",
-    hold: "bg-gray-800 text-gray-400",
-  };
-  const label: Record<NonNullable<ROIResult["bestStrategy"]>, string> = {
-    psa_regrade: "PSA",
-    cgc_auction: "CGC auction",
-    cgc_takehome: "CGC takehome",
-    hold: "hold",
-  };
-  return (
-    <span className={`px-1.5 py-0.5 rounded text-xs font-medium ${map[strategy]}`}>
-      {label[strategy]}
-    </span>
-  );
-}
 
 // ---- Gem-rate sensitivity chart --------------------------------------------
 
@@ -984,17 +974,18 @@ function GradedTab({ game, code }: { game: string; code: string }) {
   const [set, setSet] = useState<SetRow | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
-  const [sortKey, setSortKey] = useState<SortKey>("psa_regrade_ev");
+  const [sortKey, setSortKey] = useState<SortKey>("best_ev");
   const [sortDir, setSortDir] = useState<SortDir>("desc");
   const [filterPositive, setFilterPositive] = useState(false);
   const [selectedKey, setSelectedKey] = useState<string | null>(null);
   const [watchOverrides, setWatchOverrides] = useState<Record<string, boolean>>({});
   const [gemMultiplier, setGemMultiplier] = useState(1);
   const [customMultiplierInput, setCustomMultiplierInput] = useState("1");
-  const [usePsa9Override, setUsePsa9Override] = useState(false);
-  const [psa9OverrideInput, setPsa9OverrideInput] = useState("");
-  const [gradingMonths, setGradingMonths] = useState(6);
-  const [sellingFeePct, setSellingFeePct] = useState(85);
+  // Grading tiers and the selling fee come from Settings.
+  const [graders, setGraders] = useState<Record<string, GraderCfg> | null>(null);
+  const [sellingFeePct, setSellingFeePct] = useState<number | null>(null);
+  const [defaultFeePct, setDefaultFeePct] = useState(0);
+  const [businessDays, setBusinessDays] = useState(true);
   const [minPopFilter, setMinPopFilter] = useState(0);
   const [hiddenCols, setHiddenCols] = useState<Set<ColId>>(DEFAULT_HIDDEN);
   const [selectedRarities, setSelectedRarities] = useState<Set<string>>(new Set());
@@ -1003,6 +994,17 @@ function GradedTab({ game, code }: { game: string; code: string }) {
   // with no tracked cards fall back to every grading-worthy card.
   const [trackedOnly, setTrackedOnly] = useState(true);
   const [noTrackedCards, setNoTrackedCards] = useState(false);
+
+  useEffect(() => {
+    fetchSettings()
+      .then(({ settings }) => {
+        setGraders(settings.graders as unknown as Record<string, GraderCfg>);
+        const fee = Math.round((settings.sell_fee_pct ?? 0) * 1000) / 10;
+        setDefaultFeePct(fee);
+        setSellingFeePct((v) => (v == null ? fee : v));
+      })
+      .catch(() => setGraders({}));
+  }, []);
 
   useEffect(() => {
     setLoading(true);
@@ -1032,17 +1034,13 @@ function GradedTab({ game, code }: { game: string; code: string }) {
     { label: "CGC gem rate", at: newest(cards.map((c) => c.cgc_pop_at)) },
   ], [cards]);
 
-  const roiOpts = useMemo<ROIOptions>(() => {
-    const opts: ROIOptions = {};
-    if (gemMultiplier !== 1) opts.gemRateMultiplier = gemMultiplier;
-    if (usePsa9Override && psa9OverrideInput) {
-      const val = parseFloat(psa9OverrideInput);
-      if (!isNaN(val) && val > 0) opts.psa9CostOverrideCents = Math.round(val * 100);
-    }
-    opts.gradingMonths = gradingMonths;
-    opts.sellingFeePct = sellingFeePct / 100;
-    return opts;
-  }, [gemMultiplier, usePsa9Override, psa9OverrideInput, gradingMonths, sellingFeePct]);
+  const evOpts = useMemo(() => ({
+    graders: graders ?? {},
+    sellFee: (sellingFeePct ?? defaultFeePct) / 100,
+    gemMultiplier,
+    businessDays,
+    buffer: 0.1,
+  }), [graders, sellingFeePct, defaultFeePct, gemMultiplier, businessDays]);
 
   const availableRarities = useMemo(() => {
     const seen = new Set<string>();
@@ -1051,14 +1049,9 @@ function GradedTab({ game, code }: { game: string; code: string }) {
   }, [cards]);
 
   const rows = useMemo<CardWithROI[]>(() => {
-    const enriched = cards.map((c) => ({ card: c, roi: computeROI(c, roiOpts) }));
-    return enriched.filter(({ card, roi }) => {
-      if (filterPositive) {
-        const hasPositiveEv =
-          (roi.psaRegradePsa9Ev != null && roi.psaRegradePsa9Ev > 0) ||
-          (roi.cgcRegradePsa9AuctionEv != null && roi.cgcRegradePsa9AuctionEv > 0);
-        if (!hasPositiveEv) return false;
-      }
+    const enriched = cards.map((c) => ({ card: c, ev: gradeEv(c, evOpts) }));
+    return enriched.filter(({ card, ev }) => {
+      if (filterPositive && !((ev.psa?.evCents ?? -1) > 0 || (ev.cgc?.evCents ?? -1) > 0)) return false;
       if (minPopFilter > 0) {
         const psaTotal = card.psa_total_pop;
         const cgcTotal = card.cgc_total_pop;
@@ -1073,33 +1066,30 @@ function GradedTab({ game, code }: { game: string; code: string }) {
       }
       return true;
     });
-  }, [cards, filterPositive, minPopFilter, selectedRarities, roiOpts]);
+  }, [cards, filterPositive, minPopFilter, selectedRarities, evOpts]);
 
   const sorted = useMemo(() => {
     return [...rows].sort((a, b) => {
-      const getVal = ({ card, roi }: CardWithROI): number => {
-        if (sortKey === "number") return parseFloat(card.number) || 0;
-        if (sortKey === "psa_gem") return roi.psaGemRate ?? -Infinity;
-        if (sortKey === "cgc_gem") return roi.cgcGemRate ?? -Infinity;
-        if (sortKey === "psa_regrade_ev") return roi.psaRegradePsa9Ev ?? -Infinity;
-        if (sortKey === "psa_grade_raw_ev") return roi.psaGradeRawEv ?? -Infinity;
-        if (sortKey === "psa_regrade_roi") return roi.psaRegradePsa9EvRoi ?? -Infinity;
-        if (sortKey === "psa_grade_raw_roi") return roi.psaGradeRawEvRoi ?? -Infinity;
-        if (sortKey === "cgc_auction_ev") return roi.cgcRegradePsa9AuctionEv ?? -Infinity;
-        if (sortKey === "cgc_takehome_ev") return roi.cgcRegradePsa9TakehomeEv ?? -Infinity;
-        if (sortKey === "psa_10_uplift") {
-          return card.psa_10_cents != null && card.raw_price_cents != null
-            ? card.psa_10_cents - card.raw_price_cents : -Infinity;
+      const getVal = ({ card, ev }: CardWithROI): number => {
+        const n = (v: number | null | undefined) => (v == null ? -Infinity : v);
+        switch (sortKey) {
+          case "number": return parseFloat(card.number) || 0;
+          case "raw_price": return n(card.raw_price_cents);
+          case "psa_9_price": return n(card.psa_9_cents);
+          case "psa_10_price": return n(card.psa_10_cents);
+          case "psa_gem": return n(ev.psaGem);
+          case "cgc_gem": return n(ev.cgcGem);
+          case "pristine_gem": return n(ev.pristineGem);
+          case "psa_total_pop": return n(card.psa_total_pop);
+          case "psa_10_uplift": return card.psa_10_cents != null && card.raw_price_cents != null ? card.psa_10_cents - card.raw_price_cents : -Infinity;
+          case "psa_ev": return n(ev.psa?.evCents);
+          case "psa_roi": return n(ev.psa?.roi);
+          case "psa_ann": return n(ev.psa?.annualized);
+          case "cgc_ev": return n(ev.cgc?.evCents);
+          case "cgc_roi": return n(ev.cgc?.roi);
+          case "cgc_ann": return n(ev.cgc?.annualized);
+          case "best_ev": return Math.max(n(ev.psa?.evCents), n(ev.cgc?.evCents));
         }
-        if (sortKey === "psa_9_uplift") {
-          return card.psa_9_cents != null && card.raw_price_cents != null
-            ? card.psa_9_cents - card.raw_price_cents : -Infinity;
-        }
-        if (sortKey === "raw_price") return card.raw_price_cents ?? -Infinity;
-        if (sortKey === "psa_9_price") return card.psa_9_cents ?? -Infinity;
-        if (sortKey === "psa_10_price") return card.psa_10_cents ?? -Infinity;
-        if (sortKey === "xirr") return roi.bestXirr ?? -Infinity;
-        if (sortKey === "psa_total_pop") return card.psa_total_pop ?? -Infinity;
         return -Infinity;
       };
       return sortDir === "desc" ? getVal(b) - getVal(a) : getVal(a) - getVal(b);
@@ -1128,7 +1118,12 @@ function GradedTab({ game, code }: { game: string; code: string }) {
   if (loading) return <Spinner />;
   if (error) return <ErrorMsg msg={error} />;
 
-  const isAdjusted = gemMultiplier !== 1 || (usePsa9Override && !!psa9OverrideInput && !isNaN(parseFloat(psa9OverrideInput))) || gradingMonths !== 6 || sellingFeePct !== 85 || minPopFilter > 0;
+  const isAdjusted = gemMultiplier !== 1 || (sellingFeePct != null && sellingFeePct !== defaultFeePct) || !businessDays || minPopFilter > 0;
+  const tierText = (g: string) => {
+    const c = graders?.[g];
+    if (!c || c.tiers.length === 0) return `${g.toUpperCase()}: no tier in Settings`;
+    return `${g.toUpperCase()} ${c.tiers.map((t) => `${t.name} $${(t.fee_cents / 100).toFixed(2)} (≤$${(t.max_value_cents / 100).toFixed(0)}, ${t.turnaround_days}d)`).join(" / ")} + $${(c.ship_cents / 100).toFixed(2)} ship`;
+  };
 
   const show = (col: ColId) => !hiddenCols.has(col);
   const toggleCol = (col: ColId) =>
@@ -1143,7 +1138,7 @@ function GradedTab({ game, code }: { game: string; code: string }) {
     <div className="space-y-4">
       <div className="flex items-center gap-4 flex-wrap">
         <p className="text-xs text-gray-400">
-          Fees: PSA $25 · CGC $8.50 (auction) / $10 (takehome) · XIRR: annualised return (pay card upfront, sell graded after N months at X% net)
+          Buy raw at market, grade, sell at the grade it gets, at the public gem rate (population split for misses). Fees from Settings: {tierText("psa")} · {tierText("cgc")}. /yr: annualized over the quoted turnaround + 10%{businessDays ? " (business days → calendar)" : ""}.
         </p>
         {isAdjusted && (
           <span className="px-1.5 py-0.5 rounded text-xs font-medium bg-amber-900/60 text-amber-300">adjusted</span>
@@ -1190,55 +1185,23 @@ function GradedTab({ game, code }: { game: string; code: string }) {
           />
           <span className="text-gray-500">×</span>
         </div>
-        <div className="flex items-center gap-2">
-          <label className="flex items-center gap-1.5 cursor-pointer text-gray-400">
-            <input
-              type="checkbox"
-              className="accent-indigo-500"
-              checked={usePsa9Override}
-              onChange={(e) => setUsePsa9Override(e.target.checked)}
-            />
-            PSA 9 cost
-          </label>
-          {usePsa9Override && (
-            <>
-              <span className="text-gray-600">$</span>
-              <input
-                type="number"
-                min="0"
-                step="0.01"
-                placeholder="my cost"
-                value={psa9OverrideInput}
-                onChange={(e) => setPsa9OverrideInput(e.target.value)}
-                className="w-20 bg-gray-800 border border-gray-700 rounded px-1.5 py-0.5 font-mono text-xs text-white"
-              />
-              <span className="text-gray-500">per card</span>
-            </>
-          )}
-        </div>
         <div className="flex items-center gap-2 border-l border-gray-700 pl-6">
-          <span className="text-gray-500 font-medium">XIRR:</span>
+          <span className="text-gray-500">Selling fee</span>
           <input
             type="number"
-            min="1"
-            max="36"
-            step="1"
-            value={gradingMonths}
-            onChange={(e) => { const v = parseInt(e.target.value); if (v > 0 && v <= 36) setGradingMonths(v); }}
-            className="w-12 bg-gray-800 border border-gray-700 rounded px-1.5 py-0.5 font-mono text-center text-xs text-white"
+            min="0"
+            max="50"
+            step="0.5"
+            value={sellingFeePct ?? defaultFeePct}
+            onChange={(e) => { const v = parseFloat(e.target.value); if (!isNaN(v) && v >= 0 && v <= 50) setSellingFeePct(v); }}
+            className="w-14 bg-gray-800 border border-gray-700 rounded px-1.5 py-0.5 font-mono text-center text-xs text-white"
           />
-          <span className="text-gray-500">mo turnaround ·</span>
-          <input
-            type="number"
-            min="1"
-            max="100"
-            step="1"
-            value={sellingFeePct}
-            onChange={(e) => { const v = parseInt(e.target.value); if (v > 0 && v <= 100) setSellingFeePct(v); }}
-            className="w-12 bg-gray-800 border border-gray-700 rounded px-1.5 py-0.5 font-mono text-center text-xs text-white"
-          />
-          <span className="text-gray-500">% net of fees</span>
+          <span className="text-gray-500" title="Settings' selling fee (0% = the FanCash route)">% (Settings: {defaultFeePct}%)</span>
         </div>
+        <label className="flex items-center gap-1.5 text-gray-400 border-l border-gray-700 pl-6" title="Settings' turnaround is the grader's quoted business days: ×7/5 to calendar days (after the 10% buffer)">
+          <input type="checkbox" className="accent-indigo-500" checked={businessDays} onChange={(e) => setBusinessDays(e.target.checked)} />
+          Turnaround is business days
+        </label>
         <div className="flex items-center gap-2 border-l border-gray-700 pl-6">
           <span className="text-gray-500">Min pop:</span>
           <input
@@ -1316,32 +1279,30 @@ function GradedTab({ game, code }: { game: string; code: string }) {
               <th className="px-2 py-2.5 w-6" title="Watch — include in graded price scrape">👁</th>
               <SortTh label="#" col="number" />
               <th className="text-left px-3 py-2.5 font-medium">Card</th>
-              {show("raw")        && <SortTh label="Raw" col="raw_price" right />}
-              {show("psa9")       && <SortTh label="PSA 9" col="psa_9_price" right />}
-              {show("psa10")      && <SortTh label="PSA 10" col="psa_10_price" right />}
-              {show("cgc10")      && <th className="text-right px-3 py-2.5 font-medium">CGC 10</th>}
-              {show("psa_gem")    && <SortTh label="PSA gem%" col="psa_gem" right />}
-              {show("cgc_gem")    && <SortTh label="CGC gem%" col="cgc_gem" right />}
-              {show("pop")        && <SortTh label="Pop" col="psa_total_pop" right />}
-              {show("uplift10")   && <SortTh label="10↑raw" col="psa_10_uplift" right />}
-              {show("uplift9")    && <SortTh label="9↑raw" col="psa_9_uplift" right />}
-              {show("ev_raw")     && <SortTh label="PSA→raw" col="psa_grade_raw_ev" right />}
-              {show("ev_raw_roi") && <SortTh label="→raw ROI%" col="psa_grade_raw_roi" right />}
-              {show("ev_psa9")    && <SortTh label="PSA→9" col="psa_regrade_ev" right />}
-              {show("ev_psa9_roi")&& <SortTh label="→9 ROI%" col="psa_regrade_roi" right />}
-              {show("cgc_ev")     && <SortTh label="CGC EV" col="cgc_auction_ev" right />}
-              {show("xirr")       && <SortTh label="XIRR/yr" col="xirr" right />}
-              {show("best")       && <th className="text-left px-3 py-2.5 font-medium">Best</th>}
+              {show("raw")      && <SortTh label="Raw" col="raw_price" right />}
+              {show("psa9")     && <SortTh label="PSA 9" col="psa_9_price" right />}
+              {show("psa10")    && <SortTh label="PSA 10" col="psa_10_price" right />}
+              {show("cgc10")    && <th className="text-right px-3 py-2.5 font-medium">CGC 10</th>}
+              {show("pristine") && <th className="text-right px-3 py-2.5 font-medium" title="CGC Pristine 10: 90-day sales median">Pristine</th>}
+              {show("psa_gem")  && <SortTh label="PSA gem%" col="psa_gem" right />}
+              {show("cgc_gem")  && <SortTh label="CGC gem% (P)" col="cgc_gem" right />}
+              {show("pop")      && <SortTh label="Pop" col="psa_total_pop" right />}
+              {show("uplift10") && <SortTh label="10↑raw" col="psa_10_uplift" right />}
+              {show("psa_ev")   && <SortTh label="PSA EV $" col="psa_ev" right />}
+              {show("psa_roi")  && <SortTh label="PSA ROI" col="psa_roi" right />}
+              {show("psa_ann")  && <SortTh label="PSA /yr" col="psa_ann" right />}
+              {show("cgc_ev")   && <SortTh label="CGC EV $" col="cgc_ev" right />}
+              {show("cgc_roi")  && <SortTh label="CGC ROI" col="cgc_roi" right />}
+              {show("cgc_ann")  && <SortTh label="CGC /yr" col="cgc_ann" right />}
+              {show("best")     && <SortTh label="Best" col="best_ev" />}
             </tr>
           </thead>
           <tbody className="divide-y divide-gray-800/60">
-            {sorted.map(({ card, roi }) => {
+            {sorted.map(({ card, ev }) => {
               const isExpanded = selectedKey === card.card_id;
               const isWatched = watchOverrides[card.display_key] ?? card.graded_watch;
               const psa10Uplift = card.psa_10_cents != null && card.raw_price_cents != null
                 ? card.psa_10_cents - card.raw_price_cents : null;
-              const psa9Uplift = card.psa_9_cents != null && card.raw_price_cents != null
-                ? card.psa_9_cents - card.raw_price_cents : null;
               return (
                 <Fragment key={card.card_id}>
                   <tr
@@ -1389,21 +1350,14 @@ function GradedTab({ game, code }: { game: string; code: string }) {
                     {show("psa9")        && <td className="px-3 py-2.5 text-right text-gray-300 tabular-nums font-mono"><AsOf at={card.psa_9_at} label="PSA 9 (PriceCharting)">{formatCents(card.psa_9_cents)}</AsOf></td>}
                     {show("psa10")       && <td className="px-3 py-2.5 text-right text-gray-300 tabular-nums font-mono"><AsOf at={card.psa_10_at} label="PSA 10 (PriceCharting)">{formatCents(card.psa_10_cents)}</AsOf></td>}
                     {show("cgc10")       && <td className="px-3 py-2.5 text-right text-gray-300 tabular-nums font-mono"><AsOf at={card.cgc_10_at} label="CGC 10 (PriceCharting)">{formatCents(card.cgc_10_cents)}</AsOf></td>}
+                    {show("pristine")    && <td className="px-3 py-2.5 text-right text-gray-300 tabular-nums font-mono" title="CGC Pristine 10: 90-day sales median (2+ sales)">{formatCents(card.cgc_pristine_cents ?? null)}</td>}
                     {show("psa_gem")     && <td className="px-3 py-2.5 text-right">
-                      {gemMultiplier !== 1 && roi.personalPsaGemRate !== roi.psaGemRate ? (
-                        <div className="flex flex-col items-end gap-0.5">
-                          <span className="text-gray-600 text-[10px] font-mono">pop <GemBadge rate={roi.psaGemRate} /></span>
-                          <span className="text-[10px] text-gray-500">me <GemBadge rate={roi.personalPsaGemRate} /></span>
-                        </div>
-                      ) : <AsOf at={card.psa_pop_at} label={`PSA ${card.psa_gem_pop ?? "—"} gem of ${card.psa_total_pop ?? "—"} graded`}><GemBadge rate={roi.psaGemRate} /></AsOf>}
+                      <AsOf at={card.psa_pop_at} label={`PSA ${card.psa_gem_pop ?? "—"} gem of ${card.psa_total_pop ?? "—"} graded`}><GemBadge rate={ev.psaGem} /></AsOf>
+                      {gemMultiplier !== 1 && ev.psa && <div className="text-[10px] text-gray-500">me <GemBadge rate={ev.psa.pTop} /></div>}
                     </td>}
                     {show("cgc_gem")     && <td className="px-3 py-2.5 text-right">
-                      {gemMultiplier !== 1 && roi.personalCgcGemRate !== roi.cgcGemRate ? (
-                        <div className="flex flex-col items-end gap-0.5">
-                          <span className="text-gray-600 text-[10px] font-mono">pop <GemBadge rate={roi.cgcGemRate} /></span>
-                          <span className="text-[10px] text-gray-500">me <GemBadge rate={roi.personalCgcGemRate} /></span>
-                        </div>
-                      ) : <AsOf at={card.cgc_pop_at} label={`CGC ${card.cgc_gem_pop ?? "—"} gem of ${card.cgc_total_pop ?? "—"} graded`}><GemBadge rate={roi.cgcGemRate} /></AsOf>}
+                      <AsOf at={card.cgc_pop_at} label={`CGC ${card.cgc_gem_pop ?? "—"} 10s (${card.cgc_pristine_pop ?? "—"} Pristine) of ${card.cgc_total_pop ?? "—"} graded`}><GemBadge rate={ev.cgcGem} /></AsOf>
+                      {ev.pristineGem != null && <div className="text-[10px] text-gray-500" title="CGC Pristine 10 share of all CGC graded">P <span className="font-mono">{(ev.pristineGem * 100).toFixed(1)}%</span></div>}
                     </td>}
                     {show("pop")         && <td className="px-3 py-2.5 text-right text-gray-500 tabular-nums font-mono text-[10px]" title={`PSA: ${card.psa_total_pop ?? "—"} total · CGC: ${card.cgc_total_pop ?? "—"} total`}>
                       {card.psa_total_pop != null ? <AsOf at={card.psa_pop_at} label="PSA pop">{card.psa_total_pop}</AsOf> : <span className="text-gray-700">—</span>}
@@ -1413,34 +1367,24 @@ function GradedTab({ game, code }: { game: string; code: string }) {
                         ? <span className={psa10Uplift > 0 ? "text-green-400" : "text-gray-500"}>{formatCents(psa10Uplift)}</span>
                         : <span className="text-gray-600">—</span>}
                     </td>}
-                    {show("uplift9")     && <td className="px-3 py-2.5 text-right tabular-nums font-mono">
-                      {psa9Uplift != null
-                        ? <span className="text-gray-400">{formatCents(psa9Uplift)}</span>
-                        : <span className="text-gray-600">—</span>}
+                    {show("psa_ev")      && <td className="px-3 py-2.5 text-right"><GradeEvCell g={ev.psa} /></td>}
+                    {show("psa_roi")     && <td className="px-3 py-2.5 text-right" title={ev.psa ? `cost ${formatCents(ev.psa.costCents)}` : undefined}><PctCell v={ev.psa?.roi} /></td>}
+                    {show("psa_ann")     && <td className="px-3 py-2.5 text-right" title={annTitle(ev.psa)}><PctCell v={ev.psa?.annualized} /></td>}
+                    {show("cgc_ev")      && <td className="px-3 py-2.5 text-right"><GradeEvCell g={ev.cgc} /></td>}
+                    {show("cgc_roi")     && <td className="px-3 py-2.5 text-right" title={ev.cgc ? `cost ${formatCents(ev.cgc.costCents)}` : undefined}><PctCell v={ev.cgc?.roi} /></td>}
+                    {show("cgc_ann")     && <td className="px-3 py-2.5 text-right" title={annTitle(ev.cgc)}><PctCell v={ev.cgc?.annualized} /></td>}
+                    {show("best")        && <td className="px-3 py-2.5 whitespace-nowrap">
+                      {ev.best == null ? <span className="text-gray-600">—</span>
+                        : (ev[ev.best]?.evCents ?? 0) <= 0 ? <span className="text-gray-500">don't grade</span>
+                        : <span className={`px-1.5 py-0.5 rounded text-[10px] font-medium ${ev.best === "psa" ? "bg-blue-900 text-blue-300" : "bg-purple-900 text-purple-300"}`}>{ev.best.toUpperCase()}</span>}
                     </td>}
-                    {show("ev_raw")      && <td className="px-3 py-2.5 text-right"><EvCell ev={roi.psaGradeRawEv} /></td>}
-                    {show("ev_raw_roi")  && <td className="px-3 py-2.5 text-right tabular-nums font-mono text-[11px]">
-                      {roi.psaGradeRawEvRoi != null
-                        ? <span className={roi.psaGradeRawEvRoi > 0 ? "text-green-400" : "text-red-400"}>{(roi.psaGradeRawEvRoi * 100).toFixed(0)}%</span>
-                        : <span className="text-gray-600">—</span>}
-                    </td>}
-                    {show("ev_psa9")     && <td className="px-3 py-2.5 text-right"><EvCell ev={roi.psaRegradePsa9Ev} /></td>}
-                    {show("ev_psa9_roi") && <td className="px-3 py-2.5 text-right tabular-nums font-mono text-[11px]">
-                      {roi.psaRegradePsa9EvRoi != null
-                        ? <span className={roi.psaRegradePsa9EvRoi > 0 ? "text-green-400" : "text-red-400"}>{(roi.psaRegradePsa9EvRoi * 100).toFixed(0)}%</span>
-                        : <span className="text-gray-600">—</span>}
-                    </td>}
-                    {show("cgc_ev")      && <td className="px-3 py-2.5 text-right"><EvCell ev={roi.cgcRegradePsa9AuctionEv} /></td>}
-                    {show("xirr")        && <td className="px-3 py-2.5 text-right"><XirrCell xirr={roi.bestXirr} /></td>}
-                    {show("best")        && <td className="px-3 py-2.5"><StrategyBadge strategy={roi.bestStrategy} /></td>}
                   </tr>
                   {isExpanded && (
                     <tr>
                       <td colSpan={visibleColCount} className="px-6 py-5 bg-gray-950 border-b border-gray-800">
                         <GemSensitivityChart
                           card={card}
-                          marketGemRate={roi.psaGemRate}
-                          psa9CostOverrideCents={roiOpts.psa9CostOverrideCents}
+                          marketGemRate={ev.psaGem}
                         />
                       </td>
                     </tr>
