@@ -1,3 +1,4 @@
+import GemRateUpload from "../components/GemRateUpload";
 import HuntTab from "../components/HuntTab";
 import { Fragment, useEffect, useMemo, useState } from "react";
 import { Link, useParams, useSearchParams } from "react-router-dom";
@@ -1157,6 +1158,7 @@ function GradedTab({ game, code }: { game: string; code: string }) {
           Positive EV only
         </label>
         <FetchPricesPanel game={game} code={code} set={set} />
+        <GemRateUpload game={game} code={code} psaUrl={set?.external_ids?.psa_pop_url} cgcUrl={set?.external_ids?.cgc_pop_url} />
       </div>
       {/* Personal assumptions controls */}
       <div className="rounded border border-gray-800 bg-gray-900/50 px-4 py-3 flex flex-wrap gap-x-8 gap-y-3 text-xs text-gray-300">

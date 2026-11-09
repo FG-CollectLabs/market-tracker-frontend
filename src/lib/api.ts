@@ -335,6 +335,24 @@ export async function triggerGradedRefresh(
   });
 }
 
+// A GemRate set page saved from a browser (GemRate's Cloudflare check blocks
+// the worker), sent to the worker as a pop refresh.
+export async function uploadGemRatePage(game: string, setCode: string, source: "psa-pop" | "cgc-pop", file: File): Promise<{ job_id: string; status: string }> {
+  const BASE = import.meta.env.VITE_API_URL ?? "";
+  const auth = await authHeaders();
+  const form = new FormData();
+  form.set("game", game);
+  form.set("set_code", setCode);
+  form.set("source", source);
+  form.set("file", file);
+  const r = await fetch(`${BASE}/v1/admin/graded/upload-page`, { method: "POST", headers: auth, body: form });
+  if (!r.ok) {
+    const body = await r.json().catch(() => null);
+    throw new Error(body?.message ?? body?.detail ?? `${r.status} upload-page`);
+  }
+  return r.json();
+}
+
 export async function fetchGradedJob(jobId: string): Promise<RefreshJob> {
   const BASE = import.meta.env.VITE_API_URL ?? "";
   const auth = await authHeaders();
