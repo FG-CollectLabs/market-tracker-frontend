@@ -1,3 +1,4 @@
+import { useOddsReload } from "../lib/useOddsReload";
 import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import { checkListingGradeOdds, fetchWatchHunt, type GradeOdds, type HuntListing, type HuntListingsReport, type ValueSource } from "../lib/api";
@@ -39,6 +40,7 @@ export default function HuntListings({ seller, setSeller }: { seller: string; se
   const [rv, setRv] = useState<Record<string, HitReview | undefined>>({});
   const reviewOf = (l: HuntListing) => (l.listing_id in rv ? rv[l.listing_id] : l.review);
   const [rep, setRep] = useState<HuntListingsReport | null>(null);
+  const oddsReload = useOddsReload(); // ↻ on an odds badge: refetch so odds and EV recompute
   const [err, setErr] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
 
@@ -51,7 +53,7 @@ export default function HuntListings({ seller, setSeller }: { seller: string; se
       .catch((e) => live && setErr(String(e)))
       .finally(() => live && setLoading(false));
     return () => { live = false; };
-  }, [source, years, gradeEarly]);
+  }, [source, years, gradeEarly, oddsReload]);
 
   const base = useMemo(() => (rep?.listings ?? []).filter((l) =>
     (!seller || l.seller === seller) && (!kind || l.kind === kind) && (!beatOnly || l.beats_benchmark) && (!hideSlow || !l.slow)),

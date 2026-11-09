@@ -1,3 +1,4 @@
+import { useOddsReload } from "../lib/useOddsReload";
 import { Fragment, useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import { fetchRegrade, type RegradeListing, type RegradePlay, type RegradeReport, type ValueSource } from "../lib/api";
@@ -67,6 +68,7 @@ export default function RegradeBoard({ seller, setSeller }: { seller: string; se
   const [sort, setSort] = useState<Sort>("best_ev");
   const [shown, setShown] = useState(PAGE);
   const [rep, setRep] = useState<RegradeReport | null>(null);
+  const oddsReload = useOddsReload(); // ↻ on an odds badge: refetch so odds and EV recompute
   const [err, setErr] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
 
@@ -79,7 +81,7 @@ export default function RegradeBoard({ seller, setSeller }: { seller: string; se
       .catch((e) => live && setErr(String(e)))
       .finally(() => live && setLoading(false));
     return () => { live = false; };
-  }, [source]);
+  }, [source, oddsReload]);
 
   const base = useMemo(() => {
     const until = endsBefore(ending);

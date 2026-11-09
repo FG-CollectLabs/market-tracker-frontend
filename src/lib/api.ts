@@ -3251,6 +3251,14 @@ export function saveBidResult(body: {
   return adminFetch(`/v1/admin/watch-hits/result`, { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
 }
 
+// Re-read a copy's odds from the grading predictor now (after a fix there).
+export function refreshGradeOdds(id: number): Promise<GradeOdds> {
+  return adminFetch(`/v1/admin/grade-odds/${id}/refresh`, { method: "POST" });
+}
+
+// Boards reload when odds are refreshed anywhere on the page.
+export const GRADE_ODDS_REFRESHED = "grade-odds-refreshed";
+
 // ---- Bought to grade (raw copies bought, and the grade each came back with) ----
 
 export function markBought(body: { listing_id?: string; odds_id?: number; price_cents?: number; bought?: boolean; shown?: unknown }): Promise<{ odds_id: number; bought: boolean; price_cents?: number; forwarded: boolean }> {
