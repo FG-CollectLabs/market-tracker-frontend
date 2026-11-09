@@ -72,6 +72,7 @@ export default function GemRateUpload({ game, code, psaUrl, cgcUrl }: { game: st
           {csv && (
             <div className="text-green-300 space-y-0.5">
               <div>{csv.grader.toUpperCase()} gem rates stored for {csv.cards} cards ({csv.rows_written} rows, week of {csv.week}). Reload to see them.</div>
+              {csv.warnings?.map((w) => <div key={w} className="text-amber-300">{w}</div>)}
               {!!csv.unknown_cards?.length && (
                 <div className="text-amber-300" title={csv.unknown_cards.join("\n")}>{csv.unknown_cards.length} cards aren't in the catalog and were skipped (hover).</div>
               )}
