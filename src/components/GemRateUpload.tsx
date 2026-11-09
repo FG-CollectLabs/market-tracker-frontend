@@ -1,9 +1,9 @@
 import { useEffect, useRef, useState } from "react";
-import { fetchGradedJob, uploadGemRatePage, type RefreshJob } from "../lib/api";
+import { fetchGradedJob, uploadGemRatePage, type GemRateUploadResult, type RefreshJob } from "../lib/api";
 
 // GemRate's Cloudflare check blocks the worker's browser, so a set's gem
-// rates are refreshed from its GemRate page saved in your own browser:
-// open the page, wait for the card table, save it (Ctrl+S), upload it here.
+// rates come from GemRate in your own browser: the set page's CSV export
+// (stored at once), or the page saved as HTML (sent to the worker).
 
 export default function GemRateUpload({ game, code, psaUrl, cgcUrl }: { game: string; code: string; psaUrl?: string; cgcUrl?: string }) {
   const [open, setOpen] = useState(false);
@@ -11,6 +11,7 @@ export default function GemRateUpload({ game, code, psaUrl, cgcUrl }: { game: st
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
   const [job, setJob] = useState<RefreshJob | null>(null);
+  const [csv, setCsv] = useState<Extract<GemRateUploadResult, { kind: "csv" }> | null>(null);
   const timer = useRef<number | null>(null);
   useEffect(() => () => { if (timer.current) window.clearTimeout(timer.current); }, []);
 
@@ -46,18 +47,19 @@ export default function GemRateUpload({ game, code, psaUrl, cgcUrl }: { game: st
                 : <span>Open this set's page on gemrate.com (no GemRate page is mapped for it yet)</span>}{" "}
               and wait for the card table to load.
             </li>
-            <li>Save it: Ctrl+S (Cmd+S on a Mac), "Webpage, HTML only" is enough.</li>
-            <li>Upload the saved file:</li>
+            <li>Click GemRate's <span className="text-gray-200">Export</span> to download the CSV (or save the page: Ctrl+S, "Webpage, HTML only").</li>
+            <li>Upload the file:</li>
           </ol>
-          <input type="file" accept=".html,.htm,text/html" disabled={busy}
+          <input type="file" accept=".csv,text/csv,.html,.htm,text/html" disabled={busy}
             onChange={async (e) => {
               const f = e.target.files?.[0];
               e.target.value = "";
               if (!f) return;
-              setBusy(true); setErr(null); setJob(null);
+              setBusy(true); setErr(null); setJob(null); setCsv(null);
               try {
                 const r = await uploadGemRatePage(game, code, source, f);
-                poll(r.job_id);
+                if (r.kind === "csv") setCsv(r);
+                else poll(r.job_id);
               } catch (x) {
                 setErr(x instanceof Error ? x.message : String(x));
               } finally {
@@ -67,6 +69,17 @@ export default function GemRateUpload({ game, code, psaUrl, cgcUrl }: { game: st
             className="block w-full text-[11px] text-gray-400 file:mr-2 file:rounded file:border file:border-gray-700 file:bg-gray-900 file:px-2 file:py-0.5 file:text-gray-200" />
           {busy && <div className="text-gray-500">Uploading…</div>}
           {err && <div className="text-red-300">{err}</div>}
+          {csv && (
+            <div className="text-green-300 space-y-0.5">
+              <div>{csv.grader.toUpperCase()} gem rates stored for {csv.cards} cards ({csv.rows_written} rows, week of {csv.week}). Reload to see them.</div>
+              {!!csv.unknown_cards?.length && (
+                <div className="text-amber-300" title={csv.unknown_cards.join("\n")}>{csv.unknown_cards.length} cards aren't in the catalog and were skipped (hover).</div>
+              )}
+              {!!csv.dropped_variants?.length && (
+                <div className="text-gray-500" title={csv.dropped_variants.join("\n")}>{csv.dropped_variants.length} promo / pattern variants left out (hover).</div>
+              )}
+            </div>
+          )}
           {job && (
             <div className={job.status === "succeeded" ? "text-green-300" : job.status === "failed" ? "text-red-300" : "text-gray-400"}>
               {job.status === "succeeded" ? "Gem rates updated. Reload the page to see them."

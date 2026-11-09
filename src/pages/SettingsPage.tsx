@@ -292,6 +292,11 @@ export default function SettingsPage() {
             ))}
           </div>
         </Field>
+        <Field label="GemRate auto refresh" hint="The weekly PSA (and GemRate-sourced CGC) gem rate jobs fetch GemRate set pages. GemRate's Cloudflare check blocks them since November 2026, so leave this off and upload each set's GemRate CSV export on its set page. CGC jobs that read cgccards.com run either way.">
+          <label className="inline-flex items-center gap-2 text-gray-300">
+            <input type="checkbox" checked={!!s.gemrate_auto_refresh} onChange={(e) => set({ gemrate_auto_refresh: e.target.checked })} /> On
+          </label>
+        </Field>
         <Field label="Suggested max bid: win share" hint="The suggested max bid beats this share of the consigner's recent raw auction finals (measured against each card's raw market), never above what the copy is worth to you. Higher wins more often and pays more.">
           <Pct value={s.bid_win_share ?? 0.7} onChange={(v) => set({ bid_win_share: Math.min(0.95, Math.max(0.5, v)) })} step={5} />
         </Field>
