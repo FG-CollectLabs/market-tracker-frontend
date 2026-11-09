@@ -337,7 +337,13 @@ export async function triggerGradedRefresh(
 
 // A GemRate set page saved from a browser (GemRate's Cloudflare check blocks
 // the worker), sent to the worker as a pop refresh.
-export async function uploadGemRatePage(game: string, setCode: string, source: "psa-pop" | "cgc-pop", file: File): Promise<{ job_id: string; status: string }> {
+// The answer to an upload: a CSV export is stored at once (kind "csv"); a
+// saved HTML page becomes a worker job to poll.
+export type GemRateUploadResult =
+  | { kind: "csv"; grader: string; cards: number; rows_written: number; unknown_cards?: string[]; dropped_variants?: string[]; week: string }
+  | { kind?: undefined; job_id: string; status: string };
+
+export async function uploadGemRatePage(game: string, setCode: string, source: "psa-pop" | "cgc-pop", file: File): Promise<GemRateUploadResult> {
   const BASE = import.meta.env.VITE_API_URL ?? "";
   const auth = await authHeaders();
   const form = new FormData();
@@ -832,6 +838,7 @@ export interface AnalysisSettings {
   regrade_rates?: RegradeRate[]; // regrade board: per slab grade and target, the share back at the target's top grade
   crack_damage_pct?: number;
   bid_win_share?: number; // suggested max bid: the share of a consigner's raw finals it beats
+  gemrate_auto_refresh?: boolean; // weekly pop jobs fetch GemRate pages (off: blocked by GemRate; upload CSV exports instead)
   ebay_ship_cents: number;
   vault_inbound_cents: number;
   vault_withdraw_cents: number;
