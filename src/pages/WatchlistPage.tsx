@@ -18,6 +18,7 @@ import ConsignerBoard from "../components/ConsignerBoard";
 import RegradeBoard from "../components/RegradeBoard";
 import BidsResults from "../components/BidsResults";
 import RawFinds from "../components/RawFinds";
+import { CheckAll } from "../components/BoardTools";
 import BoughtToGrade from "../components/BoughtToGrade";
 
 const usd = (c?: number | null) => (c == null ? "—" : `$${(c / 100).toFixed(2)}`);
@@ -283,6 +284,16 @@ function WatchCards() {
     return { total, top: out.sort((a, b) => b.ch.under - a.ch.under).slice(0, BEST_HITS) };
   }, [filtered, hitsByCard]);
 
+  // Raw eBay hits shown under the filters that were never sent to the
+  // grading predictor (for "Check centering for all").
+  const uncheckedRaw = useMemo(() => {
+    const ids: string[] = [];
+    for (const v of hitsByCard.values())
+      for (const x of v.live)
+        if (x.h.source === "ebay" && x.h.grade_key === "raw" && !x.h.grade_odds && (x.h.image_count == null || x.h.image_count >= 2)) ids.push(x.h.listing_id);
+    return [...new Set(ids)];
+  }, [hitsByCard]);
+
   const passedCount = useMemo(() => filtered.reduce((n, it) => n + shownTargets(it).reduce((s, t) => s + (t.passed_hits ?? 0), 0), 0), [filtered, shownTargets]);
 
   // The soonest-ending auction shown, for the clock's pace.
@@ -438,6 +449,7 @@ function WatchCards() {
         <label className="flex items-center gap-1 text-sm text-gray-300">
           <input type="checkbox" className="accent-indigo-500" checked={onlyHits} onChange={(e) => setOnlyHits(e.target.checked)} /> Only cards with hits
         </label>
+        <CheckAll listingIds={uncheckedRaw} />
         <span className="flex items-center gap-1 text-sm text-gray-300" title="Buy-raw-to-grade score tier: A 70+, B 50-69, C under 50">
           Grading tier
           <select value={tier} onChange={(e) => setTier(e.target.value as TierFilter)} className={sel}>

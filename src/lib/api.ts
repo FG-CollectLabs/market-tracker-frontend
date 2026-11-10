@@ -3256,6 +3256,12 @@ export function refreshGradeOdds(id: number): Promise<GradeOdds> {
   return adminFetch(`/v1/admin/grade-odds/${id}/refresh`, { method: "POST" });
 }
 
+// "Check centering for all": never-sent listings (2+ photos) go to the
+// grading predictor in the background, up to 300 per call.
+export function bulkCheckGradeOdds(listingIds: string[]): Promise<{ queued: number; already_checked: number; no_photos: number; over_limit: number; limit: number }> {
+  return adminFetch(`/v1/admin/grade-odds/listings`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ source: "ebay", listing_ids: listingIds }) });
+}
+
 // Boards reload when odds are refreshed anywhere on the page.
 export const GRADE_ODDS_REFRESHED = "grade-odds-refreshed";
 

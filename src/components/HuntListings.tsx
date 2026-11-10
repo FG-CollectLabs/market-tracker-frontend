@@ -1,3 +1,4 @@
+import { AutoMore, CheckAll } from "./BoardTools";
 import { useOddsReload } from "../lib/useOddsReload";
 import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
@@ -138,6 +139,7 @@ export default function HuntListings({ seller, setSeller }: { seller: string; se
             <label className="flex items-center gap-1.5"><input type="checkbox" checked={hideSlow} onChange={(e) => setHideSlow(e.target.checked)} /> Hide slow sellers</label>
             <ShowFilter show={show} setShow={setShow} counts={counts} />
             <span className="text-gray-500 tabular-nums">{rows.length} copies</span>
+            <CheckAll listingIds={rows.filter((l) => !l.grade_odds && (l.image_count == null || l.image_count >= 2)).map((l) => l.listing_id)} />
           </div>
 
           {rows.length === 0 ? <p className="text-sm text-gray-500">Nothing matches right now.</p> : (
@@ -167,11 +169,7 @@ export default function HuntListings({ seller, setSeller }: { seller: string; se
                 <tbody>{rows.slice(0, shown).map((l) => <Row key={l.listing_id} l={l} bench={rep.params.benchmark} review={reviewOf(l)}
                   onReview={(r) => setRv((m) => ({ ...m, [l.listing_id]: r }))} />)}</tbody>
               </table>
-              {rows.length > shown && (
-                <button onClick={() => setShown(shown + PAGE)} className="w-full py-2 text-xs text-indigo-300 hover:text-indigo-200 border-t border-gray-800">
-                  Show {Math.min(PAGE, rows.length - shown)} more of {rows.length - shown}
-                </button>
-              )}
+              <AutoMore remaining={rows.length - shown} page={PAGE} onMore={() => setShown((v) => v + PAGE)} />
             </div>
           )}
           <p className="text-[11px] text-gray-500 max-w-4xl">{rep.method}</p>
