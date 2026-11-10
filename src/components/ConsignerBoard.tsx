@@ -1,3 +1,4 @@
+import { useOddsReload } from "../lib/useOddsReload";
 import { Fragment, useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import { fetchConsignerBoard, type CopyTiming, type HuntListing, type HuntListingsReport, type ValueSource } from "../lib/api";
@@ -81,6 +82,7 @@ export default function ConsignerBoard({ seller, setSeller }: { seller: string; 
   const [rv, setRv] = useState<Record<string, HitReview | undefined>>({});
   const reviewOf = (l: HuntListing) => (l.listing_id in rv ? rv[l.listing_id] : l.review);
   const [rep, setRep] = useState<HuntListingsReport | null>(null);
+  const oddsReload = useOddsReload(); // ↻ on an odds badge: refetch so odds and EV recompute
   const [err, setErr] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
 
@@ -93,7 +95,7 @@ export default function ConsignerBoard({ seller, setSeller }: { seller: string; 
       .catch((e) => live && setErr(String(e)))
       .finally(() => live && setLoading(false));
     return () => { live = false; };
-  }, [source]);
+  }, [source, oddsReload]);
 
   const base = useMemo(() => {
     const until = endsBefore(ending);
