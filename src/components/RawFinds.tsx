@@ -1,3 +1,4 @@
+import { AutoMore, CheckAll } from "./BoardTools";
 import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import { fetchWatchlist, type HitReview, type TargetHit, type WatchItem } from "../lib/api";
@@ -140,6 +141,7 @@ export default function RawFinds() {
         </label>
         <ShowFilter show={show} setShow={setShow} counts={counts} />
         <span className="text-gray-500 tabular-nums">{rows.length} copies</span>
+            <CheckAll listingIds={rows.filter(({ h }) => !h.grade_odds && (h.image_count == null || h.image_count >= 2)).map(({ h }) => h.listing_id)} />
       </div>
 
       {rows.length === 0 ? <p className="text-sm text-gray-500">Nothing matches right now.</p> : (
@@ -210,11 +212,7 @@ export default function RawFinds() {
               })}
             </tbody>
           </table>
-          {rows.length > shown && (
-            <button onClick={() => setShown(shown + PAGE)} className="w-full py-2 text-xs text-indigo-300 hover:text-indigo-200 border-t border-gray-800">
-              Show {Math.min(PAGE, rows.length - shown)} more of {rows.length - shown}
-            </button>
-          )}
+          <AutoMore remaining={rows.length - shown} page={PAGE} onMore={() => setShown((v) => v + PAGE)} />
         </div>
       )}
     </div>

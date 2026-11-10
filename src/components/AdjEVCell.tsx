@@ -24,7 +24,7 @@ export default function AdjEVCell({ ev }: { ev?: AdjEV }) {
     ev.centering_cap ? `Centering caps PSA at ${ev.centering_cap}` : "",
     ev.basis ? `Pre-grader ${ev.basis}` : "",
     ev.pop_note ? `At the public gem rate: ${ev.pop_note}` : "",
-    ev.caveat,
+    ev.caveat || "Centering and corner roundness from listing photos only; whitening, edges and surface are assumed clean: treat measured odds as an upper bound for copies that look rough. Not a grade promise.",
   ].filter(Boolean).join("\n");
   return (
     <span className="inline-flex flex-col items-end gap-0.5" title={tip}>

@@ -1,3 +1,4 @@
+import { AutoMore, CheckAll } from "./BoardTools";
 import { useOddsReload } from "../lib/useOddsReload";
 import { Fragment, useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
@@ -159,6 +160,7 @@ export default function RegradeBoard({ seller, setSeller }: { seller: string; se
             </label>
             <ShowFilter show={show} setShow={setShow} counts={showCounts} />
             <span className="text-gray-500 tabular-nums">{rows.length} slabs</span>
+            <CheckAll listingIds={rows.filter((l) => !l.grade_odds && ["psa", "cgc", "bgs"].includes(l.grader) && (l.image_count == null || l.image_count >= 2)).map((l) => l.listing_id)} />
           </div>
 
           {rows.length === 0 ? <p className="text-sm text-gray-500">Nothing matches right now.</p> : (
@@ -193,11 +195,7 @@ export default function RegradeBoard({ seller, setSeller }: { seller: string; se
                   })}
                 </tbody>
               </table>
-              {rows.length > shown && (
-                <button onClick={() => setShown(shown + PAGE)} className="w-full py-2 text-xs text-indigo-300 hover:text-indigo-200 border-t border-gray-800">
-                  Show {Math.min(PAGE, rows.length - shown)} more of {rows.length - shown}
-                </button>
-              )}
+              <AutoMore remaining={rows.length - shown} page={PAGE} onMore={() => setShown((v) => v + PAGE)} />
             </div>
           )}
           <details className="text-[11px] text-gray-500 max-w-4xl">
