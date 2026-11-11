@@ -4,6 +4,7 @@ const GAME_COLORS: Record<string, string> = {
   lorcana: "bg-blue-900/60 text-blue-300",
   one_piece: "bg-red-900/60 text-red-300",
   yugioh: "bg-purple-900/60 text-purple-300",
+  riftbound: "bg-sky-900/60 text-sky-300",
   other: "bg-gray-800 text-gray-400",
 };
 
@@ -13,6 +14,7 @@ const GAME_LABELS: Record<string, string> = {
   lorcana: "Lorcana",
   one_piece: "One Piece",
   yugioh: "Yu-Gi-Oh",
+  riftbound: "Riftbound",
   other: "Other",
 };
 
