@@ -3311,3 +3311,63 @@ export interface BoughtReport {
 export function fetchBought(): Promise<BoughtReport> {
   return adminFetch("/v1/admin/grade-odds/bought");
 }
+
+// ---- Riftbound ---------------------------------------------------------------
+
+export interface RbKindStat {
+  kind: string;
+  count: number;
+  priced: number;
+  median_cents: number | null;
+  max_cents: number | null;
+}
+
+export interface RbSet {
+  code: string;
+  name: string;
+  kind: "main" | "promo" | "starter";
+  release_date: string | null;
+  cards: number;
+  tracked: number;
+  cover_url: string | null;
+  tracked_value_cents: number;
+  prices_at: string | null;
+  kinds: RbKindStat[];
+}
+
+export interface RbCard {
+  display_key: string;
+  set_code: string;
+  set_name: string;
+  set_kind: string;
+  number: string;
+  printed_number: string | null;
+  name: string;
+  rarity: string | null;
+  kind: string;
+  domain: string | null;
+  image_url: string | null;
+  tcgplayer_url: string | null;
+  tracked: boolean;
+  market_cents: number | null;
+  low_cents: number | null;
+  price_week: string | null;
+  cents_4w_ago: number | null;
+  cents_12w_ago: number | null;
+  first_cents: number | null;
+  first_week: string | null;
+  weeks: number;
+}
+
+export function fetchRiftboundSets(): Promise<{ sets: RbSet[] }> {
+  return get(`/v1/riftbound/sets`);
+}
+
+export function fetchRiftboundCards(opts: { set?: string; kind?: string; all?: boolean } = {}): Promise<{ cards: RbCard[] }> {
+  const qs = new URLSearchParams();
+  if (opts.set) qs.set("set", opts.set);
+  if (opts.kind) qs.set("kind", opts.kind);
+  if (opts.all) qs.set("all", "true");
+  const s = qs.toString();
+  return get(`/v1/riftbound/cards${s ? `?${s}` : ""}`);
+}

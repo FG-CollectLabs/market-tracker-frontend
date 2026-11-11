@@ -6,6 +6,7 @@ import CardDetailPage from "./pages/CardDetailPage";
 import GradedCoveragePage from "./pages/GradedCoveragePage";
 import TrackedPage from "./pages/TrackedPage";
 import BrowsePage from "./pages/BrowsePage";
+import RiftboundPage from "./pages/RiftboundPage";
 import DealsPage from "./pages/DealsPage";
 import BuyWindowsPage from "./pages/BuyWindowsPage";
 import BuyingPrepPage from "./pages/BuyingPrepPage";
@@ -27,6 +28,7 @@ import { COMPANY_NAME, PRODUCT_NAME } from "./brand/brand";
 // alone). A group shows as active when one of its pages is open.
 const NAV: { label: string; to?: string; items?: { to: string; label: string; hint: string }[] }[] = [
   { label: "Sets", to: "/" },
+  { label: "Riftbound", to: "/riftbound" },
   {
     label: "Buying",
     items: [
@@ -128,6 +130,7 @@ export default function App() {
           <Routes>
             <Route path="/" element={<BrowsePage />} />
             <Route path="/browse/:code" element={<TrackedPage />} />
+            <Route path="/riftbound" element={<RiftboundPage />} />
             <Route path="/deals" element={<DealsPage />} />
             <Route path="/windows" element={<BuyWindowsPage />} />
             <Route path="/timing" element={<TimingPage />} />
