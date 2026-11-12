@@ -53,6 +53,8 @@ export interface RbEv {
   evCents: number;
   roi: number;
   annualized: number;
+  netCents: number; // expected sale after the selling fee
+  feeCents: number; // tier fee + shipping
   days: number;
   tier: string;
   note: string;
@@ -67,7 +69,8 @@ export function graderCfg(graders: Record<string, GraderCfg>, g: RbGrader): Grad
   return graders[g] ?? (g === "bgs" ? DEFAULT_BGS : undefined);
 }
 
-function evOf(grader: RbGrader, source: RbEv["source"], raw: number, outcomes: Outcome[], pTop: number, topCents: number, opts: RbEvOpts): RbEv | null {
+// raw: what a miss sells for; buy: what the copy costs (raw, unless a listing's price).
+function evOf(grader: RbGrader, source: RbEv["source"], raw: number, buy: number, outcomes: Outcome[], pTop: number, topCents: number, opts: RbEvOpts): RbEv | null {
   const cfg = graderCfg(opts.graders, grader);
   const tier = tierFor(cfg, topCents);
   if (!cfg || !tier) return null;
@@ -87,18 +90,20 @@ function evOf(grader: RbGrader, source: RbEv["source"], raw: number, outcomes: O
     parts.push(`${pct(rest)} lower × raw`);
   }
   const fee = tier.fee_cents + cfg.ship_cents;
-  const cost = raw + fee;
+  const cost = buy + fee;
   const net = sale * (1 - opts.sellFee);
   const days = Math.max(1, tier.turnaround_days * (1 + opts.buffer) * (opts.businessDays ? 7 / 5 : 1));
   return {
-    grader, source, pTop, saleCents: Math.round(sale), costCents: cost,
+    grader, source, pTop, saleCents: Math.round(sale), costCents: cost, netCents: Math.round(net), feeCents: fee,
     evCents: Math.round(net - cost), roi: cost > 0 ? (net - cost) / cost : 0,
     annualized: net <= 0 ? -1 : Math.pow(net / cost, 365 / days) - 1, days: Math.round(days), tier: tier.name,
-    note: `${parts.join(" + ")} = ${usd(sale)}, less ${pct(opts.sellFee)} selling fee, − raw ${usd(raw)} − ${tier.name} ${usd(tier.fee_cents)} + ${usd(cfg.ship_cents)} shipping; ~${Math.round(days)} days to get it back`,
+    note: `${parts.join(" + ")} = ${usd(sale)}, less ${pct(opts.sellFee)} selling fee, − ${buy === raw ? "raw" : "buy"} ${usd(buy)} − ${tier.name} ${usd(tier.fee_cents)} + ${usd(cfg.ship_cents)} shipping; ~${Math.round(days)} days to get it back`,
   };
 }
 
-export function rbEv(c: ROICard, opts: RbEvOpts): Record<RbGrader, RbEv | null> {
+// buyCents: the price paid for the raw copy (a listing's price + shipping);
+// the card's raw price when left out. Misses sell at the raw price.
+export function rbEv(c: ROICard, opts: RbEvOpts, buyCents?: number): Record<RbGrader, RbEv | null> {
   const out: Record<RbGrader, RbEv | null> = { psa: null, cgc: null, bgs: null };
   const raw = c.raw_price_cents;
   if (raw == null || raw <= 0) return out;
@@ -109,7 +114,7 @@ export function rbEv(c: ROICard, opts: RbEvOpts): Record<RbGrader, RbEv | null> 
     const pop = t > 0 && c.psa_gem_pop != null;
     const p10 = pop ? c.psa_gem_pop! / t : R.psa.p10;
     const p9 = pop ? (c.psa_9_pop != null ? c.psa_9_pop / t : 1 - p10) : R.psa.p9;
-    out.psa = evOf("psa", pop ? "population" : "assumed", raw,
+    out.psa = evOf("psa", pop ? "population" : "assumed", raw, buyCents ?? raw,
       [{ p: p10, cents: c.psa_10_cents, label: "PSA 10" }, { p: p9, cents: c.psa_9_cents, label: "PSA 9" }],
       p10, c.psa_10_cents, opts);
   }
@@ -121,7 +126,7 @@ export function rbEv(c: ROICard, opts: RbEvOpts): Record<RbGrader, RbEv | null> 
     const p10 = pop ? c.cgc_gem_pop! / t - pP : R.cgc.p10;
     const p95 = pop ? (c.cgc_9_5_pop ?? 0) / t : R.cgc.p95;
     const prisCents = c.cgc_pristine_cents ?? c.cgc_10_cents;
-    out.cgc = evOf("cgc", pop ? "population" : "assumed", raw, [
+    out.cgc = evOf("cgc", pop ? "population" : "assumed", raw, buyCents ?? raw, [
       { p: pP, cents: prisCents, label: "Pristine 10" },
       { p: p10, cents: c.cgc_10_cents, label: "CGC 10" },
       { p: p95, cents: c.cgc_9_5_cents, label: "CGC 9.5" },
@@ -139,11 +144,32 @@ export function rbEv(c: ROICard, opts: RbEvOpts): Record<RbGrader, RbEv | null> 
     const p95 = pop ? (c.bgs_9_5_pop ?? 0) / t : R.bgs.p95;
     const tenCents = b10 ?? b95;
     const blackCents = c.bgs_10_black_cents ?? tenCents;
-    out.bgs = evOf("bgs", pop ? "population" : "assumed", raw, [
+    out.bgs = evOf("bgs", pop ? "population" : "assumed", raw, buyCents ?? raw, [
       { p: pB, cents: blackCents, label: "Black Label" },
       { p: p10, cents: tenCents, label: "BGS 10" },
       { p: p95, cents: b95, label: "BGS 9.5" },
     ], pB + p10, tenCents ?? 0, opts); // tier by the BGS 10 price, not Black Label
   }
   return out;
+}
+
+// The grade odds a viewer set, shared by the Riftbound pages (this browser).
+const RATES_KEY = "rb.gradeRates.v1";
+
+export function loadRates(): RbRates {
+  try {
+    const v = JSON.parse(localStorage.getItem(RATES_KEY) ?? "null");
+    if (v?.psa && v?.cgc && v?.bgs) return v;
+  } catch { /* storage unavailable */ }
+  return DEFAULT_RATES;
+}
+
+export function saveRates(r: RbRates) {
+  try { localStorage.setItem(RATES_KEY, JSON.stringify(r)); } catch { /* ignore */ }
+}
+
+// maxBuy: the most to pay for the copy (all in) so this grader still
+// returns minRoi on the cost: net / (1 + minRoi) − fees.
+export function maxBuy(ev: RbEv, minRoi: number): number {
+  return Math.floor(ev.netCents / (1 + minRoi) - ev.feeCents);
 }

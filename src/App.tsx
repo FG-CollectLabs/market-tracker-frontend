@@ -9,7 +9,8 @@ import BrowsePage from "./pages/BrowsePage";
 import RiftboundPage from "./pages/RiftboundPage";
 import RiftboundSetPage from "./pages/RiftboundSetPage";
 import RiftboundAnalyticsPage from "./pages/RiftboundAnalyticsPage";
-import RiftboundComingPage from "./pages/RiftboundComingPage";
+import RiftboundWatchlistPage from "./pages/RiftboundWatchlistPage";
+import RiftboundDealsPage from "./pages/RiftboundDealsPage";
 import DealsPage from "./pages/DealsPage";
 import BuyWindowsPage from "./pages/BuyWindowsPage";
 import BuyingPrepPage from "./pages/BuyingPrepPage";
@@ -51,8 +52,8 @@ const NAV_RIFTBOUND: NavEntry[] = [
   {
     label: "Buying",
     items: [
-      { to: "/rb/watchlist", label: "Watchlist", hint: "Riftbound cards and targets (coming next)" },
-      { to: "/rb/deals", label: "Deals", hint: "eBay auctions and gradable raw copies (coming next)" },
+      { to: "/rb/watchlist", label: "Watchlist", hint: "Your Riftbound cards and their live copies" },
+      { to: "/rb/deals", label: "Deals", hint: "Raw copies to grade (EV at the listing price), slabs under market" },
     ],
   },
   {
@@ -218,8 +219,8 @@ export default function App() {
             <Route path="/rb" element={<RiftboundPage />} />
             <Route path="/rb/set/:code" element={<RiftboundSetPage />} />
             <Route path="/rb/analytics" element={<RiftboundAnalyticsPage />} />
-            <Route path="/rb/watchlist" element={<RiftboundComingPage page="watchlist" />} />
-            <Route path="/rb/deals" element={<RiftboundComingPage page="deals" />} />
+            <Route path="/rb/watchlist" element={<RiftboundWatchlistPage />} />
+            <Route path="/rb/deals" element={<RiftboundDealsPage />} />
             <Route path="/riftbound" element={<Navigate to="/rb" replace />} />
             <Route path="/deals" element={<DealsPage />} />
             <Route path="/windows" element={<BuyWindowsPage />} />

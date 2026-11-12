@@ -15,8 +15,10 @@ let cache: Promise<Map<string, Watched>> | null = null;
 const listeners = new Set<() => void>();
 export function watchedCards(force = false): Promise<Map<string, Watched>> {
   if (!cache || force) {
-    cache = fetchWatchlist(true)
-      .then((r) => new Map(r.items.map((i) => [i.display_key, { intent: i.intent, targets: i.targets ?? [], autoFanatics: !!i.auto_fanatics }] as [string, Watched])))
+    // Both games' lists (each is fetched separately), so every star is right.
+    const one = (game: "pokemon" | "riftbound") => fetchWatchlist(true, false, game).then((r) => r.items).catch(() => []);
+    cache = Promise.all([one("pokemon"), one("riftbound")])
+      .then(([a, b]) => new Map([...a, ...b].map((i) => [i.display_key, { intent: i.intent, targets: i.targets ?? [], autoFanatics: !!i.auto_fanatics }] as [string, Watched])))
       .catch(() => new Map());
   }
   return cache;

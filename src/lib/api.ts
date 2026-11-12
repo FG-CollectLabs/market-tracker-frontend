@@ -1316,10 +1316,12 @@ export interface WatchItem {
 }
 
 // showPassed: also list the hits you passed on (with their review).
-export function fetchWatchlist(keysOnly = false, showPassed = false): Promise<{ count: number; items: WatchItem[] }> {
+// game: each game's watchlist is separate (the server defaults to Pokémon).
+export function fetchWatchlist(keysOnly = false, showPassed = false, game: "pokemon" | "riftbound" = "pokemon"): Promise<{ count: number; items: WatchItem[] }> {
   const q = new URLSearchParams();
   if (keysOnly) q.set("keys_only", "1");
   if (showPassed) q.set("show_passed", "1");
+  if (game !== "pokemon") q.set("game", game);
   const qs = q.toString();
   return adminFetch(`/v1/admin/watchlist${qs ? `?${qs}` : ""}`);
 }
@@ -3378,4 +3380,34 @@ export function fetchRiftboundCards(opts: { set?: string; kind?: string; all?: b
   if (opts.all) qs.set("all", "true");
   const s = qs.toString();
   return get(`/v1/riftbound/cards${s ? `?${s}` : ""}`);
+}
+
+export interface RbListing {
+  source: "ebay" | "fanatics" | string;
+  listing_id: string;
+  marketplace: string; // fixed (Buy Now) | auction (eBay) | weekly | premier (Fanatics)
+  grade_key: string;
+  price_cents: number;
+  shipping_cents: number;
+  bid_count: number | null;
+  ends_at: string | null;
+  title: string | null;
+  url: string | null;
+  image_url: string | null;
+  seller: string | null;
+  first_seen_at: string;
+  display_key: string;
+  name: string;
+  kind: string;
+  set_code: string;
+  printed_number: string | null;
+  card_image_url: string | null;
+  watched: boolean;
+  tcgplayer_cents: number | null;
+  pc_raw_cents: number | null;
+  graded: Record<string, number>; // PriceCharting: "psa 10", "psa 9", "cgc 10", "cgc Pristine 10", "bgs 9.5", "bgs 10", "bgs 10 Black", "sgc 10"
+}
+
+export function fetchRiftboundListings(grade?: string): Promise<{ listings: RbListing[] }> {
+  return get(`/v1/riftbound/listings${grade ? `?grade=${encodeURIComponent(grade)}` : ""}`);
 }

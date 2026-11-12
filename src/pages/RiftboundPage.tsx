@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import { fetchRiftboundCards, fetchRiftboundSets, type RbCard, type RbSet } from "../lib/api";
 import { Spinner } from "../components/Spinner";
+import WatchButton from "../components/WatchButton";
 
 // Riftbound singles: alt art and better from the main sets, and promos.
 // Data: import-riftbound (TCGplayer via TCGCSV, weekly).
@@ -224,7 +225,10 @@ function CardTile({ c }: { c: RbCard }) {
         {c.image_url && <img src={c.image_url} alt={c.name} loading="lazy" className="w-full h-full object-contain" />}
       </Link>
       <div className="p-2 space-y-1 text-xs flex-1 flex flex-col">
-        <Link to={`/cards/${c.display_key}`} className="text-gray-100 hover:text-white leading-tight line-clamp-2">{c.name}</Link>
+        <div className="flex items-start gap-1">
+          <Link to={`/cards/${c.display_key}`} className="text-gray-100 hover:text-white leading-tight line-clamp-2 flex-1">{c.name}</Link>
+          <WatchButton displayKey={c.display_key} compact />
+        </div>
         <div className="flex items-center gap-1 text-gray-500">
           <KindBadge kind={c.kind} />
           <span className="uppercase">{c.set_code}</span>
