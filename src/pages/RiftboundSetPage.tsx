@@ -5,22 +5,14 @@ import {
   type RbCard, type RbSet, type ROICard,
 } from "../lib/api";
 import type { GraderCfg } from "../lib/gradeEv";
-import { DEFAULT_RATES, RB_GRADERS, graderCfg, rbEv, type RbEv, type RbGrader, type RbRates } from "../lib/rbEv";
+import { DEFAULT_RATES, RB_GRADERS, graderCfg, loadRates, rbEv, saveRates, type RbEv, type RbGrader, type RbRates } from "../lib/rbEv";
 import { Spinner } from "../components/Spinner";
+import WatchButton from "../components/WatchButton";
 import { KindBadge } from "./RiftboundPage";
 
 // One Riftbound set: every tracked card's raw and graded prices
 // (PriceCharting) and the EV of grading a raw copy with PSA, CGC or Beckett.
 
-const RATES_KEY = "rb.gradeRates.v1";
-
-function loadRates(): RbRates {
-  try {
-    const v = JSON.parse(localStorage.getItem(RATES_KEY) ?? "null");
-    if (v?.psa && v?.cgc && v?.bgs) return v;
-  } catch { /* storage unavailable */ }
-  return DEFAULT_RATES;
-}
 
 const usd = (c: number | null | undefined) =>
   c == null ? "—" : Math.abs(c) >= 100000 ? `$${Math.round(c / 100).toLocaleString()}` : `$${(c / 100).toFixed(2)}`;
@@ -59,9 +51,7 @@ export default function RiftboundSetPage() {
       .then((r) => setCards(r.cards))
       .catch((e) => setErr(String(e)));
   }, [code]);
-  useEffect(() => {
-    try { localStorage.setItem(RATES_KEY, JSON.stringify(rates)); } catch { /* ignore */ }
-  }, [rates]);
+  useEffect(() => saveRates(rates), [rates]);
 
   const rows: Row[] = useMemo(() => {
     if (!cards) return [];
@@ -146,7 +136,10 @@ function CardRow({ r }: { r: Row }) {
         <div className="flex gap-2 items-start min-w-[14rem]">
           {c.image_url && <img src={c.image_url} alt="" loading="lazy" className="w-9 rounded" />}
           <div className="space-y-0.5">
-            <Link to={`/cards/${c.display_key}`} className="text-gray-100 hover:text-white">{c.name}</Link>
+            <div className="flex items-center gap-1">
+              <Link to={`/cards/${c.display_key}`} className="text-gray-100 hover:text-white">{c.name}</Link>
+              <WatchButton displayKey={c.display_key} compact />
+            </div>
             <div className="flex items-center gap-1 text-xs text-gray-500">
               {r.rb && <KindBadge kind={r.rb.kind} />}
               <span>{r.rb?.printed_number ?? c.number}</span>
@@ -169,7 +162,7 @@ function hasTop(c: ROICard, g: RbGrader): boolean {
   return g === "psa" ? c.psa_10_cents != null : g === "cgc" ? c.cgc_10_cents != null : c.bgs_10_cents != null || c.bgs_9_5_cents != null;
 }
 
-function EvCell({ ev, best, priced }: { ev: RbEv | null; best: boolean; priced: boolean }) {
+export function EvCell({ ev, best, priced }: { ev: RbEv | null; best: boolean; priced: boolean }) {
   if (!ev && priced) {
     return (
       <td className="text-right px-2 py-2 text-xs text-amber-500/80" title="No service tier in Settings covers this card's value: add a higher tier on the Settings page">
@@ -190,7 +183,7 @@ function EvCell({ ev, best, priced }: { ev: RbEv | null; best: boolean; priced: 
   );
 }
 
-function RatesPanel(p: {
+export function RatesPanel(p: {
   rates: RbRates; setRates: (r: RbRates) => void; anyPop: boolean; graders: Record<string, GraderCfg>;
   sellFee: number; setSellFee: (v: number) => void; businessDays: boolean; setBusinessDays: (v: boolean) => void;
 }) {
