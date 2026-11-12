@@ -32,7 +32,7 @@ function Change({ v }: { v: number | null }) {
   return <span className={cls}>{v > 0 ? "+" : ""}{(v * 100).toFixed(0)}%</span>;
 }
 
-function KindBadge({ kind }: { kind: string }) {
+export function KindBadge({ kind }: { kind: string }) {
   const k = KIND[kind] ?? { label: kind, cls: "bg-gray-800 text-gray-400" };
   return <span className={`px-1.5 py-0.5 rounded text-[10px] font-medium ${k.cls}`}>{k.label}</span>;
 }
@@ -88,7 +88,7 @@ export default function RiftboundPage() {
       <header className="flex flex-wrap items-baseline gap-x-4 gap-y-1">
         <h1 className="text-xl font-semibold text-white">Riftbound</h1>
         <p className="text-sm text-gray-400">
-          Alt art and better from the main sets, plus promos. TCGplayer market prices, refreshed weekly.
+          Alt art and better from the main sets, plus promos. Open a set for graded prices and grading EV (PSA, CGC, BGS).
         </p>
       </header>
       {err && <div className="text-sm text-rose-400">{err}</div>}
@@ -98,18 +98,17 @@ export default function RiftboundPage() {
           <section className="space-y-2">
             <h2 className="text-sm font-medium text-gray-300">Sets</h2>
             <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
-              {main.map((s) => <SetTile key={s.code} s={s} active={set === s.code} onClick={() => update("set", set === s.code ? "" : s.code)} />)}
+              {main.map((s) => <SetTile key={s.code} s={s} />)}
             </div>
             <div className="flex flex-wrap gap-2 pt-1">
               {promo.map((s) => (
-                <button key={s.code} onClick={() => update("set", set === s.code ? "" : s.code)}
-                  className={`px-2 py-1 rounded text-xs border ${set === s.code ? "border-sky-500 text-white bg-sky-950" : "border-gray-800 text-gray-300 hover:border-gray-600"}`}>
+                <Link key={s.code} to={`/rb/set/${s.code}`}
+                  className="px-2 py-1 rounded text-xs border border-gray-800 text-gray-300 hover:border-gray-600">
                   {s.name.replace(/^Riftbound /, "")} <span className="text-gray-500">{s.tracked || s.cards}</span>
-                </button>
+                </Link>
               ))}
             </div>
           </section>
-          <KindTable sets={main} />
         </>
       )}
 
@@ -121,8 +120,13 @@ export default function RiftboundPage() {
             <button key={k.key} onClick={() => update("kind", kind === k.key ? "" : k.key)}
               className={`px-2 py-1 rounded text-xs ${kind === k.key ? k.cls + " ring-1 ring-current" : "bg-gray-900 text-gray-400 hover:text-gray-200"}`}>{k.label}</button>
           ))}
+          <select value={set} onChange={(e) => update("set", e.target.value)}
+            className="ml-auto bg-gray-900 border border-gray-800 rounded px-2 py-1 text-sm text-gray-200">
+            <option value="">All sets</option>
+            {(sets ?? []).map((s) => <option key={s.code} value={s.code}>{s.name.replace(/^Riftbound /, "")}</option>)}
+          </select>
           <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search name"
-            className="ml-auto bg-gray-900 border border-gray-800 rounded px-2 py-1 text-sm text-gray-200 w-40" />
+            className="bg-gray-900 border border-gray-800 rounded px-2 py-1 text-sm text-gray-200 w-40" />
           <select value={sort} onChange={(e) => update("sort", e.target.value === "price" ? "" : e.target.value)}
             className="bg-gray-900 border border-gray-800 rounded px-2 py-1 text-sm text-gray-200">
             <option value="price">Priciest</option>
@@ -152,10 +156,10 @@ export default function RiftboundPage() {
   );
 }
 
-function SetTile({ s, active, onClick }: { s: RbSet; active: boolean; onClick: () => void }) {
+function SetTile({ s }: { s: RbSet }) {
   return (
-    <button onClick={onClick}
-      className={`text-left rounded-lg border overflow-hidden bg-gray-900 ${active ? "border-sky-500" : "border-gray-800 hover:border-gray-600"}`}>
+    <Link to={`/rb/set/${s.code}`}
+      className="text-left rounded-lg border overflow-hidden bg-gray-900 border-gray-800 hover:border-gray-600">
       <div className="aspect-[5/3] bg-gray-950 overflow-hidden">
         {s.cover_url && <img src={s.cover_url} alt="" loading="lazy" className="w-full h-full object-cover object-top opacity-80" />}
       </div>
@@ -166,13 +170,13 @@ function SetTile({ s, active, onClick }: { s: RbSet; active: boolean; onClick: (
         </div>
         <div className="text-[11px] text-gray-400">{s.tracked ? `${usd(s.tracked_value_cents)} tracked value` : "not on TCGplayer yet"}</div>
       </div>
-    </button>
+    </Link>
   );
 }
 
 // Median TCGplayer price of each kind by set: how a set's chase compares
 // with the others, the Riftbound take on Pokémon's set tiers.
-function KindTable({ sets }: { sets: RbSet[] }) {
+export function KindTable({ sets }: { sets: RbSet[] }) {
   const cols = sets.filter((s) => s.cards > 0);
   const kinds = KINDS.filter((k) => cols.some((s) => s.kinds.some((x) => x.kind === k.key)));
   if (!cols.length) return null;

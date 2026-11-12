@@ -255,6 +255,14 @@ export interface ROICard {
   cgc_9_5_pop?: number | null;
   cgc_pristine_cents?: number | null; // 90-day sales median
   cgc_9_5_cents?: number | null;
+  // PriceCharting full price guide (Riftbound): BGS 9.5 / 10 / Black Label, SGC 10.
+  bgs_9_5_cents?: number | null;
+  bgs_10_cents?: number | null;
+  bgs_10_black_cents?: number | null;
+  sgc_10_cents?: number | null;
+  bgs_gem_pop?: number | null;
+  bgs_total_pop?: number | null;
+  bgs_9_5_pop?: number | null;
   // When each value above was captured.
   raw_price_at?: string | null;
   psa_9_at?: string | null;

@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { HashRouter, NavLink, Routes, Route, useLocation } from "react-router-dom";
+import { HashRouter, Navigate, NavLink, Routes, Route, useLocation, useNavigate } from "react-router-dom";
 import SetsPage from "./pages/SetsPage";
 import SetDetailPage from "./pages/SetDetailPage";
 import CardDetailPage from "./pages/CardDetailPage";
@@ -7,6 +7,9 @@ import GradedCoveragePage from "./pages/GradedCoveragePage";
 import TrackedPage from "./pages/TrackedPage";
 import BrowsePage from "./pages/BrowsePage";
 import RiftboundPage from "./pages/RiftboundPage";
+import RiftboundSetPage from "./pages/RiftboundSetPage";
+import RiftboundAnalyticsPage from "./pages/RiftboundAnalyticsPage";
+import RiftboundComingPage from "./pages/RiftboundComingPage";
 import DealsPage from "./pages/DealsPage";
 import BuyWindowsPage from "./pages/BuyWindowsPage";
 import BuyingPrepPage from "./pages/BuyingPrepPage";
@@ -24,11 +27,84 @@ import { SignIn } from "./components/SignIn";
 import { Mark } from "./brand/Mark";
 import { COMPANY_NAME, PRODUCT_NAME } from "./brand/brand";
 
-// The nav: a few groups, each a dropdown of pages (Sets and Developer stand
-// alone). A group shows as active when one of its pages is open.
-const NAV: { label: string; to?: string; items?: { to: string; label: string; hint: string }[] }[] = [
+// The nav: a game switch (Pokémon / Riftbound), then a few groups, each a
+// dropdown of pages (Sets and Developer stand alone). A group shows as
+// active when one of its pages is open. Each game has its own Sets, Buying
+// and Analytics pages; Settings are shared.
+type NavEntry = { label: string; to?: string; items?: { to: string; label: string; hint: string }[] };
+type Game = "pokemon" | "riftbound";
+
+const SHARED: NavEntry[] = [
+  {
+    label: "Settings",
+    items: [
+      { to: "/settings", label: "Settings", hint: "Grading costs, fees, value source" },
+      { to: "/automation", label: "Automation", hint: "Scheduled jobs and card priority" },
+      { to: "/developer", label: "Developer", hint: "APIs, architecture, roadmap" },
+    ],
+  },
+  { label: "Developer", to: "/developer" }, // also under Settings: phones hide this one
+];
+
+const NAV_RIFTBOUND: NavEntry[] = [
+  { label: "Sets", to: "/rb" },
+  {
+    label: "Buying",
+    items: [
+      { to: "/rb/watchlist", label: "Watchlist", hint: "Riftbound cards and targets (coming next)" },
+      { to: "/rb/deals", label: "Deals", hint: "eBay auctions and gradable raw copies (coming next)" },
+    ],
+  },
+  {
+    label: "Analytics",
+    items: [
+      { to: "/rb/analytics", label: "Prices & movers", hint: "Price by card type across sets, biggest moves" },
+    ],
+  },
+  ...SHARED,
+];
+
+// Pages that exist in both games, for the switch to land on the same page.
+const TWIN: [string, string][] = [["/watchlist", "/rb/watchlist"], ["/deals", "/rb/deals"], ["/timing", "/rb/analytics"]];
+const POKEMON_ANALYTICS = ["/timing", "/rankings", "/channels", "/promos", "/windows"];
+const SHARED_PATHS = ["/settings", "/automation", "/developer", "/roadmap", "/cards/"];
+
+function gameOf(path: string, last: Game): Game {
+  if (path === "/rb" || path.startsWith("/rb/")) return "riftbound";
+  if (path.startsWith("/cards/riftbound-")) return "riftbound";
+  if (path.startsWith("/cards/")) return "pokemon";
+  return SHARED_PATHS.some((p) => path.startsWith(p)) ? last : "pokemon";
+}
+
+function switchTo(path: string, to: Game): string | null {
+  if (SHARED_PATHS.some((p) => path.startsWith(p)) && !path.startsWith("/cards/")) return null; // stay; the menus change
+  if (to === "riftbound") {
+    if (POKEMON_ANALYTICS.some((p) => path.startsWith(p))) return "/rb/analytics";
+    return TWIN.find(([a]) => path.startsWith(a))?.[1] ?? "/rb";
+  }
+  return TWIN.find(([, b]) => path.startsWith(b))?.[0] ?? "/";
+}
+
+const LAST_GAME = "nav.game";
+function readLast(): Game {
+  try { return localStorage.getItem(LAST_GAME) === "riftbound" ? "riftbound" : "pokemon"; } catch { return "pokemon"; }
+}
+
+function GameSwitch({ game, onPick }: { game: Game; onPick: (g: Game) => void }) {
+  return (
+    <div className="flex rounded-md border border-gray-800 overflow-hidden text-xs shrink-0" role="tablist" aria-label="Game">
+      {(["pokemon", "riftbound"] as const).map((g) => (
+        <button key={g} role="tab" aria-selected={game === g} onClick={() => onPick(g)}
+          className={`px-2 py-1 ${game === g ? (g === "pokemon" ? "bg-yellow-900/60 text-yellow-200" : "bg-sky-900/60 text-sky-200") : "text-gray-400 hover:text-gray-200"}`}>
+          {g === "pokemon" ? "Pokémon" : "Riftbound"}
+        </button>
+      ))}
+    </div>
+  );
+}
+
+const NAV: NavEntry[] = [
   { label: "Sets", to: "/" },
-  { label: "Riftbound", to: "/riftbound" },
   {
     label: "Buying",
     items: [
@@ -48,18 +124,10 @@ const NAV: { label: string; to?: string; items?: { to: string; label: string; hi
       { to: "/promos", label: "Promos", hint: "Card classes: promos, exotics" },
     ],
   },
-  {
-    label: "Settings",
-    items: [
-      { to: "/settings", label: "Settings", hint: "Grading costs, fees, value source" },
-      { to: "/automation", label: "Automation", hint: "Scheduled jobs and card priority" },
-      { to: "/developer", label: "Developer", hint: "APIs, architecture, roadmap" },
-    ],
-  },
-  { label: "Developer", to: "/developer" }, // also under Settings: phones hide this one
+  ...SHARED,
 ];
 
-function NavGroup({ g }: { g: (typeof NAV)[number] }) {
+function NavGroup({ g }: { g: NavEntry }) {
   const [open, setOpen] = useState(false);
   const loc = useLocation();
   const ref = useRef<HTMLDivElement>(null);
@@ -99,6 +167,22 @@ function NavGroup({ g }: { g: (typeof NAV)[number] }) {
 }
 
 function Nav() {
+  const loc = useLocation();
+  const navigate = useNavigate();
+  const [last, setLast] = useState<Game>(readLast);
+  const game = gameOf(loc.pathname, last);
+  useEffect(() => {
+    if (game === last) return;
+    setLast(game);
+    try { localStorage.setItem(LAST_GAME, game); } catch { /* ignore */ }
+  }, [game, last]);
+  const pick = (g: Game) => {
+    setLast(g);
+    try { localStorage.setItem(LAST_GAME, g); } catch { /* ignore */ }
+    const to = switchTo(loc.pathname, g);
+    if (to) navigate(to);
+  };
+  const nav = game === "riftbound" ? NAV_RIFTBOUND : NAV;
   const linkCls = ({ isActive }: { isActive: boolean }) =>
     isActive
       ? "text-white text-sm"
@@ -106,15 +190,16 @@ function Nav() {
 
   return (
     <nav className="h-12 border-b border-gray-800 px-3 sm:px-6 flex items-center gap-3 sm:gap-6 sticky top-0 bg-gray-950 z-30 print:hidden">
-      <NavLink to="/" className="flex items-center gap-2 shrink-0" title={`${PRODUCT_NAME} · ${COMPANY_NAME}`}>
+      <NavLink to={game === "riftbound" ? "/rb" : "/"} className="flex items-center gap-2 shrink-0" title={`${PRODUCT_NAME} · ${COMPANY_NAME}`}>
         <Mark height={32} />
         <span className="hidden sm:flex flex-col leading-none">
           <span className="font-bold text-white tracking-tight text-sm">{PRODUCT_NAME}</span>
           <span className="mt-0.5 text-[8px] font-semibold tracking-[0.2em] text-gray-400 uppercase">{COMPANY_NAME}</span>
         </span>
       </NavLink>
-      {NAV.map((g) => g.to
-        ? <NavLink key={g.label} to={g.to} end={g.to === "/"} className={(a) => `${linkCls(a)} ${g.to === "/developer" ? "hidden sm:inline" : ""}`}>{g.label}</NavLink>
+      <GameSwitch game={game} onPick={pick} />
+      {nav.map((g) => g.to
+        ? <NavLink key={g.label} to={g.to} end={g.to === "/" || g.to === "/rb"} className={(a) => `${linkCls(a)} ${g.to === "/developer" ? "hidden sm:inline" : ""}`}>{g.label}</NavLink>
         : <NavGroup key={g.label} g={g} />)}
       <div className="ml-auto"><SignIn /></div>
     </nav>
@@ -130,7 +215,12 @@ export default function App() {
           <Routes>
             <Route path="/" element={<BrowsePage />} />
             <Route path="/browse/:code" element={<TrackedPage />} />
-            <Route path="/riftbound" element={<RiftboundPage />} />
+            <Route path="/rb" element={<RiftboundPage />} />
+            <Route path="/rb/set/:code" element={<RiftboundSetPage />} />
+            <Route path="/rb/analytics" element={<RiftboundAnalyticsPage />} />
+            <Route path="/rb/watchlist" element={<RiftboundComingPage page="watchlist" />} />
+            <Route path="/rb/deals" element={<RiftboundComingPage page="deals" />} />
+            <Route path="/riftbound" element={<Navigate to="/rb" replace />} />
             <Route path="/deals" element={<DealsPage />} />
             <Route path="/windows" element={<BuyWindowsPage />} />
             <Route path="/timing" element={<TimingPage />} />
