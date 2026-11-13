@@ -2844,6 +2844,107 @@ export function saveRawSeller(username: string, body: {
   });
 }
 
+// ---- Seller page (Deals): one seller's store for a combined-shipping order --
+
+export interface SellerListing {
+  display_key: string;
+  name: string;
+  number: string;
+  set_code: string;
+  game: string;
+  tracked: boolean;
+  card_image_url?: string;
+  listing_id: string;
+  grade: string;
+  auction?: boolean;
+  ends_at?: string;
+  bids?: number;
+  title: string;
+  url?: string;
+  image_url?: string;
+  image_count?: number;
+  item_cents: number; // ask or current bid, without shipping
+  listed_ship_cents: number;
+  add_cents: number; // item + what it adds to the order's shipping
+  max_raw_cents?: number;
+  max_grader?: string;
+  under?: number;
+  raw_market_cents?: number;
+  psa10_cents?: number;
+  p10?: number;
+  ev_cents?: number;
+  grade_odds?: GradeOdds;
+  passed?: boolean;
+}
+
+export interface SweepUnmatch {
+  listing_id: string;
+  title: string;
+  url?: string;
+  image_url?: string;
+  price_cents: number;
+  auction?: boolean;
+}
+
+export interface SweepResult {
+  seller: string;
+  pages: number;
+  items: number;
+  matched: number;
+  raw: number;
+  tracked: number;
+  auctions: number;
+  ambiguous: number;
+  unmatched: number;
+  ended: number;
+  complete: boolean;
+  stopped_by: string;
+  unmatched_items?: SweepUnmatch[];
+}
+
+export interface SellerSweepJob {
+  id: number;
+  status: "queued" | "running" | "done" | "failed" | "cancelled";
+  from_listing?: string;
+  created_at: string;
+  finished_at?: string;
+  result?: SweepResult;
+  error?: string;
+}
+
+export interface SellerPage {
+  username: string;
+  label?: string;
+  known: boolean;
+  consigner: boolean;
+  raw_tracked: boolean;
+  feedback_score?: number;
+  feedback_pct?: number;
+  ship_rule: ShipRule;
+  sweep?: SellerSweepJob;
+  live: number;
+  graded: number;
+  origin?: SellerListing;
+  gradable: SellerListing[];
+  over: SellerListing[];
+  unpriced: SellerListing[];
+  basket?: RawBasket;
+  generated_at: string;
+}
+
+export function fetchSellerPage(username: string, from?: string): Promise<SellerPage> {
+  const q = from ? `?from=${encodeURIComponent(from)}` : "";
+  return get(`/v1/deals/seller/${encodeURIComponent(username)}${q}`);
+}
+
+export function startSellerSweep(username: string, from?: string): Promise<{ id?: number; sweep: SellerSweepJob; already?: boolean }> {
+  return adminFetch(`/v1/admin/deals/seller/${encodeURIComponent(username)}/sweep`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ from_listing: from ?? "" }),
+  });
+}
+
 // ---- Sell channels: explorer --------------------------------------------------
 
 export type ExploreDim = "grader" | "grade" | "rarity" | "band" | "lang";

@@ -9,6 +9,7 @@ import { CheckCentering } from "./HuntListings";
 import ActionCell, { ExplainChip, ShowFilter, countShows, showOf, type Show } from "./ActionCell";
 import { ItemNumber } from "./BidCells";
 import { useOddsReload } from "../lib/useOddsReload";
+import SellerLink from "./SellerLink";
 
 // Raw finds: every Raw to grade hit on the watchlist, from any eBay seller,
 // in one list ranked by how much better the copy measures than the card's
@@ -186,7 +187,7 @@ export default function RawFinds() {
                         shown={{ adj_ev: h.adj_ev, odds: h.grade_odds, all_in_cents: h.all_in_cents, max_cents: h.max_cents }}
                         onChange={(r) => setRv((m) => ({ ...m, [h.listing_id]: r }))} />
                     </td>
-                    <td className="py-1.5 px-2 whitespace-nowrap text-gray-400">{h.seller ?? "–"}</td>
+                    <td className="py-1.5 px-2 whitespace-nowrap text-gray-400"><SellerLink seller={h.seller} from={h.listing_id} /></td>
                     <td className="py-1.5 px-2 whitespace-nowrap text-gray-400">
                       {h.kind === "auction" ? <>Auction · {endsIn(h.ends_at)}{h.bids != null && <span className="text-gray-600"> · {h.bids} bids</span>}</> : "Buy Now"}
                     </td>
