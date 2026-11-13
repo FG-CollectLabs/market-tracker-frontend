@@ -23,7 +23,7 @@ export function AutoMore({ remaining, page, onMore }: { remaining: number; page:
 // CheckAll: "check centering for all" on the copies a board is showing:
 // the never-checked ones with front and back photos go to the grading
 // predictor (up to 300 a click, in the background).
-export function CheckAll({ listingIds }: { listingIds: string[] }) {
+export function CheckAll({ listingIds, source = "ebay" }: { listingIds: string[]; source?: "ebay" | "cc" }) {
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState<string | null>(null);
   if (listingIds.length === 0 && !msg) return null;
@@ -35,7 +35,7 @@ export function CheckAll({ listingIds }: { listingIds: string[] }) {
           onClick={async () => {
             setBusy(true); setMsg(null);
             try {
-              const r = await bulkCheckGradeOdds(listingIds);
+              const r = await bulkCheckGradeOdds(listingIds, source);
               const parts = [`${r.queued} sent`];
               if (r.already_checked) parts.push(`${r.already_checked} already checked`);
               if (r.no_photos) parts.push(`${r.no_photos} without front + back photos`);

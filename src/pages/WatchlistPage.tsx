@@ -16,6 +16,8 @@ import ConsignerWatch from "../components/ConsignerWatch";
 import HuntListings from "../components/HuntListings";
 import ConsignerBoard from "../components/ConsignerBoard";
 import RegradeBoard from "../components/RegradeBoard";
+import CCTens from "../components/CCTens";
+import type { CCLang } from "../lib/api";
 import BidsResults from "../components/BidsResults";
 import RawFinds from "../components/RawFinds";
 import { CheckAll } from "../components/BoardTools";
@@ -740,7 +742,7 @@ function WatchCards() {
 export default function WatchlistPage() {
   const [params, setParams] = useSearchParams();
   const v = params.get("view");
-  const view = v === "consigners" || v === "bought" || v === "board" || v === "bids" || v === "finds" ? v : "cards";
+  const view = v === "consigners" || v === "bought" || v === "board" || v === "bids" || v === "finds" || v === "cc" ? v : "cards";
   const set = (k: string, v: string) => {
     const n = new URLSearchParams(params);
     if (v) n.set(k, v); else n.delete(k);
@@ -749,12 +751,33 @@ export default function WatchlistPage() {
   return (
     <div className="space-y-4">
       <div className="inline-flex rounded border border-gray-700 overflow-hidden text-sm print:hidden" role="group" aria-label="Watchlist view">
-        {([["cards", "Cards"], ["consigners", "By consigner"], ["finds", "Raw finds"], ["board", "Consigner board"], ["bids", "Bids & results"], ["bought", "Bought to grade"]] as const).map(([k, l]) => (
+        {([["cards", "Cards"], ["consigners", "By consigner"], ["finds", "Raw finds"], ["board", "Consigner board"], ["cc", "Collector Crypt"], ["bids", "Bids & results"], ["bought", "Bought to grade"]] as const).map(([k, l]) => (
           <button key={k} onClick={() => set("view", k === "cards" ? "" : k)} aria-pressed={view === k}
             className={`px-3 py-1 ${view === k ? "bg-indigo-700 text-white" : "bg-gray-900 text-gray-400 hover:text-gray-200"}`}>{l}</button>
         ))}
       </div>
-      {view === "finds" ? (
+      {view === "cc" ? (
+        <>
+          <div className="flex flex-wrap items-center gap-3">
+            <h1 className="text-xl font-semibold text-white">Collector Crypt</h1>
+            <div className="inline-flex rounded border border-gray-700 overflow-hidden text-sm" role="group" aria-label="Language">
+              {([["", "English"], ["ja", "Japanese"], ["all", "All"]] as const).map(([k, l]) => (
+                <button key={k || "en"} onClick={() => set("lang", k)} aria-pressed={(params.get("lang") ?? "") === k}
+                  className={`px-3 py-1 ${(params.get("lang") ?? "") === k ? "bg-indigo-700 text-white" : "bg-gray-900 text-gray-400 hover:text-gray-200"}`}>{l}</button>
+              ))}
+            </div>
+          </div>
+          <div className="flex flex-wrap items-end gap-1 border-b border-gray-800 text-sm">
+            {([["", "Cheap PSA 10s"], ["regrade", "Crack & regrade"]] as const).map(([k, l]) => (
+              <button key={k || "tens"} onClick={() => set("sub", k)}
+                className={`px-3 py-1.5 -mb-px border-b-2 ${(params.get("sub") ?? "") === k ? "border-indigo-500 text-white" : "border-transparent text-gray-400 hover:text-gray-200"}`}>{l}</button>
+            ))}
+          </div>
+          {params.get("sub") === "regrade"
+            ? <RegradeBoard market="cc" lang={(params.get("lang") || "en") as CCLang} seller="" setSeller={() => {}} />
+            : <CCTens lang={(params.get("lang") || "en") as CCLang} />}
+        </>
+      ) : view === "finds" ? (
         <>
           <h1 className="text-xl font-semibold text-white">Raw finds</h1>
           <RawFinds />

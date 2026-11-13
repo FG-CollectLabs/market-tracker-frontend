@@ -2,7 +2,7 @@ import { AutoMore, CheckAll } from "./BoardTools";
 import { useOddsReload } from "../lib/useOddsReload";
 import { Fragment, useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
-import { fetchRegrade, type RegradeListing, type RegradePlay, type RegradeReport, type ValueSource } from "../lib/api";
+import { fetchCCRegrade, fetchRegrade, type CCLang, type RegradeListing, type RegradePlay, type RegradeReport, type ValueSource } from "../lib/api";
 import { Spinner, ErrorMsg } from "./Spinner";
 import GradeOddsBadge from "./GradeOddsBadge";
 import { CheckCentering } from "./HuntListings";
@@ -57,7 +57,14 @@ function endsAt(iso?: string) {
   return `${clock} · ${left}`;
 }
 
-export default function RegradeBoard({ seller, setSeller }: { seller: string; setSeller: (s: string) => void }) {
+// market "cc": Collector Crypt slabs instead of the consigners' eBay
+// listings (no seller tabs or auctions; costs are all-in to your door).
+export default function RegradeBoard({ seller, setSeller, market, lang = "en" }: {
+  seller: string; setSeller: (s: string) => void; market?: "cc"; lang?: CCLang;
+}) {
+  const cc = market === "cc";
+  const [measuredOnly, setMeasuredOnly] = useState(false);
+  const [ccInfo, setCcInfo] = useState<{ live: number; measured: number } | null>(null);
   const [source, setSource] = useState<ValueSource | "">("ebay");
   const [grader, setGrader] = useState("");
   const [ending, setEnding] = useState<Ending>("");
@@ -77,19 +84,25 @@ export default function RegradeBoard({ seller, setSeller }: { seller: string; se
     let live = true;
     setLoading(true);
     setErr(null);
-    fetchRegrade({ valueSource: source || undefined })
+    (cc
+      ? fetchCCRegrade(lang).then((r) => {
+        if (live) setCcInfo({ live: r.live, measured: r.measured });
+        return { sellers: [], listings: r.listings, rates: r.rates, crack_damage_pct: r.crack_damage_pct, passed: 0, method: r.method } as RegradeReport;
+      })
+      : fetchRegrade({ valueSource: source || undefined }))
       .then((r) => live && setRep(r))
       .catch((e) => live && setErr(String(e)))
       .finally(() => live && setLoading(false));
     return () => { live = false; };
-  }, [source, oddsReload]);
+  }, [source, oddsReload, cc, lang]);
 
   const base = useMemo(() => {
     const until = endsBefore(ending);
     return (rep?.listings ?? []).filter((l) =>
       (!seller || l.seller === seller) && (!grader || l.grader === grader) && (!kind || l.kind === kind) &&
-      (!ending || (l.ends_at && new Date(l.ends_at).getTime() < until)) && (!posOnly || (l.best?.ev_cents ?? -1) > 0));
-  }, [rep, seller, grader, kind, ending, posOnly]);
+      (!ending || (l.ends_at && new Date(l.ends_at).getTime() < until)) && (!posOnly || (l.best?.ev_cents ?? -1) > 0) &&
+      (!measuredOnly || (l.best != null && l.best.rate_source !== "settings")));
+  }, [rep, seller, grader, kind, ending, posOnly, measuredOnly]);
   const showCounts = useMemo(() => countShows(base, reviewOf), [base, rv]); // eslint-disable-line react-hooks/exhaustive-deps
   const rows = useMemo(() => {
     const out = base.filter((l) => show === "all" || showOf(reviewOf(l)) === show);
@@ -108,18 +121,26 @@ export default function RegradeBoard({ seller, setSeller }: { seller: string; se
   }, [rep]);
   return (
     <div className="space-y-4">
-      <p className="text-sm text-gray-400 max-w-4xl">
+      {cc ? (
+        <p className="text-sm text-gray-400 max-w-4xl">
+          Collector Crypt slabs below the premium grade (tracked and watched cards), priced as cracked and resubmitted against holding the
+          slab. Your cost is all-in to your door: the ask, buyer fee and redemption. Collector Crypt shows each slab&apos;s full-size front and
+          back, so the pre-grader measures them; the most promising English slabs are sent automatically every hour. Tick
+          &ldquo;Pre-graded only&rdquo; for the copies whose measured odds make the regrade pay.
+          {ccInfo && <span className="text-gray-500"> {ccInfo.live.toLocaleString()} slabs live, {ccInfo.measured.toLocaleString()} measured.</span>}
+        </p>
+      ) : <p className="text-sm text-gray-400 max-w-4xl">
         Slabs below the premium grade from your consigners, each priced as cracked and resubmitted (to PSA, to CGC; CGC 10s for Pristine)
         against just holding the slab. The odds start from Settings&apos; regrade rates, which are assumptions until your outcomes come in;
         once the pre-grader measures a slab&apos;s photos they move with how that copy compares with a typical one, and a PSA centering cap
         below 10 rules out the PSA play.
-      </p>
+      </p>}
 
       {err && <ErrorMsg msg={err} />}
       {!rep && !err && <div className="text-sm text-gray-500 flex items-center gap-2"><Spinner /> Pricing every consigner slab…</div>}
       {rep && (
         <>
-          <div className="flex flex-wrap items-end gap-1 border-b border-gray-800">
+          {!cc && <div className="flex flex-wrap items-end gap-1 border-b border-gray-800">
             {[{ username: "", label: "All consigners", priced: rep.sellers.reduce((a, s) => a + s.priced, 0), beat: rep.sellers.reduce((a, s) => a + s.beat, 0) }, ...rep.sellers].map((s) => (
               <button key={s.username || "all"} onClick={() => setSeller(s.username)}
                 className={`px-3 py-1.5 text-sm rounded-t border-x border-t -mb-px ${seller === s.username ? "border-gray-700 bg-gray-900 text-white" : "border-transparent text-gray-400 hover:text-gray-200"}`}>
@@ -127,7 +148,7 @@ export default function RegradeBoard({ seller, setSeller }: { seller: string; se
               </button>
             ))}
             {loading && <span className="text-xs text-gray-500 px-2 pb-2">Loading…</span>}
-          </div>
+          </div>}
 
           <div className="flex flex-wrap items-center gap-2 text-xs text-gray-400">
             <div className="inline-flex rounded border border-gray-700 overflow-hidden" role="group" aria-label="Grader">
@@ -138,6 +159,7 @@ export default function RegradeBoard({ seller, setSeller }: { seller: string; se
                 </button>
               ))}
             </div>
+            {!cc && <>
             <label className="flex items-center gap-1.5">Ending
               <select value={ending} onChange={(e) => setEnding(e.target.value as Ending)} className={sel}>
                 <option value="">Any time (incl. Buy Now)</option><option value="today">Today</option><option value="tomorrow">Today + tomorrow</option>
@@ -147,20 +169,23 @@ export default function RegradeBoard({ seller, setSeller }: { seller: string; se
             <select value={kind} onChange={(e) => setKind(e.target.value as typeof kind)} className={sel}>
               <option value="">Auctions + Buy Now</option><option value="auction">Auctions</option><option value="buy_now">Buy Now</option>
             </select>
+            </>}
             <label className="flex items-center gap-1.5">Sort
               <select value={sort} onChange={(e) => setSort(e.target.value as Sort)} className={sel}>
                 <option value="best_ev">Best regrade EV</option><option value="roi">Best regrade ROI</option><option value="discount">Cheapest vs slab market</option><option value="ending">Ending soonest</option>
               </select>
             </label>
             <label className="flex items-center gap-1.5"><input type="checkbox" checked={posOnly} onChange={(e) => setPosOnly(e.target.checked)} /> Regrade EV positive only</label>
-            <label className="flex items-center gap-1.5">Prices
+            {cc && <label className="flex items-center gap-1.5" title="Only slabs the pre-grader has measured (the EV uses this copy's odds, not the base rate)">
+              <input type="checkbox" checked={measuredOnly} onChange={(e) => setMeasuredOnly(e.target.checked)} /> Pre-graded only</label>}
+            {!cc && <label className="flex items-center gap-1.5">Prices
               <select value={source} onChange={(e) => setSource(e.target.value as ValueSource | "")} className={sel}>
                 <option value="ebay">eBay sold</option><option value="comps">Sold comps</option><option value="pricecharting">PriceCharting</option><option value="">Settings default</option>
               </select>
-            </label>
-            <ShowFilter show={show} setShow={setShow} counts={showCounts} />
+            </label>}
+            {!cc && <ShowFilter show={show} setShow={setShow} counts={showCounts} />}
             <span className="text-gray-500 tabular-nums">{rows.length} slabs</span>
-            <CheckAll listingIds={rows.filter((l) => !l.grade_odds && ["psa", "cgc", "bgs"].includes(l.grader) && (l.image_count == null || l.image_count >= 2)).map((l) => l.listing_id)} />
+            <CheckAll source={cc ? "cc" : "ebay"} listingIds={rows.filter((l) => (!l.grade_odds || l.grade_odds.status === "failed") && ["psa", "cgc", "bgs"].includes(l.grader) && (l.image_count == null || l.image_count >= 2)).map((l) => l.listing_id)} />
           </div>
 
           {rows.length === 0 ? <p className="text-sm text-gray-500">Nothing matches right now.</p> : (
@@ -189,7 +214,7 @@ export default function RegradeBoard({ seller, setSeller }: { seller: string; se
                     return (
                       <Fragment key={l.listing_id}>
                         {head && <tr className="border-t border-gray-800 bg-gray-950/60"><td colSpan={12} className="py-1.5 px-3 text-[11px] font-semibold text-gray-300 uppercase tracking-wide">{day}</td></tr>}
-                        <Row l={l} review={reviewOf(l)} onReview={(r) => setRv((m) => ({ ...m, [l.listing_id]: r }))} />
+                        <Row l={l} cc={cc} review={reviewOf(l)} onReview={(r) => setRv((m) => ({ ...m, [l.listing_id]: r }))} />
                       </Fragment>
                     );
                   })}
@@ -235,7 +260,7 @@ function Play({ p }: { p: RegradePlay }) {
 
 const MEASURABLE = new Set(["psa", "cgc", "bgs"]);
 
-function Row({ l, review, onReview }: { l: RegradeListing; review?: HitReview; onReview: (r: HitReview | undefined) => void }) {
+function Row({ l, cc, review, onReview }: { l: RegradeListing; cc?: boolean; review?: HitReview; onReview: (r: HitReview | undefined) => void }) {
   const td = "py-1.5 px-2 text-right tabular-nums whitespace-nowrap";
   const v = l.vs_hold;
   return (
@@ -255,8 +280,9 @@ function Row({ l, review, onReview }: { l: RegradeListing; review?: HitReview; o
           </div>
         </div>
       </td>
-      <td className="py-1.5 px-2"><ActionCell listingId={l.listing_id} displayKey={l.display_key} priceCents={l.price_cents} review={review}
-        shown={{ grade_key: l.grade_key, add_cents: l.add_cents, hold_cents: l.hold_cents, best: l.best, plays: l.plays, odds: l.grade_odds }} onChange={onReview} /></td>
+      <td className="py-1.5 px-2">{cc ? <a href={l.url} target="_blank" rel="noreferrer" className="text-indigo-300/80 hover:text-indigo-200">Buy on CC ↗</a>
+        : <ActionCell listingId={l.listing_id} displayKey={l.display_key} priceCents={l.price_cents} review={review}
+        shown={{ grade_key: l.grade_key, add_cents: l.add_cents, hold_cents: l.hold_cents, best: l.best, plays: l.plays, odds: l.grade_odds }} onChange={onReview} />}</td>
       <td className="py-1.5 px-2 whitespace-nowrap"><span className="px-1.5 py-0.5 rounded border border-gray-700 text-gray-200">{gradeLabel(l.grade_key)}</span></td>
       <td className="py-1.5 px-2 whitespace-nowrap text-gray-400">{l.seller_label}</td>
       <td className="py-1.5 px-2 whitespace-nowrap text-gray-300">
@@ -278,8 +304,8 @@ function Row({ l, review, onReview }: { l: RegradeListing; review?: HitReview; o
       </td>
       <td className="py-1.5 px-2">{l.plays?.length ? l.plays.map((p) => <Play key={p.to} p={p} />) : <span className="text-gray-600" title={l.notes?.join("\n")}>–</span>}</td>
       <td className="py-1.5 px-2">
-        {l.grade_odds ? <GradeOddsBadge o={l.grade_odds} compact />
-          : MEASURABLE.has(l.grader) ? <CheckCentering listingId={l.listing_id} photos={l.image_count} />
+        {l.grade_odds && l.grade_odds.status !== "failed" ? <GradeOddsBadge o={l.grade_odds} compact />
+          : MEASURABLE.has(l.grader) ? <CheckCentering listingId={l.listing_id} photos={l.image_count} source={cc ? "cc" : "ebay"} />
           : <span className="text-[11px] text-gray-600" title="The pre-grader measures PSA, CGC and BGS slabs only">not measurable</span>}
       </td>
       <td className={`py-1.5 px-3 text-right tabular-nums whitespace-nowrap font-semibold ${l.best == null ? "text-gray-600" : l.best.ev_cents >= 0 ? "text-green-300" : "text-red-300"}`}>
