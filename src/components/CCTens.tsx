@@ -19,6 +19,9 @@ export default function CCTens({ lang }: { lang: CCLang }) {
   const [maxVs, setMaxVs] = useState(1);
   const [minMint, setMinMint] = useState(20);
   const [sort, setSort] = useState<Sort>("vs_mint");
+  // Under mint alone isn't a buy: when making a 10 costs more than one sells
+  // for, nobody grades it and the market is the real ceiling.
+  const [underMarket, setUnderMarket] = useState(true);
   const [shown, setShown] = useState(PAGE);
 
   useEffect(() => {
@@ -29,12 +32,13 @@ export default function CCTens({ lang }: { lang: CCLang }) {
   }, [lang]);
 
   const rows = useMemo(() => {
-    const out = (rep?.tens ?? []).filter((t) => t.vs_mint <= maxVs && t.mint_cents >= minMint * 100);
+    const out = (rep?.tens ?? []).filter((t) => t.vs_mint <= maxVs && t.mint_cents >= minMint * 100 &&
+      (!underMarket || (t.value_cents != null && t.cost_cents <= t.value_cents)));
     const key = (t: CCTen) => sort === "vs_mint" ? t.vs_mint : sort === "under" ? -t.under_mint_cents
       : sort === "profit" ? -(t.profit_cents ?? -1e9) : -new Date(t.listed_at).getTime();
     return [...out].sort((a, b) => key(a) - key(b));
-  }, [rep, maxVs, minMint, sort]);
-  useEffect(() => setShown(PAGE), [maxVs, minMint, sort, lang]);
+  }, [rep, maxVs, minMint, sort, underMarket]);
+  useEffect(() => setShown(PAGE), [maxVs, minMint, sort, lang, underMarket]);
 
   const sel = "rounded border border-gray-700 bg-gray-950 px-2 py-1 text-xs text-gray-200";
   return (
@@ -61,6 +65,8 @@ export default function CCTens({ lang }: { lang: CCLang }) {
                 {[0, 20, 50, 100, 250].map((v) => <option key={v} value={v}>${v}</option>)}
               </select>
             </label>
+            <label className="flex items-center gap-1.5" title="Your cost is also at or under the PSA 10's market price. When the cost to mint is above the market, nobody grades the card and the market is the real ceiling.">
+              <input type="checkbox" checked={underMarket} onChange={(e) => setUnderMarket(e.target.checked)} /> Also under market</label>
             <label className="flex items-center gap-1.5">Sort
               <select value={sort} onChange={(e) => setSort(e.target.value as Sort)} className={sel}>
                 <option value="vs_mint">Cheapest vs mint</option><option value="under">Most $ under mint</option>
