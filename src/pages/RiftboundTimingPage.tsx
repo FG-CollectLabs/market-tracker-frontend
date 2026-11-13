@@ -21,6 +21,7 @@ const usd = (c: number) => (c >= 100000 ? `$${Math.round(c / 100).toLocaleString
 const STATUS: Record<RbTimingSet["status"], { label: string; cls: string; icon: string }> = {
   wait: { label: "Wait", cls: "bg-amber-900/50 text-amber-200", icon: "⏳" },
   window: { label: "In window", cls: "bg-emerald-900/50 text-emerald-200", icon: "●" },
+  falling: { label: "Still falling", cls: "bg-rose-900/50 text-rose-200", icon: "↓" },
   past: { label: "Past bottom", cls: "bg-gray-800 text-gray-300", icon: "✓" },
   unknown: { label: "Too early to tell", cls: "bg-gray-800 text-gray-400", icon: "?" },
 };
@@ -102,6 +103,11 @@ function Headline({ k }: { k: RbTimingKind }) {
         <div className="text-2xl font-semibold text-white">week {k.typical_bottom_week}</div>
         <div className="text-xs text-gray-500">after release (from {(k.bottoms_from ?? []).map((s) => s.toUpperCase()).join(", ")})</div>
       </div>
+      {k.caveat && (
+        <div className="rounded-lg border border-amber-900/60 bg-amber-950/30 px-4 py-3 text-sm text-amber-200 max-w-md self-center">
+          ⚠ Treat with care: {k.caveat}.
+        </div>
+      )}
       {k.typical_bottom_index != null && (
         <div className="rounded-lg border border-gray-800 px-4 py-3">
           <div className="text-xs text-gray-500">Typical low vs launch</div>

@@ -3438,7 +3438,7 @@ export interface RbTimingSet {
   bottom_week: number | null;
   bottom_index: number | null;
   index_now: number | null;
-  status: "wait" | "window" | "past" | "unknown";
+  status: "wait" | "window" | "falling" | "past" | "unknown";
   note: string;
 }
 
@@ -3448,6 +3448,7 @@ export interface RbTimingKind {
   typical_bottom_week: number | null;
   typical_bottom_index: number | null;
   bottoms_from: string[] | null;
+  caveat?: string;
   sets: RbTimingSet[];
 }
 
