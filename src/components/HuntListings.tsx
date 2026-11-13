@@ -238,7 +238,7 @@ function Row({ l, bench, review, onReview }: { l: HuntListing; bench: number; re
 }
 
 // Not sent yet: send this one listing's photos to the grading predictor.
-export function CheckCentering({ listingId, photos }: { listingId: string; photos?: number }) {
+export function CheckCentering({ listingId, photos, source = "ebay" }: { listingId: string; photos?: number; source?: "ebay" | "cc" }) {
   const [busy, setBusy] = useState(false);
   const [odds, setOdds] = useState<GradeOdds | null>(null);
   const [err, setErr] = useState<string | null>(null);
@@ -249,7 +249,7 @@ export function CheckCentering({ listingId, photos }: { listingId: string; photo
       <button disabled={busy}
         onClick={async () => {
           setBusy(true); setErr(null);
-          try { setOdds(await checkListingGradeOdds(listingId)); } catch (e) { setErr(String(e)); } finally { setBusy(false); }
+          try { setOdds(await checkListingGradeOdds(listingId, source)); } catch (e) { setErr(String(e)); } finally { setBusy(false); }
         }}
         title="Send this listing's first two photos (front, back) to the grading predictor; the odds show here in a few minutes"
         className="px-1.5 py-0.5 rounded border border-gray-700 text-indigo-300 hover:text-indigo-200 hover:border-indigo-700 disabled:opacity-50">

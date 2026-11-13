@@ -1772,7 +1772,7 @@ export async function uploadGradeOdds(displayKey: string, front: File, back: Fil
 
 // One listing you're considering (Hunt list): its first two photos go to the
 // grading predictor; returns the odds row (status measuring until ready).
-export function checkListingGradeOdds(listingId: string, source = "ebay"): Promise<GradeOdds> {
+export function checkListingGradeOdds(listingId: string, source: string = "ebay"): Promise<GradeOdds> {
   return adminFetch("/v1/admin/grade-odds/listing", {
     method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ source, listing_id: listingId }),
   });
@@ -3374,8 +3374,65 @@ export function refreshGradeOdds(id: number): Promise<GradeOdds> {
 
 // "Check centering for all": never-sent listings (2+ photos) go to the
 // grading predictor in the background, up to 300 per call.
-export function bulkCheckGradeOdds(listingIds: string[]): Promise<{ queued: number; already_checked: number; no_photos: number; over_limit: number; limit: number }> {
-  return adminFetch(`/v1/admin/grade-odds/listings`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ source: "ebay", listing_ids: listingIds }) });
+export function bulkCheckGradeOdds(listingIds: string[], source: "ebay" | "cc" = "ebay"): Promise<{ queued: number; already_checked: number; no_photos: number; over_limit: number; limit: number }> {
+  return adminFetch(`/v1/admin/grade-odds/listings`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ source, listing_ids: listingIds }) });
+}
+
+// ---- Collector Crypt boards (Watchlist) ---------------------------------------
+
+export type CCLang = "en" | "ja" | "all";
+
+export interface CCTen {
+  nft_address: string;
+  url: string;
+  display_key: string;
+  name: string;
+  number: string;
+  set_code: string;
+  language: string;
+  card_image_url?: string;
+  image_url?: string;
+  title: string;
+  cert_number?: string;
+  ask_cents: number;
+  cost_cents: number; // ask + buyer fee + redemption
+  mint_cents: number; // cost to mint a PSA 10
+  mint_allocated_cents?: number;
+  vs_mint: number; // cost ÷ mint
+  under_mint_cents: number;
+  value_cents?: number;
+  value_sales?: number;
+  profit_cents?: number;
+  margin?: number;
+  listed_at: string;
+}
+
+export interface CCTensReport {
+  lang: CCLang;
+  tens: CCTen[];
+  live: number;
+  no_mint: number;
+  under_mint: number;
+  method: string;
+  watching: boolean;
+}
+
+export function fetchCCTens(lang: CCLang = "en"): Promise<CCTensReport> {
+  return adminFetch(`/v1/admin/watchlist/cc-tens?lang=${lang}`);
+}
+
+export interface CCRegradeReport {
+  lang: CCLang;
+  listings: RegradeListing[];
+  live: number;
+  measured: number;
+  rates: RegradeRate[];
+  crack_damage_pct: number;
+  method: string;
+}
+
+export function fetchCCRegrade(lang: CCLang = "en"): Promise<CCRegradeReport> {
+  return adminFetch(`/v1/admin/watchlist/cc-regrade?lang=${lang}`);
 }
 
 // Boards reload when odds are refreshed anywhere on the page.
