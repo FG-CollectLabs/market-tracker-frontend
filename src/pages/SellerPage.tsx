@@ -7,6 +7,7 @@ import {
 import { useSession } from "../lib/auth";
 import { Spinner, ErrorMsg } from "../components/Spinner";
 import GradeOddsBadge from "../components/GradeOddsBadge";
+import { ItemNumber, ebayItemNumber } from "../components/BidCells";
 import WatchButton from "../components/WatchButton";
 import { CheckCentering } from "../components/HuntListings";
 import { CheckAll } from "../components/BoardTools";
@@ -287,7 +288,10 @@ function Bucket({ title, note, rows, picked, toggle, open: startOpen, watch, emp
                   </td>
                   <td className="py-1.5 px-2 max-w-[22rem]">
                     {x.url ? <a href={x.url} target="_blank" rel="noreferrer" className="block truncate text-indigo-300/80 hover:text-indigo-200">{x.title}</a> : <span className="block truncate">{x.title}</span>}
-                    <span className="text-gray-500">{x.auction ? <>Auction · {endsIn(x.ends_at)}{x.bids != null && ` · ${x.bids} bids`}</> : "Buy Now"}{x.passed && " · passed"}</span>
+                    <span className="flex flex-wrap items-center gap-x-2">
+                      <span className="text-gray-500">{x.auction ? <>Auction · {endsIn(x.ends_at)}{x.bids != null && ` · ${x.bids} bids`}</> : "Buy Now"}{x.passed && " · passed"}</span>
+                      <ItemNumber n={ebayItemNumber(x.listing_id)} />
+                    </span>
                   </td>
                   <td className="py-1.5 px-2 text-right tabular-nums text-gray-300">{usd(x.item_cents)}</td>
                   <td className="py-1.5 px-2 text-right tabular-nums text-gray-100">{usd(x.add_cents)}</td>
@@ -329,6 +333,7 @@ function Unmatched({ xs, total }: { xs: SweepUnmatch[]; total: number }) {
               <span className="tabular-nums text-gray-300 w-16 text-right shrink-0">{usd(x.price_cents)}</span>
               {x.url ? <a href={x.url} target="_blank" rel="noreferrer" className="truncate text-indigo-300/80 hover:text-indigo-200">{x.title}</a> : <span className="truncate">{x.title}</span>}
               {x.auction && <span className="text-gray-500 shrink-0">auction</span>}
+              <span className="shrink-0 -mt-0.5"><ItemNumber n={ebayItemNumber(x.listing_id)} /></span>
             </li>
           ))}
         </ul>

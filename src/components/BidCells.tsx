@@ -12,6 +12,9 @@ async function copy(text: string): Promise<boolean> {
   }
 }
 
+// eBay item number from a Browse listing id ("v1|287714708212|0").
+export const ebayItemNumber = (listingId?: string) => listingId?.split("|")[1] ?? (listingId && /^\d+$/.test(listingId) ? listingId : undefined);
+
 // The eBay item number, one click to copy (for Gixen).
 export function ItemNumber({ n }: { n?: string }) {
   const [copied, setCopied] = useState(false);
