@@ -9,6 +9,7 @@ import { Spinner, ErrorMsg } from "../components/Spinner";
 import GradeOddsBadge from "../components/GradeOddsBadge";
 import WatchButton from "../components/WatchButton";
 import { CheckCentering } from "../components/HuntListings";
+import { CheckAll } from "../components/BoardTools";
 
 // Seller page (Deals → from a raw finder hit): one eBay seller's store,
 // priced for a single combined-shipping order. Sweep the store to find every
@@ -141,6 +142,8 @@ export default function SellerPage() {
         </section>
       )}
 
+      <CheckAllBar p={p} picked={picked} />
+
       {p.origin ? (
         <Bucket title="The hit" note="The listing you came from." rows={[p.origin]} picked={picked} toggle={toggle} />
       ) : from ? (
@@ -156,6 +159,30 @@ export default function SellerPage() {
       <Bucket title={`No grading prices (${p.unpriced.length})`} note="Matched to cards with no graded prices yet, mostly untracked. Highest raw market first; watch one to start pricing it."
         rows={p.unpriced} picked={picked} toggle={toggle} watch />
       {res?.unmatched_items && res.unmatched_items.length > 0 && <Unmatched xs={res.unmatched_items} total={res.unmatched} />}
+    </div>
+  );
+}
+
+// Check centering for every raw copy on the page that has no odds yet or
+// whose check failed (resent), the order's picks or everything.
+function CheckAllBar({ p, picked }: { p: Page; picked: Set<string> | null }) {
+  const session = useSession();
+  const [scope, setScope] = useState<"all" | "gradable" | "order">("all");
+  if (!session) return null;
+  const all = [...(p.origin ? [p.origin] : []), ...p.gradable, ...p.over, ...p.unpriced];
+  const rows = scope === "order" ? all.filter((x) => picked?.has(x.listing_id))
+    : scope === "gradable" ? [...(p.origin ? [p.origin] : []), ...p.gradable] : all;
+  const ids = rows.filter((x) => !x.grade_odds || x.grade_odds.status === "failed").map((x) => x.listing_id);
+  return (
+    <div className="flex flex-wrap items-center gap-2 text-xs text-gray-400">
+      <span>Centering:</span>
+      <select value={scope} onChange={(e) => setScope(e.target.value as typeof scope)}
+        className="rounded border border-gray-700 bg-gray-950 px-1.5 py-0.5 text-gray-200">
+        <option value="all">every raw copy</option>
+        <option value="gradable">the hit + gradable</option>
+        <option value="order">the order</option>
+      </select>
+      {ids.length > 0 ? <CheckAll listingIds={ids} /> : <span className="text-gray-500">all checked</span>}
     </div>
   );
 }
@@ -269,7 +296,12 @@ function Bucket({ title, note, rows, picked, toggle, open: startOpen, watch, emp
                   <td className={`py-1.5 px-2 text-right tabular-nums ${x.under == null ? "text-gray-600" : x.under >= 0 ? "text-green-300" : "text-red-300"}`}>{pct(x.under)}</td>
                   <td className="py-1.5 px-2 text-right tabular-nums text-gray-400">{pct(x.p10)}</td>
                   <td className="py-1.5 px-2 whitespace-nowrap">
-                    {x.grade_odds ? <GradeOddsBadge o={x.grade_odds} compact /> : <CheckCentering listingId={x.listing_id} photos={x.image_count} />}
+                    {x.grade_odds && x.grade_odds.status !== "failed" ? <GradeOddsBadge o={x.grade_odds} compact /> : (
+                      <span title={x.grade_odds?.error ? `Last check failed: ${x.grade_odds.error}` : undefined}>
+                        {x.grade_odds && <span className="text-red-300/70 mr-1">failed ·</span>}
+                        <CheckCentering listingId={x.listing_id} photos={x.image_count} />
+                      </span>
+                    )}
                   </td>
                 </tr>
               ))}
