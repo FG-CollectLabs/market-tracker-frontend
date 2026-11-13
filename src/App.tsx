@@ -11,6 +11,8 @@ import RiftboundSetPage from "./pages/RiftboundSetPage";
 import RiftboundAnalyticsPage from "./pages/RiftboundAnalyticsPage";
 import RiftboundWatchlistPage from "./pages/RiftboundWatchlistPage";
 import RiftboundDealsPage from "./pages/RiftboundDealsPage";
+import RiftboundTimingPage from "./pages/RiftboundTimingPage";
+import PcgPage from "./pages/PcgPage";
 import DealsPage from "./pages/DealsPage";
 import BuyWindowsPage from "./pages/BuyWindowsPage";
 import BuyingPrepPage from "./pages/BuyingPrepPage";
@@ -59,15 +61,17 @@ const NAV_RIFTBOUND: NavEntry[] = [
   {
     label: "Analytics",
     items: [
+      { to: "/rb/timing", label: "Timing", hint: "When signatures, overnumbered, alt arts and promos bottom after release" },
       { to: "/rb/analytics", label: "Prices & movers", hint: "Price by card type across sets, biggest moves" },
+      { to: "/rb/pcg", label: "PCG grading", hint: "PCG grade odds and PCG vs PSA prices for Riftbound" },
     ],
   },
   ...SHARED,
 ];
 
 // Pages that exist in both games, for the switch to land on the same page.
-const TWIN: [string, string][] = [["/watchlist", "/rb/watchlist"], ["/deals", "/rb/deals"], ["/timing", "/rb/analytics"]];
-const POKEMON_ANALYTICS = ["/timing", "/rankings", "/channels", "/promos", "/windows"];
+const TWIN: [string, string][] = [["/watchlist", "/rb/watchlist"], ["/deals", "/rb/deals"], ["/timing", "/rb/timing"], ["/pcg", "/rb/pcg"]];
+const POKEMON_ANALYTICS = ["/rankings", "/channels", "/promos", "/windows"];
 const SHARED_PATHS = ["/settings", "/automation", "/developer", "/roadmap", "/cards/"];
 
 function gameOf(path: string, last: Game): Game {
@@ -123,6 +127,7 @@ const NAV: NavEntry[] = [
       { to: "/rankings", label: "Rankings", hint: "Cards ranked by play" },
       { to: "/channels", label: "Sell channels", hint: "What cards sell for by platform and consigner" },
       { to: "/promos", label: "Promos", hint: "Card classes: promos, exotics" },
+      { to: "/pcg", label: "PCG grading", hint: "PCG grade odds and PCG vs PSA prices: when PCG pays" },
     ],
   },
   ...SHARED,
@@ -219,6 +224,9 @@ export default function App() {
             <Route path="/rb" element={<RiftboundPage />} />
             <Route path="/rb/set/:code" element={<RiftboundSetPage />} />
             <Route path="/rb/analytics" element={<RiftboundAnalyticsPage />} />
+            <Route path="/rb/timing" element={<RiftboundTimingPage />} />
+            <Route path="/rb/pcg" element={<PcgPage game="riftbound" />} />
+            <Route path="/pcg" element={<PcgPage game="pokemon" />} />
             <Route path="/rb/watchlist" element={<RiftboundWatchlistPage />} />
             <Route path="/rb/deals" element={<RiftboundDealsPage />} />
             <Route path="/riftbound" element={<Navigate to="/rb" replace />} />

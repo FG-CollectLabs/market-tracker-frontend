@@ -1,11 +1,11 @@
 import { useEffect, useMemo, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 import {
-  fetchRiftboundCards, fetchRiftboundSets, fetchSetGraded, fetchSettings,
-  type RbCard, type RbSet, type ROICard,
+  fetchPcgAnalysis, fetchRiftboundCards, fetchRiftboundSets, fetchSetGraded, fetchSettings,
+  type PcgAnalysis, type RbCard, type RbSet, type ROICard,
 } from "../lib/api";
 import type { GraderCfg } from "../lib/gradeEv";
-import { DEFAULT_RATES, RB_GRADERS, graderCfg, loadRates, rbEv, saveRates, type RbEv, type RbGrader, type RbRates } from "../lib/rbEv";
+import { DEFAULT_RATES, RB_GRADERS, graderCfg, loadRates, pcgRatiosFrom, rbEv, saveRates, type RbEv, type RbGrader, type RbRates } from "../lib/rbEv";
 import { Spinner } from "../components/Spinner";
 import WatchButton from "../components/WatchButton";
 import { KindBadge } from "./RiftboundPage";
@@ -17,7 +17,7 @@ import { KindBadge } from "./RiftboundPage";
 const usd = (c: number | null | undefined) =>
   c == null ? "—" : Math.abs(c) >= 100000 ? `$${Math.round(c / 100).toLocaleString()}` : `$${(c / 100).toFixed(2)}`;
 const pct = (v: number) => `${Math.round(v * 100)}%`;
-const NAMES: Record<RbGrader, string> = { psa: "PSA", cgc: "CGC", bgs: "BGS" };
+const NAMES: Record<RbGrader, string> = { psa: "PSA", cgc: "CGC", bgs: "BGS", pcg: "PCG" };
 
 type Row = { c: ROICard; rb?: RbCard; ev: Record<RbGrader, RbEv | null>; best: RbGrader | null };
 type SortKey = "best" | RbGrader | "raw" | "name";
@@ -31,6 +31,9 @@ export default function RiftboundSetPage() {
   const [sellFee, setSellFee] = useState(0.1325);
   const [businessDays, setBusinessDays] = useState(true);
   const [rates, setRates] = useState<RbRates>(loadRates);
+  const [pcgA, setPcgA] = useState<PcgAnalysis | null>(null);
+  useEffect(() => { fetchPcgAnalysis("riftbound").then(setPcgA).catch(() => {}); }, []);
+  const pcg = useMemo(() => pcgRatiosFrom(pcgA), [pcgA]);
   const [sort, setSort] = useState<SortKey>("best");
   const [err, setErr] = useState("");
 
@@ -55,7 +58,7 @@ export default function RiftboundSetPage() {
 
   const rows: Row[] = useMemo(() => {
     if (!cards) return [];
-    const opts = { graders, sellFee, businessDays, buffer: 0.1, rates };
+    const opts = { graders, sellFee, businessDays, buffer: 0.1, rates, pcgRatios: pcg.ratios };
     const list = cards.map((c) => {
       const ev = rbEv(c, opts);
       let best: RbGrader | null = null;
@@ -68,7 +71,7 @@ export default function RiftboundSetPage() {
     else if (sort === "best") list.sort((a, b) => evOf(b, b.best) - evOf(a, a.best));
     else list.sort((a, b) => evOf(b, sort) - evOf(a, sort));
     return list;
-  }, [cards, rb, graders, sellFee, businessDays, rates, sort]);
+  }, [cards, rb, graders, sellFee, businessDays, rates, sort, pcg]);
 
   const priced = rows.filter((r) => r.c.psa_10_cents != null || r.c.bgs_10_cents != null || r.c.cgc_10_cents != null).length;
   const anyPop = rows.some((r) => RB_GRADERS.some((g) => r.ev[g]?.source === "population"));
@@ -159,6 +162,7 @@ function CardRow({ r }: { r: Row }) {
 
 function hasTop(c: ROICard, g: RbGrader): boolean {
   if (c.raw_price_cents == null) return false;
+  if (g === "pcg") return c.psa_10_cents != null || c.pcg_cents?.["pcg-10"] != null;
   return g === "psa" ? c.psa_10_cents != null : g === "cgc" ? c.cgc_10_cents != null : c.bgs_10_cents != null || c.bgs_9_5_cents != null;
 }
 
@@ -207,7 +211,7 @@ export function RatesPanel(p: {
   return (
     <section className="rounded-lg border border-gray-800 bg-gray-900/60 p-3 space-y-2">
       <div className="text-sm text-gray-200">Grade odds {p.anyPop ? "(cards with a population use it)" : "(assumed: no Riftbound population data yet)"}</div>
-      <div className="grid sm:grid-cols-3 gap-3">
+      <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-3">
         <div className="space-y-1">
           <div className="text-xs text-gray-300">PSA <span className="text-gray-500">· {tierText("psa")}</span></div>
           <div className="flex flex-wrap gap-2">{field("psa", "p10", "10")}{field("psa", "p9", "9")}</div>
@@ -219,6 +223,12 @@ export function RatesPanel(p: {
         <div className="space-y-1">
           <div className="text-xs text-gray-300">BGS <span className="text-gray-500">· {tierText("bgs")}{!p.graders.bgs && " (add BGS in Settings)"}</span></div>
           <div className="flex flex-wrap gap-2">{field("bgs", "black", "Black")}{field("bgs", "p10", "10")}{field("bgs", "p95", "9.5")}</div>
+        </div>
+        <div className="space-y-1">
+          <div className="text-xs text-gray-300">PCG <span className="text-gray-500">· {tierText("pcg")} · cards with 10+ PCG copies use their population</span></div>
+          <div className="flex flex-wrap gap-2">
+            {field("pcg", "flawless", "Flawless")}{field("pcg", "pristine", "Pristine")}{field("pcg", "p10", "Gem 10")}{field("pcg", "p95", "9.5")}{field("pcg", "p9", "9")}
+          </div>
         </div>
       </div>
       <div className="flex flex-wrap items-center gap-4 text-xs text-gray-400">

@@ -263,6 +263,11 @@ export interface ROICard {
   bgs_gem_pop?: number | null;
   bgs_total_pop?: number | null;
   bgs_9_5_pop?: number | null;
+  // PCG: population by grade ("9", "9.5", "10" = Gem Mint, "Pristine 10", "Flawless 10"),
+  // its total, and the median of its sales by grade key (pcg-10, pcg-10-pristine, ...).
+  pcg_pop?: Record<string, number> | null;
+  pcg_total_pop?: number | null;
+  pcg_cents?: Record<string, number> | null;
   // When each value above was captured.
   raw_price_at?: string | null;
   psa_9_at?: string | null;
@@ -3410,4 +3415,103 @@ export interface RbListing {
 
 export function fetchRiftboundListings(grade?: string): Promise<{ listings: RbListing[] }> {
   return get(`/v1/riftbound/listings${grade ? `?grade=${encodeURIComponent(grade)}` : ""}`);
+}
+
+// ---- Riftbound timing --------------------------------------------------------
+
+export interface RbTimingPoint {
+  week: number; // weeks since release (negative: presale)
+  n: number;
+  median: number; // price / launch price
+  p25: number;
+  p75: number;
+  median_cents: number;
+}
+
+export interface RbTimingSet {
+  set_code: string;
+  set_name: string;
+  release_date: string | null;
+  weeks_since_release: number;
+  cards: number;
+  curve: RbTimingPoint[];
+  bottom_week: number | null;
+  bottom_index: number | null;
+  index_now: number | null;
+  status: "wait" | "window" | "past" | "unknown";
+  note: string;
+}
+
+export interface RbTimingKind {
+  kind: string;
+  pooled: RbTimingPoint[];
+  typical_bottom_week: number | null;
+  typical_bottom_index: number | null;
+  bottoms_from: string[] | null;
+  sets: RbTimingSet[];
+}
+
+export function fetchRiftboundTiming(): Promise<{ kinds: RbTimingKind[]; method: string }> {
+  return get(`/v1/riftbound/timing`);
+}
+
+// ---- PCG analytics ------------------------------------------------------------
+
+export interface PcgMix {
+  set_code: string;
+  set_name: string;
+  release_date: string | null;
+  cards: number;
+  pcg_total: number;
+  pcg_9: number;
+  pcg_9_5: number;
+  pcg_10: number;
+  pcg_pristine: number;
+  pcg_flawless: number;
+  psa_gem: number;
+  psa_total: number;
+  cgc_gem: number;
+  cgc_total: number;
+}
+
+export interface PcgSale {
+  display_key: string;
+  name: string;
+  set_code: string;
+  image_url: string | null;
+  grade_key: string;
+  source: string;
+  at: string;
+  cents: number;
+  title: string | null;
+  url: string | null;
+  psa_10_cents: number | null;
+  psa_9_cents: number | null;
+  cgc_10_cents: number | null;
+  raw_cents: number | null;
+}
+
+export interface RatioStat { n: number; median: number | null; p25: number | null; p75: number | null }
+
+export interface PcgSummary {
+  grade_key: string;
+  band: string;
+  count: number;
+  vs_psa_10: RatioStat;
+  vs_psa_9: RatioStat;
+  vs_cgc_10: RatioStat;
+  vs_raw: RatioStat;
+}
+
+export interface PcgAnalysis {
+  game: string;
+  grade_mix: PcgMix[];
+  sales: PcgSale[];
+  sales_summary: PcgSummary[];
+  asks: PcgSale[];
+  asks_summary: PcgSummary[];
+}
+
+export function fetchPcgAnalysis(game: "pokemon" | "riftbound"): Promise<PcgAnalysis> {
+  return get(`/v1/analysis/pcg${game === "riftbound" ? "?game=riftbound" : ""}`);
 }

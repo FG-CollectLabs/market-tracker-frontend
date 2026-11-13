@@ -1,4 +1,4 @@
-import type { ROICard } from "./api";
+import type { PcgAnalysis, PcgSummary, ROICard } from "./api";
 import { tierFor, type GraderCfg } from "./gradeEv";
 
 // Riftbound grading EV for PSA, CGC and Beckett. Same method as Pokémon
@@ -10,13 +10,14 @@ import { tierFor, type GraderCfg } from "./gradeEv";
 // assumptions set on the page (RbRates). A card with a population (GemRate
 // upload) uses its population instead.
 
-export type RbGrader = "psa" | "cgc" | "bgs";
-export const RB_GRADERS: RbGrader[] = ["psa", "cgc", "bgs"];
+export type RbGrader = "psa" | "cgc" | "bgs" | "pcg";
+export const RB_GRADERS: RbGrader[] = ["psa", "cgc", "bgs", "pcg"];
 
 export interface RbRates {
   psa: { p10: number; p9: number };
   cgc: { pristine: number; p10: number; p95: number };
   bgs: { black: number; p10: number; p95: number };
+  pcg: { flawless: number; pristine: number; p10: number; p95: number; p9: number };
 }
 
 // Assumptions for pack-fresh modern cards; edit them on the page.
@@ -24,7 +25,17 @@ export const DEFAULT_RATES: RbRates = {
   psa: { p10: 0.5, p9: 0.4 },
   cgc: { pristine: 0.1, p10: 0.55, p95: 0.25 },
   bgs: { black: 0.02, p10: 0.13, p95: 0.55 },
+  // PCG is strict: Riftbound chase cards' population runs ~ 9.5 40%, Gem 10 25%, Pristine 15%.
+  pcg: { flawless: 0.01, pristine: 0.12, p10: 0.22, p95: 0.4, p9: 0.2 },
 };
+
+// PCG prices by grade when a card has no PCG sales: PSA 10 × the typical
+// PCG / PSA 10 ratio for that grade (from the PCG analytics), keyed by
+// grade key (pcg-10-flawless, pcg-10-pristine, pcg-10, pcg-9.5, pcg-9).
+export type PcgRatios = Record<string, number>;
+
+// Cards with at least this many PCG copies use their own population.
+export const PCG_MIN_POP = 10;
 
 // Used while Settings has no BGS grader: placeholder prices.
 export const DEFAULT_BGS: GraderCfg = {
@@ -42,6 +53,7 @@ export interface RbEvOpts {
   businessDays: boolean;
   buffer: number;
   rates: RbRates;
+  pcgRatios?: PcgRatios;
 }
 
 export interface RbEv {
@@ -104,7 +116,7 @@ function evOf(grader: RbGrader, source: RbEv["source"], raw: number, buy: number
 // buyCents: the price paid for the raw copy (a listing's price + shipping);
 // the card's raw price when left out. Misses sell at the raw price.
 export function rbEv(c: ROICard, opts: RbEvOpts, buyCents?: number): Record<RbGrader, RbEv | null> {
-  const out: Record<RbGrader, RbEv | null> = { psa: null, cgc: null, bgs: null };
+  const out: Record<RbGrader, RbEv | null> = { psa: null, cgc: null, bgs: null, pcg: null };
   const raw = c.raw_price_cents;
   if (raw == null || raw <= 0) return out;
   const R = opts.rates;
@@ -150,6 +162,33 @@ export function rbEv(c: ROICard, opts: RbEvOpts, buyCents?: number): Record<RbGr
       { p: p95, cents: b95, label: "BGS 9.5" },
     ], pB + p10, tenCents ?? 0, opts); // tier by the BGS 10 price, not Black Label
   }
+
+  // PCG: its sales per grade, else PSA 10 × the grade's typical ratio; a
+  // missing top grade takes the next one down.
+  const pcgPrice = (gk: string): number | null => {
+    const own = c.pcg_cents?.[gk];
+    if (own != null) return own;
+    const r = opts.pcgRatios?.[gk];
+    return r != null && c.psa_10_cents != null ? Math.round(c.psa_10_cents * r) : null;
+  };
+  const gem = pcgPrice("pcg-10");
+  if (gem != null) {
+    const pr = pcgPrice("pcg-10-pristine") ?? gem;
+    const fl = pcgPrice("pcg-10-flawless") ?? pr;
+    const t = c.pcg_total_pop ?? 0;
+    const pop = t >= PCG_MIN_POP && c.pcg_pop != null;
+    const share = (g: string) => (c.pcg_pop?.[g] ?? 0) / t;
+    const P = pop
+      ? { flawless: share("Flawless 10"), pristine: share("Pristine 10"), p10: share("10"), p95: share("9.5"), p9: share("9") }
+      : R.pcg;
+    out.pcg = evOf("pcg", pop ? "population" : "assumed", raw, buyCents ?? raw, [
+      { p: P.flawless, cents: fl, label: "Flawless 10" },
+      { p: P.pristine, cents: pr, label: "Pristine 10" },
+      { p: P.p10, cents: gem, label: "Gem Mint 10" },
+      { p: P.p95, cents: pcgPrice("pcg-9.5"), label: "PCG 9.5" },
+      { p: P.p9, cents: pcgPrice("pcg-9"), label: "PCG 9" },
+    ], P.flawless + P.pristine + P.p10, gem, opts); // tier by the Gem Mint 10 price
+  }
   return out;
 }
 
@@ -159,7 +198,7 @@ const RATES_KEY = "rb.gradeRates.v1";
 export function loadRates(): RbRates {
   try {
     const v = JSON.parse(localStorage.getItem(RATES_KEY) ?? "null");
-    if (v?.psa && v?.cgc && v?.bgs) return v;
+    if (v?.psa && v?.cgc && v?.bgs) return { ...DEFAULT_RATES, ...v }; // graders added later keep their defaults
   } catch { /* storage unavailable */ }
   return DEFAULT_RATES;
 }
@@ -172,4 +211,27 @@ export function saveRates(r: RbRates) {
 // returns minRoi on the cost: net / (1 + minRoi) − fees.
 export function maxBuy(ev: RbEv, minRoi: number): number {
   return Math.floor(ev.netCents / (1 + minRoi) - ev.feeCents);
+}
+
+// pcgRatiosFrom: PCG / PSA 10 per PCG grade from the PCG analytics. Sales
+// (3+) first; else live asks (3+) less 15%, since asks sit above sales.
+export function pcgRatiosFrom(a: PcgAnalysis | null): { ratios: PcgRatios; from: Record<string, string> } {
+  const ratios: PcgRatios = {};
+  const from: Record<string, string> = {};
+  if (!a) return { ratios, from };
+  const pick = (rows: PcgSummary[], gk: string) => rows.find((r) => r.grade_key === gk && r.band === "all")?.vs_psa_10;
+  for (const gk of ["pcg-10-flawless", "pcg-10-pristine", "pcg-10", "pcg-9.5", "pcg-9"]) {
+    const s = pick(a.sales_summary, gk);
+    if (s && s.n >= 3 && s.median != null) {
+      ratios[gk] = s.median;
+      from[gk] = `${s.n} sales`;
+      continue;
+    }
+    const k = pick(a.asks_summary, gk);
+    if (k && k.n >= 3 && k.median != null) {
+      ratios[gk] = k.median * 0.85;
+      from[gk] = `${k.n} asks −15%`;
+    }
+  }
+  return { ratios, from };
 }

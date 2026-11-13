@@ -1,8 +1,8 @@
 import { useEffect, useMemo, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
-import { fetchRiftboundListings, fetchSettings, type RbListing, type ROICard } from "../lib/api";
+import { fetchPcgAnalysis, fetchRiftboundListings, fetchSettings, type PcgAnalysis, type RbListing, type ROICard } from "../lib/api";
 import type { GraderCfg } from "../lib/gradeEv";
-import { RB_GRADERS, loadRates, maxBuy, rbEv, saveRates, type RbEv, type RbGrader, type RbRates } from "../lib/rbEv";
+import { RB_GRADERS, loadRates, maxBuy, pcgRatiosFrom, rbEv, saveRates, type RbEv, type RbGrader, type RbRates } from "../lib/rbEv";
 import { Spinner } from "../components/Spinner";
 import WatchButton from "../components/WatchButton";
 import { KindBadge } from "./RiftboundPage";
@@ -61,6 +61,9 @@ export default function RiftboundDealsPage() {
   const [rates, setRates] = useState<RbRates>(loadRates);
   const [kind, setKind] = useState<"all" | "auction" | "fixed">("all");
   const [onlyPositive, setOnlyPositive] = useState(true);
+  const [pcgA, setPcgA] = useState<PcgAnalysis | null>(null);
+  useEffect(() => { fetchPcgAnalysis("riftbound").then(setPcgA).catch(() => {}); }, []);
+  const pcgRatios = useMemo(() => pcgRatiosFrom(pcgA).ratios, [pcgA]);
 
   useEffect(() => {
     fetchSettings().then(({ settings }) => {
@@ -75,7 +78,7 @@ export default function RiftboundDealsPage() {
 
   const rows: Row[] = useMemo(() => {
     if (!listings) return [];
-    const opts = { graders, sellFee, businessDays, buffer: 0.1, rates };
+    const opts = { graders, sellFee, businessDays, buffer: 0.1, rates, pcgRatios };
     const isAuction = (l: RbListing) => l.marketplace !== "fixed";
     return listings
       .filter((l) => (tab === "raw" ? l.grade_key === "raw" : l.grade_key !== "raw"))
@@ -84,7 +87,7 @@ export default function RiftboundDealsPage() {
         const allIn = l.price_cents + l.shipping_cents;
         if (tab === "graded") {
           const mkt = l.graded[GRADED_KEY[l.grade_key] ?? ""] ?? null;
-          return { l, allIn, ev: { psa: null, cgc: null, bgs: null }, best: null, max: null, vsMarket: mkt ? 1 - allIn / mkt : null };
+          return { l, allIn, ev: { psa: null, cgc: null, bgs: null, pcg: null }, best: null, max: null, vsMarket: mkt ? 1 - allIn / mkt : null };
         }
         const card = asCard(l);
         if (card.raw_price_cents == null) card.raw_price_cents = allIn;
@@ -98,7 +101,7 @@ export default function RiftboundDealsPage() {
       .sort((a, b) => tab === "raw"
         ? (b.best ? b.ev[b.best]!.evCents : -Infinity) - (a.best ? a.ev[a.best]!.evCents : -Infinity)
         : (b.vsMarket ?? -1) - (a.vsMarket ?? -1));
-  }, [listings, tab, kind, onlyPositive, graders, sellFee, businessDays, rates, minRoi]);
+  }, [listings, tab, kind, onlyPositive, graders, sellFee, businessDays, rates, minRoi, pcgRatios]);
 
   const setTab = (t: Tab) => {
     const p = new URLSearchParams(params);
