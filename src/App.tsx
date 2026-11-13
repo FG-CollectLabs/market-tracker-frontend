@@ -13,6 +13,7 @@ import RiftboundWatchlistPage from "./pages/RiftboundWatchlistPage";
 import RiftboundDealsPage from "./pages/RiftboundDealsPage";
 import RiftboundTimingPage from "./pages/RiftboundTimingPage";
 import PcgPage from "./pages/PcgPage";
+import SellerPage from "./pages/SellerPage";
 import DealsPage from "./pages/DealsPage";
 import BuyWindowsPage from "./pages/BuyWindowsPage";
 import BuyingPrepPage from "./pages/BuyingPrepPage";
@@ -231,6 +232,7 @@ export default function App() {
             <Route path="/rb/deals" element={<RiftboundDealsPage />} />
             <Route path="/riftbound" element={<Navigate to="/rb" replace />} />
             <Route path="/deals" element={<DealsPage />} />
+            <Route path="/deals/seller/:username" element={<SellerPage />} />
             <Route path="/windows" element={<BuyWindowsPage />} />
             <Route path="/timing" element={<TimingPage />} />
             <Route path="/timing/group/:category" element={<GroupPage />} />

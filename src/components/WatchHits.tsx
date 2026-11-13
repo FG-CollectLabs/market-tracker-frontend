@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState, type ReactNode } from "react";
+import SellerLink from "./SellerLink";
 import { HIT_REASONS, clearHitReview, reviewHit, type HitReason, type TargetHit, type WatchTarget } from "../lib/api";
 import { TARGET_LABEL } from "./WatchTargets";
 import GradeOddsBadge from "./GradeOddsBadge";
@@ -211,7 +212,7 @@ export function HitRow({ ch, displayKey, now, error, onOpen, onSetAside, onChang
               ★ Interested{h.review?.max_bid_cents != null ? ` · max ${usd(h.review.max_bid_cents)}` : ""}
             </span>
           )}
-          {h.seller && <span className="text-gray-600" title="eBay seller">· {h.seller}</span>}
+          {h.seller && h.source === "ebay" && <span className="text-gray-600">· <SellerLink seller={h.seller} from={h.listing_id} className="text-gray-600 hover:text-indigo-300" /></span>}
         </div>
         {h.url
           ? <a href={h.url} target="_blank" rel="noreferrer" className="text-indigo-300 hover:text-indigo-200 print:text-black block truncate">{h.title}</a>
@@ -428,7 +429,7 @@ export function Reviewer({ title, hits, start, displayKey, now, onClose, onNotIn
             <span className="px-1 rounded bg-gray-800">{h.kind === "auction" ? "Auction" : "Buy Now"}</span>
             <span className="px-1 rounded bg-gray-800 font-medium">{h.grade_key.toUpperCase()}</span>
             {onePhotoRaw(h) && <span className="px-1 rounded bg-amber-900/50 text-amber-200">1 photo</span>}
-            {h.seller && <span className="text-gray-500">{h.seller}</span>}
+            {h.seller && h.source === "ebay" && <SellerLink seller={h.seller} from={h.listing_id} className="text-gray-500 hover:text-indigo-300" />}
           </div>
           <div className="text-gray-100">{h.title}</div>
           <div className="tabular-nums space-y-0.5">
