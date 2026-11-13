@@ -1695,6 +1695,20 @@ export interface GradeOdds {
   bought_at?: string; // you marked this copy bought
   model_version?: string;
   explain?: Record<string, OddsExplain>; // per grader (PSA, CGC, ...): why the odds are what they are
+  rank?: CopyRank[]; // where the centering sits among graded PSA 10s (and 9s)
+}
+
+// Where a copy's centering sits among measured graded copies of one grade:
+// the same card when it has enough, else its set, else all cards.
+// Percentages are "better centered than this share of them"; overall weighs
+// each axis by how much it moves PSA's odds of a 10.
+export interface CopyRank {
+  grade: string; // "PSA 10" | "PSA 9"
+  overall: number;
+  front: number;
+  back: number;
+  n: number;
+  of: string; // "this card" | "set sv3pt5" | "all cards"
 }
 
 // The pre-grader's explanation of a copy's odds.
