@@ -202,6 +202,7 @@ export default function RegradeBoard({ seller, setSeller, market, lang = "en" }:
                     <th className="py-2 px-2 font-medium text-right" title="Item (auctions: the slab's market, its expected close) + what it adds to an order from the consigner">Your cost</th>
                     <th className="py-2 px-2 font-medium text-right" title="This slab grade's 90-day market, your cost against it, and what selling it as is nets">Slab market</th>
                     <th className="py-2 px-2 font-medium text-right" title="PSA 10 market and the card's PSA gem rate">PSA 10</th>
+                    <th className="py-2 px-2 font-medium text-right" title="The raw card's market and your cost for this slab against it: what buying a raw copy to grade costs instead">Raw</th>
                     <th className="py-2 px-2 font-medium" title="Each regrade play: share expected back at the top grade and the EV after the buy, fees and the selling fee. Hover for the working.">Regrade plays</th>
                     <th className="py-2 px-2 font-medium">Photos</th>
                     <th className="py-2 px-3 font-medium text-right">Best EV</th>
@@ -213,7 +214,7 @@ export default function RegradeBoard({ seller, setSeller, market, lang = "en" }:
                     const head = sort === "ending" && (i === 0 || dayLabel(page[i - 1].ends_at) !== day);
                     return (
                       <Fragment key={l.listing_id}>
-                        {head && <tr className="border-t border-gray-800 bg-gray-950/60"><td colSpan={12} className="py-1.5 px-3 text-[11px] font-semibold text-gray-300 uppercase tracking-wide">{day}</td></tr>}
+                        {head && <tr className="border-t border-gray-800 bg-gray-950/60"><td colSpan={13} className="py-1.5 px-3 text-[11px] font-semibold text-gray-300 uppercase tracking-wide">{day}</td></tr>}
                         <Row l={l} cc={cc} review={reviewOf(l)} onReview={(r) => setRv((m) => ({ ...m, [l.listing_id]: r }))} />
                       </Fragment>
                     );
@@ -301,6 +302,12 @@ function Row({ l, cc, review, onReview }: { l: RegradeListing; cc?: boolean; rev
       <td className={`${td} text-gray-300`}>
         {usd(l.psa10_cents)}
         {l.psa_gem_rate != null && l.psa_gem_rate > 0 && <div className="text-[10px] text-gray-500">gem {pc(l.psa_gem_rate)}</div>}
+      </td>
+      <td className={`${td} text-gray-300`}>
+        {l.raw_cents ? <>
+          {usd(l.raw_cents)}
+          <div className="text-[10px] text-gray-500" title="Your cost for this slab ÷ the raw card's market">slab {(l.add_cents / l.raw_cents).toFixed(1)}× raw</div>
+        </> : <span className="text-gray-600">–</span>}
       </td>
       <td className="py-1.5 px-2">{l.plays?.length ? l.plays.map((p) => <Play key={p.to} p={p} />) : <span className="text-gray-600" title={l.notes?.join("\n")}>–</span>}</td>
       <td className="py-1.5 px-2">
