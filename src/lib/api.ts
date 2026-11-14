@@ -3297,6 +3297,7 @@ export interface RegradeListing {
   hold_cents?: number;
   vs_hold?: number;
   hold_ev_cents?: number;
+  raw_cents?: number; // the raw card's market: buy one and grade it instead
   psa10_cents?: number;
   psa_gem_rate?: number;
   plays?: RegradePlay[];
