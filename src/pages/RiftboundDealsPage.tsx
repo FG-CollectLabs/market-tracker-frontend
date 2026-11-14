@@ -6,6 +6,7 @@ import { RB_GRADERS, loadRates, maxBuy, pcgRatiosFrom, rbEv, saveRates, type RbE
 import { Spinner } from "../components/Spinner";
 import WatchButton from "../components/WatchButton";
 import { KindBadge } from "./RiftboundPage";
+import RbTierChip from "../components/RbTierChip";
 import { EvCell, RatesPanel } from "./RiftboundSetPage";
 
 // Riftbound deals: live eBay and Fanatics listings of tracked or watched
@@ -185,6 +186,7 @@ export default function RiftboundDealsPage() {
                         <div className="space-y-0.5 min-w-0">
                           <div className="flex items-center gap-1">
                             <Link to={`/cards/${r.l.display_key}`} className="text-gray-100 hover:text-white">{r.l.name}</Link>
+                            <RbTierChip tier={r.l.champion_tier} champion={r.l.champion} />
                             <WatchButton displayKey={r.l.display_key} compact />
                           </div>
                           <div className="flex flex-wrap items-center gap-1 text-xs text-gray-500">

@@ -1,6 +1,8 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { fetchRiftboundTiming, type RbTimingKind, type RbTimingPoint, type RbTimingSet } from "../lib/api";
+import { Link } from "react-router-dom";
+import { fetchRiftboundTiming, fetchRiftboundWindows, type RbTimingKind, type RbTimingPoint, type RbTimingSet, type RbWindowCard } from "../lib/api";
 import { Spinner } from "../components/Spinner";
+import RbTierChip from "../components/RbTierChip";
 
 // Riftbound timing, separate from Pokémon's: when each card type bottoms
 // after its set's release. Prices are TCGplayer market, indexed to each
@@ -57,6 +59,7 @@ export default function RiftboundTimingPage() {
         </p>
       </header>
       {err && <div className="text-sm text-rose-400">{err}</div>}
+      <BuyWindows />
       {!kinds ? <Spinner /> : !k ? <p className="text-sm text-gray-500">No history yet.</p> : (
         <>
           <div className="flex flex-wrap gap-1" role="tablist">
@@ -84,6 +87,93 @@ export default function RiftboundTimingPage() {
         </>
       )}
     </div>
+  );
+}
+
+// Card by card: which tracked cards are in a buy window now, and which
+// top-champion cards are getting close to one.
+function BuyWindows() {
+  const [min, setMin] = useState(25);
+  const [data, setData] = useState<{ cards: RbWindowCard[]; method: string } | null>(null);
+  const [err, setErr] = useState("");
+  const [showAll, setShowAll] = useState(false);
+  useEffect(() => {
+    setData(null);
+    fetchRiftboundWindows(min).then(setData).catch((e) => setErr(String(e)));
+  }, [min]);
+  const chg = (v: number | null) => v == null ? <span className="text-gray-600">–</span>
+    : <span className={v >= 0 ? "text-emerald-300" : "text-rose-300"}>{v >= 0 ? "+" : "−"}{Math.abs(Math.round(v * 100))}%</span>;
+  const win = data?.cards.filter((c) => c.status === "window") ?? [];
+  const near = data?.cards.filter((c) => c.status === "approaching") ?? [];
+  const Rows = ({ xs }: { xs: RbWindowCard[] }) => (
+    <>
+      {xs.map((c) => (
+        <tr key={c.display_key} className="border-t border-gray-900 align-top">
+          <td className="px-3 py-1.5">
+            <div className="flex items-center gap-2 min-w-[14rem]">
+              {c.image_url && <img src={c.image_url} alt="" loading="lazy" className="w-7 rounded" />}
+              <div className="min-w-0">
+                <div className="flex items-center gap-1">
+                  <Link to={`/cards/${c.display_key}`} className="text-gray-100 hover:text-white">{c.name}</Link>
+                  <RbTierChip tier={c.tier} champion={c.champion} />
+                </div>
+                <div className="text-[11px] text-gray-500">{KIND_LABEL[c.kind] ?? c.kind} · {c.set_name}</div>
+              </div>
+            </div>
+          </td>
+          <td className="text-right px-2 tabular-nums text-gray-100">{usd(c.market_cents)}</td>
+          <td className="text-right px-2 tabular-nums">{chg(c.change_4w)}</td>
+          <td className="text-right px-2 tabular-nums">{chg(c.change_12w)}</td>
+          <td className="text-right px-2 tabular-nums text-gray-400 whitespace-nowrap">
+            {usd(c.low_cents)}{c.near_low && <span className="ml-1 text-[10px] text-emerald-300">near</span>}
+          </td>
+          <td className="text-right px-2 tabular-nums text-gray-400">{c.vs_launch != null ? `${c.vs_launch.toFixed(2)}×` : "–"}</td>
+          <td className="px-3 py-1.5 text-xs text-gray-500">{c.note}</td>
+        </tr>
+      ))}
+    </>
+  );
+  const shownNear = showAll ? near : near.slice(0, 12);
+  return (
+    <section className="rounded-lg border border-gray-800 bg-gray-900/40 p-3 space-y-2">
+      <div className="flex flex-wrap items-baseline gap-3">
+        <h2 className="text-sm font-medium text-gray-200">Buy windows, card by card</h2>
+        {data && <span className="text-xs text-gray-500">{win.length} in a window · {near.length} top-champion cards approaching</span>}
+        <label className="ml-auto text-xs text-gray-400 flex items-center gap-1.5">At least
+          <select value={min} onChange={(e) => setMin(Number(e.target.value))} className="rounded border border-gray-700 bg-gray-950 px-1.5 py-0.5 text-xs text-gray-200">
+            {[10, 25, 50, 100, 250].map((v) => <option key={v} value={v}>${v}</option>)}
+          </select>
+        </label>
+      </div>
+      {err && <div className="text-sm text-rose-400">{err}</div>}
+      {!data ? <Spinner /> : data.cards.length === 0 ? <p className="text-sm text-gray-500">Nothing in or near a window right now.</p> : (
+        <div className="overflow-x-auto">
+          <table className="text-sm min-w-full">
+            <thead className="text-xs text-gray-400">
+              <tr>
+                <th className="text-left font-normal px-3 py-1.5">Card</th>
+                <th className="text-right font-normal px-2">Now</th>
+                <th className="text-right font-normal px-2">4 wk</th>
+                <th className="text-right font-normal px-2">12 wk</th>
+                <th className="text-right font-normal px-2" title="Lowest week since launch week">Its low</th>
+                <th className="text-right font-normal px-2">vs launch</th>
+                <th className="text-left font-normal px-3">Why</th>
+              </tr>
+            </thead>
+            <tbody>
+              {win.length > 0 && <tr><td colSpan={7} className="px-3 pt-2 text-xs font-medium text-emerald-300">● In a window</td></tr>}
+              <Rows xs={win} />
+              {near.length > 0 && <tr><td colSpan={7} className="px-3 pt-3 text-xs font-medium text-amber-300">⏳ Approaching (S/A champions, still falling)</td></tr>}
+              <Rows xs={shownNear} />
+            </tbody>
+          </table>
+          {near.length > shownNear.length && (
+            <button onClick={() => setShowAll(true)} className="mt-1 text-xs text-sky-400 hover:text-sky-300">Show all {near.length} approaching</button>
+          )}
+        </div>
+      )}
+      {data && <p className="text-[11px] text-gray-500">{data.method}</p>}
+    </section>
   );
 }
 

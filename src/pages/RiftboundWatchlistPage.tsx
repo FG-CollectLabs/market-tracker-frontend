@@ -6,6 +6,7 @@ import { RB_GRADERS, loadRates, rbEv } from "../lib/rbEv";
 import { useSession } from "../lib/auth";
 import { Spinner } from "../components/Spinner";
 import WatchButton, { onWatchChange } from "../components/WatchButton";
+import RbTierChip from "../components/RbTierChip";
 import { KindBadge } from "./RiftboundPage";
 
 // The Riftbound watchlist: its own list (the Pokémon one is separate), each
@@ -132,6 +133,7 @@ export default function RiftboundWatchlistPage() {
                         <div className="space-y-0.5">
                           <div className="flex items-center gap-1">
                             <Link to={`/cards/${w.display_key}`} className="text-gray-100 hover:text-white">{w.name}</Link>
+                            {c && <RbTierChip tier={c.champion_tier} champion={c.champion} />}
                             <WatchButton displayKey={w.display_key} compact />
                           </div>
                           <div className="flex items-center gap-1 text-xs text-gray-500">

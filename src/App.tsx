@@ -12,6 +12,7 @@ import RiftboundAnalyticsPage from "./pages/RiftboundAnalyticsPage";
 import RiftboundWatchlistPage from "./pages/RiftboundWatchlistPage";
 import RiftboundDealsPage from "./pages/RiftboundDealsPage";
 import RiftboundTimingPage from "./pages/RiftboundTimingPage";
+import RiftboundChampionsPage from "./pages/RiftboundChampionsPage";
 import PcgPage from "./pages/PcgPage";
 import SellerPage from "./pages/SellerPage";
 import DealsPage from "./pages/DealsPage";
@@ -62,7 +63,8 @@ const NAV_RIFTBOUND: NavEntry[] = [
   {
     label: "Analytics",
     items: [
-      { to: "/rb/timing", label: "Timing", hint: "When signatures, overnumbered, alt arts and promos bottom after release" },
+      { to: "/rb/timing", label: "Timing", hint: "Buy windows card by card, and when each card type bottoms after release" },
+      { to: "/rb/champions", label: "Champions", hint: "Champion tiers from what their chase cards sell for; editable" },
       { to: "/rb/analytics", label: "Prices & movers", hint: "Price by card type across sets, biggest moves" },
       { to: "/rb/pcg", label: "PCG grading", hint: "PCG grade odds and PCG vs PSA prices for Riftbound" },
     ],
@@ -226,6 +228,7 @@ export default function App() {
             <Route path="/rb/set/:code" element={<RiftboundSetPage />} />
             <Route path="/rb/analytics" element={<RiftboundAnalyticsPage />} />
             <Route path="/rb/timing" element={<RiftboundTimingPage />} />
+            <Route path="/rb/champions" element={<RiftboundChampionsPage />} />
             <Route path="/rb/pcg" element={<PcgPage game="riftbound" />} />
             <Route path="/pcg" element={<PcgPage game="pokemon" />} />
             <Route path="/rb/watchlist" element={<RiftboundWatchlistPage />} />
