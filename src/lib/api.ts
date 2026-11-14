@@ -1356,6 +1356,8 @@ export interface KindConfig {
   batch_size?: number;
   delay_ms?: number;
   daily_hour_utc?: number;
+  every_hours?: number; // consigner sweeps: hours between sweeps of each big consigner
+  min_raw?: number; // consigner sweeps: live raw copies that make a consigner big
   model?: string;
   effort?: "low" | "medium" | "high";
   max_items?: number;

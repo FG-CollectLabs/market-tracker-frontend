@@ -12,6 +12,7 @@ const KIND_INFO: Record<string, { label: string; hint: string }> = {
   fanatics_history: { label: "Fanatics sold history", hint: "Sold history and live listings per card (2 requests). The heavy one." },
   fanatics_listings: { label: "Fanatics live listings", hint: "Live auctions, Buy Nows and supply only (1 request). Keeps this week's counts and ceilings fresh." },
   sync_owned: { label: "Owned-cards sync", hint: "Your FGL owned-cards feed; every owned card gets tracked." },
+  ebay_seller_sweep: { label: "Consigner store sweeps", hint: "Each big tracked consigner's whole eBay store (dcsports87, quickconsign, COMC, ...), one store per job: about 100 eBay calls a round." },
 };
 const AGENT_INFO: Record<string, { label: string; hint: string }> = {
   agent_deal_vetting: { label: "Deal vetting", hint: "Reads the top slab deals' live listings for anything that isn't the card, grade, printing or condition the deal assumes." },
@@ -240,6 +241,16 @@ export default function AutomationPage() {
                     <label className="flex items-center gap-1">daily at
                       <input type="number" min={0} max={23} value={c.daily_hour_utc} className={`${inputCls} w-14`}
                         onChange={(e) => setKind(k, { daily_hour_utc: Number(e.target.value) || 0 })} />:00 UTC</label>
+                  )}
+                  {c.every_hours != null && (
+                    <label className="flex items-center gap-1">every
+                      <input type="number" min={1} max={720} value={c.every_hours} className={`${inputCls} w-16`}
+                        onChange={(e) => setKind(k, { every_hours: Number(e.target.value) || 0 })} />h</label>
+                  )}
+                  {c.min_raw != null && (
+                    <label className="flex items-center gap-1">consigners with
+                      <input type="number" min={0} max={100000} value={c.min_raw} className={`${inputCls} w-16`}
+                        onChange={(e) => setKind(k, { min_raw: Number(e.target.value) || 0 })} />+ live raw copies</label>
                   )}
                   {k === "sync_owned" && session && (
                     <button onClick={() => run({ kind: "sync_owned" })} className="text-indigo-300 hover:text-indigo-200">Run now</button>
