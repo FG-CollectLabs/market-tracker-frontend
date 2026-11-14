@@ -118,7 +118,7 @@ export default function CollectorCryptTab({ lang }: { lang: "" | "en" | "ja" | "
               <tr>
                 <th className="text-left px-3 py-2 font-medium" colSpan={2}>Card</th>
                 <th className="text-right px-3 py-2 font-medium">Ask</th>
-                <th className="text-right px-3 py-2 font-medium">Worth<HelpDot help="Our value for this card and grade (Pricing API: recent sales, all-in) and the sales behind it; Collector Crypt's own insured value below." /></th>
+                <th className="text-right px-3 py-2 font-medium">Worth<HelpDot help="Our value for this card and grade (Pricing API: recent sales, all-in) and the sales behind it; Collector Crypt's own insured value below. When our PriceCharting value is over 2.5× theirs (usually PriceCharting matched the wrong product), their insured value is used and marked." /></th>
                 <th className="text-right px-3 py-2 font-medium">Under value</th>
                 <th className="text-right px-3 py-2 font-medium">Cheapest Buy Now<HelpDot help="The cheapest live Buy Now for this card and grade on Fanatics or eBay (eBay asks under a fifth of value left out as wrong matches), and how far under it the all-in cost here is. A card that's as cheap elsewhere isn't a Collector Crypt deal." /></th>
                 <th className="text-right px-3 py-2 font-medium">All-in cost<HelpDot help="The ask plus the buyer fee, the redemption fee and redemption shipping to your door." /></th>
@@ -149,8 +149,17 @@ export default function CollectorCryptTab({ lang }: { lang: "" | "en" | "ja" | "
                     <td className="px-3 py-2 text-right tabular-nums text-gray-100">{money(d.ask_cents)}</td>
                     <td className="px-3 py-2 text-right tabular-nums">
                       <div className="text-gray-100">{money(d.value_cents)}</div>
-                      <div className="text-[10px] text-gray-500">{d.value_sales ?? 0} sales{d.value_source ? ` · ${d.value_source}` : ""}</div>
-                      {d.insured_cents != null && <div className="text-[10px] text-gray-600" title="Collector Crypt's own value">theirs {money(d.insured_cents)}</div>}
+                      {d.value_source === "cc_insured" ? (
+                        <div className="text-[10px] text-amber-300"
+                          title="Our PriceCharting value was more than 2.5× Collector Crypt's insured value, which usually means PriceCharting has the wrong product (a Prize Pack, stamped or Pokémon Center version). Using their insured value instead; no Discord alert.">
+                          CC insured · ours looked wrong
+                        </div>
+                      ) : (
+                        <>
+                          <div className="text-[10px] text-gray-500">{d.value_sales ?? 0} sales{d.value_source ? ` · ${d.value_source}` : ""}</div>
+                          {d.insured_cents != null && <div className="text-[10px] text-gray-600" title="Collector Crypt's own value">theirs {money(d.insured_cents)}</div>}
+                        </>
+                      )}
                     </td>
                     <td className={`px-3 py-2 text-right tabular-nums font-semibold ${(d.discount ?? 0) >= 0.3 ? "text-green-400" : (d.discount ?? 0) >= 0.1 ? "text-green-300/80" : "text-gray-400"}`}>
                       {d.discount != null ? `${Math.round(d.discount * 100)}%` : "—"}
