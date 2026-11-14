@@ -3544,6 +3544,8 @@ export interface RbCard {
   first_cents: number | null;
   first_week: string | null;
   weeks: number;
+  champion: string;
+  champion_tier: RbTier; // from prices, or set by hand
 }
 
 export function fetchRiftboundSets(): Promise<{ sets: RbSet[] }> {
@@ -3583,6 +3585,8 @@ export interface RbListing {
   tcgplayer_cents: number | null;
   pc_raw_cents: number | null;
   graded: Record<string, number>; // PriceCharting: "psa 10", "psa 9", "cgc 10", "cgc Pristine 10", "bgs 9.5", "bgs 10", "bgs 10 Black", "sgc 10"
+  champion: string;
+  champion_tier: RbTier;
 }
 
 export function fetchRiftboundListings(grade?: string): Promise<{ listings: RbListing[] }> {
@@ -3626,6 +3630,68 @@ export interface RbTimingKind {
 
 export function fetchRiftboundTiming(): Promise<{ kinds: RbTimingKind[]; method: string }> {
   return get(`/v1/riftbound/timing`);
+}
+
+// ---- Riftbound champions + buy windows ----------------------------------------
+
+export type RbTier = "s" | "a" | "b" | "c" | "";
+
+// A champion's collectibility from prices: its overnumbered / signature /
+// special-art cards over the median of the same kind in the same set.
+export interface RbChampion {
+  name: string;
+  tier: RbTier; // hand-set tier, else auto_tier
+  auto_tier: RbTier;
+  edited: boolean;
+  score: number | null; // geometric mean multiple (2+ cards)
+  scored_cards: number;
+  cards: number;
+  alt_art_psa10_cents: number | null; // median PSA 10 of its alt arts (PriceCharting): an independent check
+  alt_art_psa10_n: number;
+  top: { display_key: string; name: string; set_code: string; kind: string; market_cents: number; multiple: number }[];
+}
+
+export interface RbChampionsReport {
+  champions: RbChampion[];
+  method: string;
+  thresholds: { s: number; a: number; b: number };
+  edited: number;
+  updated_at?: string;
+  updated_by?: string;
+}
+
+export function fetchRiftboundChampions(): Promise<RbChampionsReport> {
+  return get(`/v1/riftbound/champions`);
+}
+
+// Replaces every hand-set tier: champion → s | a | b | c | none (left out = from its score).
+export function saveRiftboundChampions(tiers: Record<string, string>): Promise<RbChampionsReport> {
+  return adminFetch(`/v1/admin/riftbound/champions`, { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ tiers }) });
+}
+
+export interface RbWindowCard {
+  display_key: string;
+  name: string;
+  set_code: string;
+  set_name: string;
+  kind: string;
+  image_url: string | null;
+  champion: string;
+  tier: RbTier;
+  status: "window" | "approaching";
+  market_cents: number;
+  change_4w: number | null;
+  change_12w: number | null;
+  low_cents: number;
+  near_low: boolean;
+  vs_launch: number | null;
+  weeks_since_release: number;
+  typical_bottom_week: number | null;
+  note: string;
+}
+
+export function fetchRiftboundWindows(minDollars = 25): Promise<{ cards: RbWindowCard[]; method: string; min_cents: number }> {
+  return get(`/v1/riftbound/windows?min=${minDollars}`);
 }
 
 // ---- PCG analytics ------------------------------------------------------------
