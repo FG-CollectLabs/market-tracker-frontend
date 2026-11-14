@@ -245,6 +245,13 @@ export default function SettingsPage() {
         <Field label="eBay shipping per sale" hint="Label and supplies when you offer free shipping. The eBay fee is the resale fee above.">
           <Money cents={s.ebay_ship_cents} onChange={(c) => set({ ebay_ship_cents: c })} />
         </Field>
+        <Field label="Cheap raw cards: eBay Standard Envelope" hint="Raw cards worth less than the second amount ship for the first (stamp, toploader, envelope) instead of a tracked label.">
+          <span className="flex items-center gap-2 text-xs text-gray-400">
+            <Money cents={s.ebay_envelope_cents ?? 100} onChange={(c) => set({ ebay_envelope_cents: c })} />
+            under
+            <Money cents={s.ebay_envelope_max_cents ?? 2000} onChange={(c) => set({ ebay_envelope_max_cents: c })} />
+          </span>
+        </Field>
         <Field label="Sending a card to the Fanatics vault" hint="Per card, for cards at home sold on Fanatics.">
           <Money cents={s.vault_inbound_cents} onChange={(c) => set({ vault_inbound_cents: c })} />
         </Field>

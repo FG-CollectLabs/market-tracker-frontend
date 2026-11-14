@@ -858,6 +858,8 @@ export interface AnalysisSettings {
   bid_win_share?: number; // suggested max bid: the share of a consigner's raw finals it beats
   gemrate_auto_refresh?: boolean; // weekly pop jobs fetch GemRate pages (off: blocked by GemRate; upload CSV exports instead)
   ebay_ship_cents: number;
+  ebay_envelope_cents?: number; // raw cards under ebay_envelope_max_cents ship as an eBay Standard Envelope
+  ebay_envelope_max_cents?: number;
   vault_inbound_cents: number;
   vault_withdraw_cents: number;
   list_markup_pct: number;
