@@ -67,7 +67,12 @@ export default function SealedTimingPage() {
   const [err, setErr] = useState("");
   const [busy, setBusy] = useState("");
 
-  useEffect(() => { fetchSealedTiming().then((r) => { setKinds(r.kinds); setMethod(r.method); }).catch((e) => setErr(String(e))); }, []);
+  const [era, setEra] = useState("all");
+  const [eras, setEras] = useState<{ key: string; label: string }[]>([]);
+  useEffect(() => {
+    setKinds(null);
+    fetchSealedTiming(era).then((r) => { setKinds(r.kinds); setMethod(r.method); setEras(r.eras ?? []); }).catch((e) => setErr(String(e)));
+  }, [era]);
   const loadKind = (k: SealedKind) => {
     setRp(null); setProducts(null);
     fetchSealedReprints(k).then(setRp).catch((e) => setErr(String(e)));
@@ -95,10 +100,20 @@ export default function SealedTimingPage() {
         <p className="text-sm text-gray-400 max-w-4xl">
           When English Pokémon sealed is best bought: the typical price path by months since the set&apos;s release, what buying at each
           month returned 12, 24 and 36 months later, and how long to wait after a reprint&apos;s first signal. From PriceCharting&apos;s monthly
-          charts, so timing is to the month.
+          charts, so timing is to the month. Returns lean on the 2020-22 boom and on the products PriceCharting still lists: compare eras,
+          and read the starred month as a range.
         </p>
       </header>
       {err && <div className="text-sm text-rose-400">{err}</div>}
+      {eras.length > 0 && (
+        <div className="flex flex-wrap items-center gap-1 text-xs">
+          <span className="text-gray-500 mr-1" title="By the set's release date. The 2020-22 boom lifted everything bought before it, so compare eras before trusting a number.">Sets:</span>
+          {eras.map((e) => (
+            <button key={e.key} onClick={() => setEra(e.key)}
+              className={`rounded px-2.5 py-1 ${era === e.key ? "bg-indigo-600 text-white" : "bg-gray-900 border border-gray-800 text-gray-400 hover:text-gray-200"}`}>{e.label}</button>
+          ))}
+        </div>
+      )}
       {!kinds ? <Spinner /> : (
         <>
           <section className="rounded-lg border border-gray-800 bg-gray-900 p-4 space-y-3">
