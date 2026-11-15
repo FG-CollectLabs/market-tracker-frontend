@@ -1,35 +1,37 @@
 import { useEffect, useMemo, useState } from "react";
+import { Link } from "react-router-dom";
 import {
-  fetchSealedProducts, fetchSealedReprints, fetchSealedTiming, markSealedReprint,
-  type SealedKind, type SealedKindTiming, type SealedProduct, type SealedReprints, type SealedRet,
+  fetchSealedPriority, fetchSealedSets, fetchSealedTiming,
+  type SealedKind, type SealedKindTiming, type SealedPriorityItem, type SealedRet, type SealedSetChart,
 } from "../lib/api";
 import { Spinner } from "../components/Spinner";
 
-// Sealed timing: when after release each kind of sealed product is best
-// bought, and how long to wait after a reprint's first signal.
+// Sealed timing: what to focus buying on now, the best historic plays per
+// kind (after release, after a reprint signal), the price path by months
+// since release, the sliding window of returns, and the set-by-set data.
 
-const COLORS: Record<SealedKind, string> = {
+export const SEALED_COLORS: Record<SealedKind, string> = {
   etb: "#818cf8", pc_etb: "#f472b6", booster_box: "#34d399", booster_bundle: "#fbbf24", booster_pack: "#60a5fa",
 };
 const HOLDS = ["12", "24", "36"];
-const pct = (v: number | null | undefined, digits = 0) => (v == null ? "–" : `${v >= 0 ? "+" : ""}${(v * 100).toFixed(digits)}%`);
-const usd = (c: number | null | undefined) => (c == null ? "–" : c >= 100000 ? `$${Math.round(c / 100).toLocaleString()}` : `$${(c / 100).toFixed(2)}`);
+export const pct = (v: number | null | undefined, digits = 0) => (v == null ? "–" : `${v >= 0 ? "+" : ""}${(v * 100).toFixed(digits)}%`);
+export const usd = (c: number | null | undefined) => (c == null ? "–" : c >= 100000 ? `$${Math.round(c / 100).toLocaleString()}` : `$${(c / 100).toFixed(2)}`);
 const tone = (v: number | null | undefined) => (v == null ? "text-gray-600" : v >= 0.25 ? "text-emerald-300" : v >= 0 ? "text-emerald-200/70" : "text-rose-300");
+const share = (v: number | null | undefined) => (v == null ? "" : `${Math.round(v * 100)}% up`);
 
 function Curves({ kinds, on }: { kinds: SealedKindTiming[]; on: Set<SealedKind> }) {
   const shown = kinds.filter((k) => on.has(k.kind) && k.curve.length > 1);
-  const maxM = Math.max(12, ...shown.map((k) => k.curve[k.curve.length - 1].month));
-  const vals = shown.flatMap((k) => k.curve.map((p) => p.change));
+  const maxM = Math.min(96, Math.max(12, ...shown.map((k) => k.curve[k.curve.length - 1].month)));
+  const vals = shown.flatMap((k) => k.curve.filter((p) => p.month <= maxM).map((p) => p.change));
   const lo = Math.min(-0.2, ...vals), hi = Math.max(0.5, ...vals);
-  const W = 720, H = 260, L = 44, B = 24;
+  const W = 720, H = 240, L = 48, B = 22;
   const x = (m: number) => L + (m / maxM) * (W - L - 8);
   const y = (v: number) => 8 + (1 - (v - lo) / (hi - lo)) * (H - B - 8);
-  const ticks = [lo, 0, hi / 2, hi].map((v) => Math.round(v * 10) / 10);
-  if (!shown.length) return <div className="text-sm text-gray-500">No curves yet: run import-sealed.</div>;
+  if (!shown.length) return <div className="text-sm text-gray-500">No curves yet.</div>;
   return (
     <div className="overflow-x-auto">
       <svg viewBox={`0 0 ${W} ${H}`} className="w-full min-w-[520px] max-w-3xl">
-        {ticks.map((t) => (
+        {[lo, 0, hi / 2, hi].map((t) => (
           <g key={t}>
             <line x1={L} x2={W - 8} y1={y(t)} y2={y(t)} stroke={t === 0 ? "#6b7280" : "#1f2937"} strokeDasharray={t === 0 ? "" : "3 3"} />
             <text x={L - 6} y={y(t) + 4} textAnchor="end" className="fill-gray-500 text-[10px]">{pct(t)}</text>
@@ -39,8 +41,46 @@ function Curves({ kinds, on }: { kinds: SealedKindTiming[]; on: Set<SealedKind> 
           <text key={m} x={x(m)} y={H - 6} textAnchor="middle" className="fill-gray-500 text-[10px]">{m === 0 ? "release" : `${m / 12}y`}</text>
         ))}
         {shown.map((k) => (
-          <polyline key={k.kind} fill="none" stroke={COLORS[k.kind]} strokeWidth={2}
-            points={k.curve.map((p) => `${x(p.month)},${y(p.change)}`).join(" ")} />
+          <polyline key={k.kind} fill="none" stroke={SEALED_COLORS[k.kind]} strokeWidth={2}
+            points={k.curve.filter((p) => p.month <= maxM).map((p) => `${x(p.month)},${y(p.change)}`).join(" ")} />
+        ))}
+      </svg>
+    </div>
+  );
+}
+
+// Sliding window: the return of each hold window by the month it starts
+// (buy month after release), median with the middle half shaded.
+function Window({ k, hold }: { k: SealedKindTiming; hold: string }) {
+  const pts = k.buy.map((b) => ({ m: b.buy_month, r: b.returns[hold] })).filter((p) => p.r?.median != null) as { m: number; r: SealedRet }[];
+  if (pts.length < 2) return <div className="text-sm text-gray-500">Not enough products for a {hold}-month window yet.</div>;
+  const maxM = Math.max(...pts.map((p) => p.m));
+  const vals = pts.flatMap((p) => [p.r.p25 ?? 0, p.r.p75 ?? 0, p.r.median ?? 0]);
+  const lo = Math.min(-0.2, ...vals), hi = Math.max(0.5, ...vals);
+  const W = 720, H = 220, L = 48, B = 22;
+  const x = (m: number) => L + (m / Math.max(12, maxM)) * (W - L - 8);
+  const y = (v: number) => 8 + (1 - (v - lo) / (hi - lo)) * (H - B - 8);
+  const band = [...pts.map((p) => `${x(p.m)},${y(p.r.p75 ?? 0)}`), ...[...pts].reverse().map((p) => `${x(p.m)},${y(p.r.p25 ?? 0)}`)].join(" ");
+  const best = k.best_buy_month[hold];
+  return (
+    <div className="overflow-x-auto">
+      <svg viewBox={`0 0 ${W} ${H}`} className="w-full min-w-[520px] max-w-3xl">
+        {[lo, 0, hi / 2, hi].map((t) => (
+          <g key={t}>
+            <line x1={L} x2={W - 8} y1={y(t)} y2={y(t)} stroke={t === 0 ? "#6b7280" : "#1f2937"} strokeDasharray={t === 0 ? "" : "3 3"} />
+            <text x={L - 6} y={y(t) + 4} textAnchor="end" className="fill-gray-500 text-[10px]">{pct(t)}</text>
+          </g>
+        ))}
+        {Array.from({ length: Math.floor(maxM / 12) + 1 }, (_, i) => i * 12).map((m) => (
+          <text key={m} x={x(m)} y={H - 6} textAnchor="middle" className="fill-gray-500 text-[10px]">{m === 0 ? "buy at release" : `${m}mo`}</text>
+        ))}
+        <polygon points={band} fill={SEALED_COLORS[k.kind]} opacity={0.15} />
+        <polyline fill="none" stroke={SEALED_COLORS[k.kind]} strokeWidth={2} points={pts.map((p) => `${x(p.m)},${y(p.r.median ?? 0)}`).join(" ")} />
+        {best != null && <line x1={x(best)} x2={x(best)} y1={8} y2={H - B} stroke="#34d399" strokeDasharray="4 3" />}
+        {pts.map((p) => (
+          <circle key={p.m} cx={x(p.m)} cy={y(p.r.median ?? 0)} r={2.5} fill={SEALED_COLORS[k.kind]}>
+            <title>{`Buy at month ${p.m}: median ${pct(p.r.median)} over ${hold} months (middle half ${pct(p.r.p25)} to ${pct(p.r.p75)}), ${share(p.r.up_share)}, ${p.r.n} products`}</title>
+          </circle>
         ))}
       </svg>
     </div>
@@ -57,57 +97,169 @@ function RetCell({ r }: { r?: SealedRet }) {
   );
 }
 
+function PlayCard({ k }: { k: SealedKindTiming }) {
+  const rel = k.release_play?.["24"] ?? k.release_play?.["12"];
+  const relHold = k.release_play?.["24"] ? 24 : 12;
+  const rp = k.reprint_play?.["24"] ?? k.reprint_play?.["12"];
+  const rpHold = k.reprint_play?.["24"] ? 24 : 12;
+  return (
+    <div className="rounded-lg border border-gray-800 bg-gray-950/60 p-3 space-y-2 text-xs">
+      <div className="font-medium" style={{ color: SEALED_COLORS[k.kind] }}>{k.label}</div>
+      <div>
+        <div className="text-gray-500">New release</div>
+        {rel ? (
+          <div className="text-gray-200">Buy at <b>month {rel.month}</b>, hold {relHold}m: <span className={tone(rel.returns.median)}>{pct(rel.returns.median)}</span>
+            <span className="text-gray-500"> ({pct(rel.returns.annualized)}/yr, {share(rel.returns.up_share)}, {rel.returns.n} sets)</span></div>
+        ) : <div className="text-gray-600">not enough data</div>}
+      </div>
+      <div>
+        <div className="text-gray-500">After a reprint signal <span className="text-gray-600">({k.reprint_basis === "confirmed" ? "confirmed reprints" : "detected drops"}, {k.reprint_events})</span></div>
+        {rp ? (
+          <div className="text-gray-200">Buy <b>{rp.month === 0 ? "the month of the signal" : `${rp.month} months after`}</b>, hold {rpHold}m: <span className={tone(rp.returns.median)}>{pct(rp.returns.median)}</span>
+            <span className="text-gray-500"> ({pct(rp.returns.annualized)}/yr, {share(rp.returns.up_share)}, {rp.returns.n} events)</span></div>
+        ) : <div className="text-gray-600">not enough events</div>}
+      </div>
+    </div>
+  );
+}
+
+function Priority() {
+  const [hold, setHold] = useState(24);
+  const [rows, setRows] = useState<SealedPriorityItem[] | null>(null);
+  const [method, setMethod] = useState("");
+  useEffect(() => { setRows(null); fetchSealedPriority(hold).then((r) => { setRows(r.products); setMethod(r.method); }).catch(() => setRows([])); }, [hold]);
+  return (
+    <section className="rounded-lg border border-emerald-900/60 bg-gray-900 p-4 space-y-2">
+      <div className="flex flex-wrap items-center gap-3">
+        <span className="text-sm font-medium text-emerald-300">Priority: where to focus buying now</span>
+        <span className="flex gap-1 text-xs">
+          {[12, 24].map((h) => (
+            <button key={h} onClick={() => setHold(h)} className={`rounded px-2 py-0.5 ${hold === h ? "bg-emerald-700 text-white" : "text-gray-400 hover:text-gray-200"}`}>hold {h}m</button>
+          ))}
+        </span>
+      </div>
+      {!rows ? <Spinner /> : rows.length === 0 ? <div className="text-sm text-gray-500">Nothing qualifies right now.</div> : (
+        <div className="overflow-x-auto">
+          <table className="w-full text-xs">
+            <thead className="text-gray-500 text-left">
+              <tr>
+                <th className="px-2 py-1 font-medium">Product</th>
+                <th className="px-2 py-1 font-medium text-right">Price</th>
+                <th className="px-2 py-1 font-medium">Play</th>
+                <th className="px-2 py-1 font-medium text-right" title="Median historic return of buying at this point, at market price">Expected</th>
+                <th className="px-2 py-1 font-medium text-right">Per year</th>
+                <th className="px-2 py-1 font-medium text-right" title="Middle half of historic outcomes">Range</th>
+                <th className="px-2 py-1 font-medium">Why</th>
+              </tr>
+            </thead>
+            <tbody>
+              {rows.map((p) => (
+                <tr key={p.product_id} className="border-t border-gray-800 align-top">
+                  <td className="px-2 py-1 whitespace-nowrap">
+                    <span style={{ color: SEALED_COLORS[p.kind] }}>●</span>{" "}
+                    <a href={p.pricecharting_url} target="_blank" rel="noreferrer" className="text-gray-100 hover:text-indigo-300">{p.set_name} · {p.name}</a>
+                  </td>
+                  <td className="px-2 py-1 text-right tabular-nums text-gray-200">{usd(p.latest_cents)}</td>
+                  <td className="px-2 py-1 whitespace-nowrap text-gray-300">{p.play === "release" ? `month ${p.month} after release` : `${p.month}mo after ${p.signal_month} drop`}</td>
+                  <td className={`px-2 py-1 text-right tabular-nums font-medium ${tone(p.expected.median)}`}>{pct(p.expected.median)}</td>
+                  <td className="px-2 py-1 text-right tabular-nums text-gray-300">{pct(p.expected.annualized)}</td>
+                  <td className="px-2 py-1 text-right tabular-nums text-gray-500 whitespace-nowrap">{pct(p.expected.p25)} to {pct(p.expected.p75)}</td>
+                  <td className="px-2 py-1 text-gray-500 max-w-md">{p.reason}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+      <p className="text-[11px] text-gray-500 max-w-4xl">{method}</p>
+    </section>
+  );
+}
+
+function Spark({ points, w = 140, h = 28 }: { points: { m: number; cents: number }[]; w?: number; h?: number }) {
+  if (points.length < 2) return <span className="text-gray-700">–</span>;
+  const xs = points.map((p) => p.m), ys = points.map((p) => p.cents);
+  const x0 = Math.min(...xs), x1 = Math.max(...xs), y0 = Math.min(...ys), y1 = Math.max(...ys);
+  const px = (m: number) => ((m - x0) / Math.max(1, x1 - x0)) * (w - 2) + 1;
+  const py = (c: number) => h - 1 - ((c - y0) / Math.max(1, y1 - y0)) * (h - 2);
+  return <svg width={w} height={h}><polyline fill="none" stroke="#9ca3af" strokeWidth={1.2} points={points.map((p) => `${px(p.m)},${py(p.cents)}`).join(" ")} /></svg>;
+}
+
+const COLS = [0, 6, 12, 18, 24, 36, 48];
+const at = (pts: { m: number; cents: number }[], m: number) => pts.find((p) => p.m === m)?.cents ?? pts.find((p) => p.m === m + 1)?.cents ?? pts.find((p) => p.m === m - 1)?.cents;
+
+function BySet({ kind, era }: { kind: SealedKind; era: string }) {
+  const [sets, setSets] = useState<SealedSetChart[] | null>(null);
+  useEffect(() => { setSets(null); fetchSealedSets(kind, era).then((r) => setSets(r.sets)).catch(() => setSets([])); }, [kind, era]);
+  if (!sets) return <Spinner />;
+  return (
+    <div className="overflow-x-auto max-h-[560px]">
+      <table className="w-full text-xs">
+        <thead className="text-gray-500 text-left sticky top-0 bg-gray-900">
+          <tr>
+            <th className="px-2 py-1 font-medium">Set · product</th>
+            <th className="px-2 py-1 font-medium">Chart</th>
+            {COLS.map((m) => <th key={m} className="px-2 py-1 font-medium text-right">{m === 0 ? "Release" : `${m}mo`}</th>)}
+            <th className="px-2 py-1 font-medium text-right">Latest</th>
+            <th className="px-2 py-1 font-medium text-right" title="From its first chart price">Since start</th>
+          </tr>
+        </thead>
+        <tbody>
+          {sets.flatMap((s) => s.products.map((p) => {
+            const last = p.points[p.points.length - 1], first = p.points[0];
+            return (
+              <tr key={p.id} className="border-t border-gray-800">
+                <td className="px-2 py-1 whitespace-nowrap">
+                  <span className="text-gray-300">{s.set_name}</span>
+                  <a href={p.pricecharting_url} target="_blank" rel="noreferrer" className="ml-1 text-gray-500 hover:text-indigo-300">{p.variant ?? ""}</a>
+                  <div className="text-[10px] text-gray-600">{s.release_date ?? "no date"} · chart from {first?.month ?? "–"}</div>
+                </td>
+                <td className="px-2 py-1"><Spark points={p.points} /></td>
+                {COLS.map((m) => <td key={m} className="px-2 py-1 text-right tabular-nums text-gray-400">{usd(at(p.points, m))}</td>)}
+                <td className="px-2 py-1 text-right tabular-nums text-gray-200">{usd(last?.cents)}</td>
+                <td className={`px-2 py-1 text-right tabular-nums ${tone(first && last ? last.cents / first.cents - 1 : null)}`}>{first && last ? pct(last.cents / first.cents - 1) : "–"}</td>
+              </tr>
+            );
+          }))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
 export default function SealedTimingPage() {
   const [kinds, setKinds] = useState<SealedKindTiming[] | null>(null);
   const [method, setMethod] = useState("");
   const [on, setOn] = useState<Set<SealedKind>>(new Set(["etb", "pc_etb", "booster_box", "booster_bundle", "booster_pack"]));
   const [kind, setKind] = useState<SealedKind>("etb");
-  const [rp, setRp] = useState<SealedReprints | null>(null);
-  const [products, setProducts] = useState<SealedProduct[] | null>(null);
-  const [err, setErr] = useState("");
-  const [busy, setBusy] = useState("");
-
+  const [hold, setHold] = useState("24");
   const [era, setEra] = useState("all");
   const [eras, setEras] = useState<{ key: string; label: string }[]>([]);
+  const [err, setErr] = useState("");
+
   useEffect(() => {
     setKinds(null);
     fetchSealedTiming(era).then((r) => { setKinds(r.kinds); setMethod(r.method); setEras(r.eras ?? []); }).catch((e) => setErr(String(e)));
   }, [era]);
-  const loadKind = (k: SealedKind) => {
-    setRp(null); setProducts(null);
-    fetchSealedReprints(k).then(setRp).catch((e) => setErr(String(e)));
-    fetchSealedProducts(k).then((r) => setProducts(r.products)).catch((e) => setErr(String(e)));
-  };
-  useEffect(() => loadKind(kind), [kind]);
   const cur = useMemo(() => kinds?.find((k) => k.kind === kind), [kinds, kind]);
-
-  const mark = async (pid: number, month: string, status: "confirmed" | "rejected" | "clear") => {
-    setBusy(`${pid}-${month}`);
-    try { await markSealedReprint(pid, month, status); loadKind(kind); } catch (e) { setErr(String(e)); } finally { setBusy(""); }
-  };
-
-  const tab = (k: SealedKindTiming) => (
-    <button key={k.kind} onClick={() => setKind(k.kind)}
-      className={`rounded px-2.5 py-1 text-xs ${kind === k.kind ? "bg-gray-700 text-white" : "text-gray-400 hover:text-gray-200"}`}>
-      {k.label} <span className="text-gray-500">{k.with_history}/{k.products}</span>
-    </button>
-  );
 
   return (
     <div className="max-w-6xl mx-auto space-y-5">
       <header className="space-y-1">
         <h1 className="text-xl font-semibold text-white">Sealed timing</h1>
         <p className="text-sm text-gray-400 max-w-4xl">
-          When English Pokémon sealed is best bought: the typical price path by months since the set&apos;s release, what buying at each
-          month returned 12, 24 and 36 months later, and how long to wait after a reprint&apos;s first signal. From PriceCharting&apos;s monthly
-          charts, so timing is to the month. Returns lean on the 2020-22 boom and on the products PriceCharting still lists: compare eras,
-          and read the starred month as a range.
+          English Pokémon sealed from PriceCharting&apos;s monthly charts: what to focus buying on now, the best historic plays per product
+          type, and the data behind them set by set. Returns are at market price and lean on the 2020-22 boom and the products PriceCharting
+          still lists: compare eras, and read a best month as a range. Reprints are reviewed set by set on <Link to="/sealed/reprints" className="text-indigo-300 hover:underline">Sealed reprints</Link>.
         </p>
       </header>
       {err && <div className="text-sm text-rose-400">{err}</div>}
+
+      <Priority />
+
       {eras.length > 0 && (
         <div className="flex flex-wrap items-center gap-1 text-xs">
-          <span className="text-gray-500 mr-1" title="By the set's release date. The 2020-22 boom lifted everything bought before it, so compare eras before trusting a number.">Sets:</span>
+          <span className="text-gray-500 mr-1">Sets:</span>
           {eras.map((e) => (
             <button key={e.key} onClick={() => setEra(e.key)}
               className={`rounded px-2.5 py-1 ${era === e.key ? "bg-indigo-600 text-white" : "bg-gray-900 border border-gray-800 text-gray-400 hover:text-gray-200"}`}>{e.label}</button>
@@ -116,13 +268,18 @@ export default function SealedTimingPage() {
       )}
       {!kinds ? <Spinner /> : (
         <>
+          <section className="space-y-2">
+            <div className="text-sm text-gray-200 font-medium">Best historic plays</div>
+            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">{kinds.map((k) => <PlayCard key={k.kind} k={k} />)}</div>
+          </section>
+
           <section className="rounded-lg border border-gray-800 bg-gray-900 p-4 space-y-3">
             <div className="flex flex-wrap items-center gap-3 text-xs">
               <span className="text-gray-300 font-medium">Price vs release month</span>
               {kinds.map((k) => (
                 <label key={k.kind} className="flex items-center gap-1 text-gray-400">
                   <input type="checkbox" checked={on.has(k.kind)} onChange={() => setOn((s) => { const n = new Set(s); if (n.has(k.kind)) n.delete(k.kind); else n.add(k.kind); return n; })} />
-                  <span style={{ color: COLORS[k.kind] }}>●</span> {k.label}
+                  <span style={{ color: SEALED_COLORS[k.kind] }}>●</span> {k.label}
                 </label>
               ))}
             </div>
@@ -130,153 +287,58 @@ export default function SealedTimingPage() {
             <p className="text-[11px] text-gray-500 max-w-4xl">{method}</p>
           </section>
 
-          <div className="flex flex-wrap gap-1">{kinds.map(tab)}</div>
+          <div className="flex flex-wrap gap-1">
+            {kinds.map((k) => (
+              <button key={k.kind} onClick={() => setKind(k.kind)}
+                className={`rounded px-2.5 py-1 text-xs ${kind === k.kind ? "bg-gray-700 text-white" : "text-gray-400 hover:text-gray-200"}`}>
+                {k.label} <span className="text-gray-500">{k.with_history}</span>
+              </button>
+            ))}
+          </div>
 
           {cur && (
-            <section className="rounded-lg border border-gray-800 bg-gray-900 p-4 space-y-2">
-              <div className="flex flex-wrap items-baseline gap-4 text-sm">
-                <span className="text-gray-200 font-medium">{cur.label}: when to buy</span>
-                {HOLDS.map((h) => cur.best_buy_month[h] != null && (
-                  <span key={h} className="text-xs text-gray-400">hold {h}m → buy at <span className="text-emerald-300 font-medium">month {cur.best_buy_month[h]}</span></span>
-                ))}
-              </div>
-              {cur.buy.length === 0 ? <div className="text-sm text-gray-500">Not enough products with history yet.</div> : (
-                <div className="overflow-x-auto max-h-[420px]">
+            <>
+              <section className="rounded-lg border border-gray-800 bg-gray-900 p-4 space-y-2">
+                <div className="flex flex-wrap items-center gap-3 text-sm">
+                  <span className="text-gray-200 font-medium">{cur.label}: return by buy month (sliding window)</span>
+                  <span className="flex gap-1 text-xs">
+                    {HOLDS.map((h) => (
+                      <button key={h} onClick={() => setHold(h)} className={`rounded px-2 py-0.5 ${hold === h ? "bg-gray-700 text-white" : "text-gray-400 hover:text-gray-200"}`}>{h}-month hold</button>
+                    ))}
+                  </span>
+                </div>
+                <Window k={cur} hold={hold} />
+                <p className="text-[11px] text-gray-500">Each point: buy that many months after release, sell {hold} months later. Line = median, shaded = middle half, dashed = best month. Hover a point for the numbers.</p>
+              </section>
+
+              <section className="rounded-lg border border-gray-800 bg-gray-900 p-4 space-y-2">
+                <span className="text-sm text-gray-200 font-medium">{cur.label}: by buy month</span>
+                <div className="overflow-x-auto max-h-[380px]">
                   <table className="text-xs">
                     <thead className="text-gray-500 sticky top-0 bg-gray-900">
                       <tr>
                         <th className="px-2 py-1 text-left font-medium">Buy at month</th>
-                        {HOLDS.map((h) => <th key={h} className="px-2 py-1 text-right font-medium" title="Median return; share that went up">Hold {h}m</th>)}
+                        {HOLDS.map((h) => <th key={h} className="px-2 py-1 text-right font-medium">Hold {h}m</th>)}
                       </tr>
                     </thead>
                     <tbody>
                       {cur.buy.map((b) => (
                         <tr key={b.buy_month} className="border-t border-gray-800">
-                          <td className="px-2 py-1 text-gray-300">
-                            {b.buy_month}
-                            {HOLDS.some((h) => cur.best_buy_month[h] === b.buy_month) && <span className="ml-1 text-emerald-400">★</span>}
-                          </td>
+                          <td className="px-2 py-1 text-gray-300">{b.buy_month}{HOLDS.some((h) => cur.best_buy_month[h] === b.buy_month) && <span className="ml-1 text-emerald-400">★</span>}</td>
                           {HOLDS.map((h) => <RetCell key={h} r={b.returns[h]} />)}
                         </tr>
                       ))}
                     </tbody>
                   </table>
                 </div>
-              )}
-            </section>
+              </section>
+
+              <section className="rounded-lg border border-gray-800 bg-gray-900 p-4 space-y-2">
+                <span className="text-sm text-gray-200 font-medium">{cur.label}: by set (the data points)</span>
+                <BySet kind={kind} era={era} />
+              </section>
+            </>
           )}
-
-          <section className="rounded-lg border border-gray-800 bg-gray-900 p-4 space-y-3">
-            <div className="flex flex-wrap items-baseline gap-4 text-sm">
-              <span className="text-gray-200 font-medium">Reprints: how long to wait after the first signal</span>
-              {rp && ["12", "24"].map((h) => rp.best_wait_months[h] != null && (
-                <span key={h} className="text-xs text-gray-400">hold {h}m → buy <span className="text-emerald-300 font-medium">{rp.best_wait_months[h]} months</span> after the signal</span>
-              ))}
-            </div>
-            {!rp ? <Spinner /> : (
-              <>
-                {rp.by_wait.some((w) => Object.keys(w.returns).length) ? (
-                  <div className="overflow-x-auto">
-                    <table className="text-xs">
-                      <thead className="text-gray-500">
-                        <tr>
-                          <th className="px-2 py-1 text-left font-medium">Wait</th>
-                          <th className="px-2 py-1 text-right font-medium">Hold 12m</th>
-                          <th className="px-2 py-1 text-right font-medium">Hold 24m</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {rp.by_wait.map((w) => (
-                          <tr key={w.wait_months} className="border-t border-gray-800">
-                            <td className="px-2 py-1 text-gray-300">{w.wait_months} mo</td>
-                            <RetCell r={w.returns["12"]} />
-                            <RetCell r={w.returns["24"]} />
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
-                ) : <div className="text-sm text-gray-500">Not enough reprint events for this kind yet (needs 3+).</div>}
-                <div className="overflow-x-auto">
-                  <table className="w-full text-xs">
-                    <thead className="text-gray-500 text-left">
-                      <tr>
-                        <th className="px-2 py-1 font-medium">Product</th>
-                        <th className="px-2 py-1 font-medium">Signal</th>
-                        <th className="px-2 py-1 font-medium text-right">High → signal</th>
-                        <th className="px-2 py-1 font-medium text-right">Trough</th>
-                        <th className="px-2 py-1 font-medium text-right">Recovered</th>
-                        <th className="px-2 py-1 font-medium">Reprint?</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {rp.events.map((e) => {
-                        const k = `${e.product_id}-${e.signal_month}`;
-                        return (
-                          <tr key={k} className="border-t border-gray-800 align-top">
-                            <td className="px-2 py-1 text-gray-200">{e.set_name} · {e.name}</td>
-                            <td className="px-2 py-1 text-gray-300 whitespace-nowrap">{e.signal_month}
-                              {e.months_since_release != null && <span className="text-gray-500"> (month {e.months_since_release})</span>}
-                            </td>
-                            <td className="px-2 py-1 text-right tabular-nums text-gray-300">{usd(e.peak_cents)} → {usd(e.signal_cents)}</td>
-                            <td className="px-2 py-1 text-right tabular-nums">
-                              <span className="text-rose-300">{pct(e.drawdown)}</span>
-                              <span className="text-gray-500"> {e.months_to_trough}mo</span>
-                            </td>
-                            <td className="px-2 py-1 text-right text-gray-400">{e.months_to_recover != null ? `${e.months_to_recover}mo` : "not yet"}</td>
-                            <td className="px-2 py-1 whitespace-nowrap">
-                              {e.status === "confirmed" ? (
-                                <span className="text-emerald-300">confirmed <button disabled={busy === k} onClick={() => mark(e.product_id, e.signal_month, "clear")} className="ml-1 text-gray-500 hover:text-gray-300">undo</button></span>
-                              ) : (
-                                <span className="flex gap-2">
-                                  <button disabled={busy === k} onClick={() => mark(e.product_id, e.signal_month, "confirmed")} className="text-emerald-300 hover:text-emerald-200">yes</button>
-                                  <button disabled={busy === k} onClick={() => mark(e.product_id, e.signal_month, "rejected")} className="text-gray-500 hover:text-rose-300">no</button>
-                                </span>
-                              )}
-                            </td>
-                          </tr>
-                        );
-                      })}
-                    </tbody>
-                  </table>
-                  {rp.events.length === 0 && <div className="text-sm text-gray-500 py-2">No reprint signals found for this kind.</div>}
-                </div>
-                <p className="text-[11px] text-gray-500 max-w-4xl">{rp.method} &ldquo;Yes&rdquo; keeps a signal as a confirmed reprint; &ldquo;no&rdquo; drops it from the stats.</p>
-              </>
-            )}
-          </section>
-
-          <section className="rounded-lg border border-gray-800 bg-gray-900 p-4 space-y-2">
-            <span className="text-sm text-gray-200 font-medium">{cur?.label} products</span>
-            {!products ? <Spinner /> : (
-              <div className="overflow-x-auto max-h-[480px]">
-                <table className="w-full text-xs">
-                  <thead className="text-gray-500 text-left sticky top-0 bg-gray-900">
-                    <tr>
-                      <th className="px-2 py-1 font-medium">Set</th>
-                      <th className="px-2 py-1 font-medium">Product</th>
-                      <th className="px-2 py-1 font-medium text-right">Months out</th>
-                      <th className="px-2 py-1 font-medium text-right">Price</th>
-                      <th className="px-2 py-1 font-medium text-right">12m</th>
-                      <th className="px-2 py-1 font-medium text-right">History</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {products.map((p) => (
-                      <tr key={p.id} className="border-t border-gray-800">
-                        <td className="px-2 py-1 text-gray-400 whitespace-nowrap">{p.set_name}</td>
-                        <td className="px-2 py-1"><a href={p.pricecharting_url} target="_blank" rel="noreferrer" className="text-gray-200 hover:text-indigo-300">{p.name}</a></td>
-                        <td className="px-2 py-1 text-right tabular-nums text-gray-400">{p.months_since_release ?? "–"}</td>
-                        <td className="px-2 py-1 text-right tabular-nums text-gray-200">{usd(p.latest_cents)}</td>
-                        <td className={`px-2 py-1 text-right tabular-nums ${tone(p.change_12m)}`}>{pct(p.change_12m)}</td>
-                        <td className="px-2 py-1 text-right tabular-nums text-gray-500">{p.history_months}mo</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            )}
-          </section>
         </>
       )}
     </div>
