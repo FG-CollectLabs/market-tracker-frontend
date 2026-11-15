@@ -3759,3 +3759,48 @@ export interface PcgAnalysis {
 export function fetchPcgAnalysis(game: "pokemon" | "riftbound"): Promise<PcgAnalysis> {
   return get(`/v1/analysis/pcg${game === "riftbound" ? "?game=riftbound" : ""}`);
 }
+
+// ---- Sealed timing (import-sealed) -------------------------------------------
+
+export type SealedKind = "etb" | "pc_etb" | "booster_box" | "booster_bundle" | "booster_pack";
+export interface SealedRet { n: number; median: number | null; p25: number | null; p75: number | null; up_share: number | null; annualized: number | null }
+export interface SealedKindTiming {
+  kind: SealedKind;
+  label: string;
+  products: number;
+  with_history: number;
+  curve: { month: number; change: number; n: number }[];
+  buy: { buy_month: number; returns: Record<string, SealedRet> }[];
+  best_buy_month: Record<string, number | null>;
+}
+export interface SealedProduct {
+  id: number; set_code: string; set_name: string; kind: SealedKind; variant?: string; name: string; pricecharting_url: string;
+  release_date: string | null; months_since_release: number | null; latest_cents: number | null; change_12m: number | null; history_months: number;
+}
+export interface ReprintEvent {
+  product_id: number; name: string; set_code: string; set_name: string; kind: SealedKind; signal_month: string;
+  months_since_release: number | null; status: "detected" | "confirmed"; peak_cents: number; signal_cents: number;
+  trough_cents: number; months_to_trough: number; drawdown: number; months_to_recover?: number; note?: string;
+}
+export interface SealedReprints {
+  events: ReprintEvent[];
+  by_wait: { wait_months: number; returns: Record<string, SealedRet> }[];
+  best_wait_months: Record<string, number | null>;
+  method: string;
+}
+
+export function fetchSealedTiming(): Promise<{ kinds: SealedKindTiming[]; method: string }> {
+  return get(`/v1/sealed/timing`);
+}
+export function fetchSealedProducts(kind = ""): Promise<{ products: SealedProduct[]; count: number }> {
+  return get(`/v1/sealed/products${kind ? `?kind=${kind}` : ""}`);
+}
+export function fetchSealedReprints(kind = ""): Promise<SealedReprints> {
+  return get(`/v1/sealed/reprints${kind ? `?kind=${kind}` : ""}`);
+}
+export function markSealedReprint(productId: number, signalMonth: string, status: "confirmed" | "rejected" | "clear", note = ""): Promise<{ ok: boolean }> {
+  return adminFetch(`/v1/admin/sealed/reprints`, {
+    method: "POST", headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ product_id: productId, signal_month: signalMonth, status, note }),
+  });
+}
