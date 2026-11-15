@@ -3789,8 +3789,8 @@ export interface SealedReprints {
   method: string;
 }
 
-export function fetchSealedTiming(): Promise<{ kinds: SealedKindTiming[]; method: string }> {
-  return get(`/v1/sealed/timing`);
+export function fetchSealedTiming(era = "all"): Promise<{ kinds: SealedKindTiming[]; method: string; era: string; eras: { key: string; label: string }[] }> {
+  return get(`/v1/sealed/timing?era=${era}`);
 }
 export function fetchSealedProducts(kind = ""): Promise<{ products: SealedProduct[]; count: number }> {
   return get(`/v1/sealed/products${kind ? `?kind=${kind}` : ""}`);
