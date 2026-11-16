@@ -1,3 +1,4 @@
+import AICheck from "../components/AICheck";
 import { Fragment, createContext, useCallback, useContext, useEffect, useMemo, useState } from "react";
 import WatchButton from "../components/WatchButton";
 import { CardMarketLinks } from "../components/MarketLinks";
@@ -793,6 +794,7 @@ function LiveListings({ displayKey }: { displayKey: string }) {
                 <td className="py-1 text-gray-300 truncate max-w-md">
                   {l.url ? <a href={l.url} target="_blank" rel="noreferrer" className="hover:text-indigo-300">{l.title}</a> : l.title}
                 </td>
+                <td className="py-1 pl-2 whitespace-nowrap">{l.feed_id && <AICheck initial={l.ai} feedId={l.feed_id} />}</td>
               </tr>
             ))}
           </tbody>

@@ -1701,6 +1701,27 @@ export interface GradeOdds {
   model_version?: string;
   explain?: Record<string, OddsExplain>; // per grader (PSA, CGC, ...): why the odds are what they are
   rank?: CopyRank[]; // where the centering sits among graded PSA 10s (and 9s)
+  ai?: AIStatus; // the pre-grader's full AI check
+}
+
+// ---- Full AI check (pre-grader) -------------------------------------------------
+
+export type AIState = "not_checked" | "sending" | "queued" | "checking" | "clean" | "issues" | "removed" | "failed" | "partial";
+export interface AIStatus {
+  state: AIState; copy_id?: number; feed_id?: string; kind?: "graded" | "raw"; validated: boolean; clean: boolean;
+  issues?: string[]; removed?: string; ahead?: number; error?: string; review_url?: string;
+  checks?: Record<string, { applies: boolean; done: boolean; at?: string; ok?: boolean; detail?: unknown }>;
+  checked_at?: string; updated_at: string;
+}
+export function requestAICheck(body: { copy_id?: number; feed_id?: string; source?: string; listing_id?: string }): Promise<{ ai: AIStatus }> {
+  return adminFetch(`/v1/admin/ai-check`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+}
+export function fetchAIStatus(copyIds: number[], feedIds: string[], refresh = false): Promise<{ statuses: Record<string, AIStatus> }> {
+  const q = new URLSearchParams();
+  if (copyIds.length) q.set("copy_ids", copyIds.join(","));
+  if (feedIds.length) q.set("feed_ids", feedIds.join(","));
+  if (refresh) q.set("refresh", "1");
+  return adminFetch(`/v1/admin/ai-status?${q}`);
 }
 
 // Where a copy's centering sits among measured graded copies of one grade:
@@ -1945,6 +1966,9 @@ export interface CardListing {
   url?: string;
   ends_at?: string;
   last_seen_at: string;
+  listing_id: string;
+  feed_id?: string; // graded eBay / Fanatics: the id the pre-grader knows the slab by
+  ai?: AIStatus;
 }
 
 // Live Buy Nows and auctions (Fanatics, eBay) with links, every grade.
