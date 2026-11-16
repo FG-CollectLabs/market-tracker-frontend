@@ -1,5 +1,5 @@
 import { Fragment, useEffect, useState, type ReactNode } from "react";
-import { fetchSettings, saveSettings, type AnalysisSettings, type Grader, type ServiceTier, type SnipeRules, type CCRules } from "../lib/api";
+import { fetchSettings, saveSettings, SEALED_KIND_LABEL, type SealedKind, type AnalysisSettings, type Grader, type ServiceTier, type SnipeRules, type CCRules } from "../lib/api";
 import { useSession } from "../lib/auth";
 import { Spinner, ErrorMsg } from "../components/Spinner";
 
@@ -250,6 +250,16 @@ export default function SettingsPage() {
             <Money cents={s.ebay_envelope_cents ?? 100} onChange={(c) => set({ ebay_envelope_cents: c })} />
             under
             <Money cents={s.ebay_envelope_max_cents ?? 2000} onChange={(c) => set({ ebay_envelope_max_cents: c })} />
+          </span>
+        </Field>
+        <Field label="Sealed: shipping per sale" hint="Sealed timing returns are after the resale fee above and this shipping per product type.">
+          <span className="grid grid-cols-2 gap-x-3 gap-y-1 text-xs text-gray-400 sm:grid-cols-3">
+            {(Object.keys(SEALED_KIND_LABEL) as SealedKind[]).map((k) => (
+              <label key={k} className="flex items-center justify-between gap-2">
+                <span>{SEALED_KIND_LABEL[k]}</span>
+                <Money cents={s.sealed_ship_cents?.[k] ?? 0} onChange={(c) => set({ sealed_ship_cents: { ...(s.sealed_ship_cents ?? {}), [k]: c } })} />
+              </label>
+            ))}
           </span>
         </Field>
         <Field label="Sending a card to the Fanatics vault" hint="Per card, for cards at home sold on Fanatics.">
