@@ -3858,7 +3858,7 @@ export function fetchSealedEarly(kind: string, gross = false): Promise<SealedEar
 
 export interface SealedOffer {
   id: number; source: string; retailer: string; title?: string; url: string; price_cents: number; shipping_cents?: number;
-  seller?: string; seller_note?: string; reference_only: boolean; note?: string; checked_at: string; stale: boolean;
+  seller?: string; seller_note?: string; reference_only: boolean; in_stock: boolean; note?: string; checked_at: string; stale: boolean;
 }
 export interface SealedWatchRow {
   product: SealedProduct; target_cents: number | null; note?: string; added_at: string;
