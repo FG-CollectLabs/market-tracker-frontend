@@ -3859,6 +3859,7 @@ export function fetchSealedEarly(kind: string, gross = false): Promise<SealedEar
 export interface SealedOffer {
   id: number; source: string; retailer: string; title?: string; url: string; price_cents: number; shipping_cents?: number;
   seller?: string; seller_note?: string; reference_only: boolean; in_stock: boolean; note?: string; checked_at: string; stale: boolean;
+  landed_cents: number; add_ship_cents: number; tax_cents: number; shipping_known: boolean;
 }
 export interface SealedWatchRow {
   product: SealedProduct; target_cents: number | null; note?: string; added_at: string;
@@ -3881,4 +3882,21 @@ export function addSealedOffer(o: { product_id: number; retailer: string; url: s
 }
 export function removeSealedOffer(id: number): Promise<{ ok: boolean }> {
   return adminFetch(`/v1/admin/sealed/offers/${id}`, { method: "DELETE" });
+}
+
+// ---- Shops (sealed watchlist sources) ------------------------------------------
+
+export interface RetailShop {
+  key: string; name: string; domain: string | null; platform: "shopify" | "tcgplayer"; enabled: boolean; games: string[];
+  currency: string; free_ship_min_cents: number | null; ship_cents: number | null; tax_pct: number | null; note: string | null;
+  updated_by: string | null; updated_at: string;
+}
+export function fetchShops(): Promise<{ shops: RetailShop[]; games: string[] }> {
+  return get(`/v1/shops`);
+}
+export function updateShop(key: string, patch: Partial<{ enabled: boolean; name: string; games: string[]; free_ship_min_cents: number; ship_cents: number; tax_pct: number; note: string; clear_free_ship: boolean; clear_ship: boolean; clear_tax: boolean }>): Promise<{ ok: boolean }> {
+  return adminFetch(`/v1/admin/shops/${key}`, { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify(patch) });
+}
+export function addShop(name: string, domain: string, games: string[]): Promise<{ ok: boolean; key: string }> {
+  return adminFetch(`/v1/admin/shops`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ name, domain, games }) });
 }

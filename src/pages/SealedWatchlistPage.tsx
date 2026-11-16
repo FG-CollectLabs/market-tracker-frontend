@@ -70,8 +70,8 @@ export default function SealedWatchlistPage() {
         <h1 className="text-xl font-semibold text-white">Sealed watchlist</h1>
         <p className="text-sm text-gray-400 max-w-4xl">
           Sealed products you&apos;re keeping an eye on, their market price and the cheapest reliable place to buy each right now:
-          TCGplayer (singles and cases per unit), hobby shops (Zulu&apos;s Games, Galactic Toys, Hobbiesville, The Card Vault, Potomac
-          Distribution; prices before shipping) and any offer you add.
+          TCGplayer (singles and cases per unit), the hobby shops on the <Link to="/shops" className="text-indigo-300 hover:underline">Shops</Link> page
+          and any offer you add, ranked by landed cost (price + each shop&apos;s shipping and tax settings).
           Add products from <Link to="/sealed/timing" className="text-indigo-300 hover:underline">Sealed timing</Link> (Watch on the priority list or by-set table).
         </p>
       </header>
@@ -114,7 +114,9 @@ export default function SealedWatchlistPage() {
                     <td className="px-2 py-2">
                       {b ? (
                         <span>
-                          <a href={b.url} target="_blank" rel="noreferrer" className="font-medium text-emerald-300 hover:underline">{usd(b.price_cents)} at {b.retailer} ↗</a>
+                          <a href={b.url} target="_blank" rel="noreferrer" className="font-medium text-emerald-300 hover:underline">{usd(b.landed_cents)} at {b.retailer} ↗</a>
+                          {b.landed_cents !== b.price_cents && <div className="text-[10px] text-gray-500">{usd(b.price_cents)} + {usd(b.add_ship_cents)} ship + {usd(b.tax_cents)} tax</div>}
+                          {!b.shipping_known && <div className="text-[10px] text-amber-300">shipping not set for this shop</div>}
                           {b.seller_note && <div className="text-[10px] text-gray-500">{b.seller ? `${b.seller} · ` : ""}{b.seller_note}</div>}
                           {r.below_target && <div className="text-[10px] text-emerald-300">below your target</div>}
                         </span>
@@ -134,7 +136,10 @@ export default function SealedWatchlistPage() {
                             {r.offers.map((o) => (
                               <tr key={o.id} className={o.stale || !o.in_stock ? "opacity-50" : ""}>
                                 <td className="py-0.5 pr-3 whitespace-nowrap text-gray-300">{o.retailer}{o.reference_only && <span className="text-gray-500"> (reference)</span>}{!o.in_stock && <span className="text-rose-300"> sold out</span>}</td>
-                                <td className="py-0.5 pr-3 tabular-nums text-gray-100">{usd(o.price_cents)}{o.shipping_cents ? <span className="text-gray-500"> incl. {usd(o.shipping_cents)} ship</span> : ""}</td>
+                                <td className="py-0.5 pr-3 tabular-nums text-gray-100">{usd(o.landed_cents)}
+                                  {o.landed_cents !== o.price_cents && <span className="text-gray-500"> ({usd(o.price_cents)} + {usd(o.add_ship_cents)} ship + {usd(o.tax_cents)} tax)</span>}
+                                  {!o.shipping_known && <span className="text-amber-300"> no shipping set</span>}
+                                  {o.shipping_cents ? <span className="text-gray-500"> incl. {usd(o.shipping_cents)} ship</span> : ""}</td>
                                 <td className="py-0.5 pr-3 text-gray-500 max-w-md truncate" title={o.title}>{o.title ?? o.seller_note ?? ""}{o.title && o.seller_note ? ` · ${o.seller_note}` : ""}</td>
                                 <td className="py-0.5 pr-3 text-gray-600 whitespace-nowrap">{ago(o.checked_at)}</td>
                                 <td className="py-0.5 whitespace-nowrap">
