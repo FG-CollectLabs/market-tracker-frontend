@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import {
-  fetchSealedEarly, fetchSealedPriority, fetchSealedSets, fetchSealedTiming,
+  fetchSealedEarly, fetchSealedPriority, fetchSealedSets, fetchSealedTiming, fetchSealedWatch, watchSealed,
   type SealedEarly, type SealedKind, type SealedKindTiming, type SealedPriorityItem, type SealedRet, type SealedSetChart,
 } from "../lib/api";
 import { Spinner } from "../components/Spinner";
@@ -20,6 +20,24 @@ export const pct = (v: number | null | undefined, digits = 0) => (v == null ? "�
 export const usd = (c: number | null | undefined) => (c == null ? "–" : c >= 100000 ? `$${Math.round(c / 100).toLocaleString()}` : `$${(c / 100).toFixed(2)}`);
 const tone = (v: number | null | undefined) => (v == null ? "text-gray-600" : v >= 0.25 ? "text-emerald-300" : v >= 0 ? "text-emerald-200/70" : "text-rose-300");
 const share = (v: number | null | undefined) => (v == null ? "" : `${Math.round(v * 100)}% up`);
+
+// Watched product ids, shared by the Watch buttons on this page.
+let watchedCache: Promise<Set<number>> | null = null;
+const watchedIds = () => (watchedCache ??= fetchSealedWatch().then((r) => new Set(r.products.map((x) => x.product.id))).catch(() => new Set<number>()));
+
+function WatchButton({ productId }: { productId: number }) {
+  const [state, setState] = useState<"" | "watching" | "busy" | "error">("");
+  useEffect(() => { watchedIds().then((s) => s.has(productId) && setState("watching")); }, [productId]);
+  if (state === "watching") return <Link to="/sealed/watchlist" className="text-[11px] text-emerald-300 hover:underline">watching</Link>;
+  return (
+    <button disabled={state === "busy"} title="Add to the Sealed watchlist (fetches where to buy it)"
+      onClick={async () => {
+        setState("busy");
+        try { await watchSealed(productId); (await watchedIds()).add(productId); setState("watching"); } catch { setState("error"); }
+      }}
+      className="text-[11px] text-indigo-300 hover:underline">{state === "error" ? "sign in to watch" : state === "busy" ? "…" : "watch"}</button>
+  );
+}
 
 function Curves({ kinds, on }: { kinds: SealedKindTiming[]; on: Set<SealedKind> }) {
   const shown = kinds.filter((k) => on.has(k.kind) && k.curve.length > 1);
@@ -153,6 +171,7 @@ function Priority({ gross }: { gross: boolean }) {
                 <th className="px-2 py-1 font-medium text-right">Per year</th>
                 <th className="px-2 py-1 font-medium text-right" title="Middle half of historic outcomes">Range</th>
                 <th className="px-2 py-1 font-medium">Why</th>
+                <th className="px-2 py-1 font-medium"></th>
               </tr>
             </thead>
             <tbody>
@@ -168,6 +187,7 @@ function Priority({ gross }: { gross: boolean }) {
                   <td className="px-2 py-1 text-right tabular-nums text-gray-300">{pct(p.expected.annualized)}</td>
                   <td className="px-2 py-1 text-right tabular-nums text-gray-500 whitespace-nowrap">{pct(p.expected.p25)} to {pct(p.expected.p75)}</td>
                   <td className="px-2 py-1 text-gray-500 max-w-md">{p.reason}</td>
+                  <td className="px-2 py-1"><WatchButton productId={p.product_id} /></td>
                 </tr>
               ))}
             </tbody>
@@ -215,7 +235,7 @@ function BySet({ kind, era }: { kind: SealedKind; era: string }) {
                 <td className="px-2 py-1 whitespace-nowrap">
                   <span className="text-gray-300">{s.set_name}</span>
                   <a href={p.pricecharting_url} target="_blank" rel="noreferrer" className="ml-1 text-gray-500 hover:text-indigo-300">{p.variant ?? ""}</a>
-                  <div className="text-[10px] text-gray-600">{s.release_date ?? "no date"} · chart from {first?.month ?? "–"}</div>
+                  <div className="text-[10px] text-gray-600">{s.release_date ?? "no date"} · chart from {first?.month ?? "–"} · <WatchButton productId={p.id} /></div>
                 </td>
                 <td className="px-2 py-1"><Spark points={p.points} /></td>
                 {COLS.map((m) => <td key={m} className="px-2 py-1 text-right tabular-nums text-gray-400">{usd(at(p.points, m))}</td>)}

@@ -30,6 +30,7 @@ import AutomationPage from "./pages/AutomationPage";
 import SealedTodoPage from "./pages/SealedTodoPage";
 import SealedTimingPage from "./pages/SealedTimingPage";
 import SealedReprintsPage from "./pages/SealedReprintsPage";
+import SealedWatchlistPage from "./pages/SealedWatchlistPage";
 import { SignIn } from "./components/SignIn";
 import { Mark } from "./brand/Mark";
 import { COMPANY_NAME, PRODUCT_NAME } from "./brand/brand";
@@ -122,6 +123,7 @@ const NAV: NavEntry[] = [
       { to: "/deals", label: "Deals", hint: "This week's auctions, ending soon, raw sellers" },
       { to: "/windows", label: "Buy windows", hint: "When each tier usually bottoms" },
       { to: "/prep", label: "Buying prep", hint: "Bid plans for the weekly auctions" },
+      { to: "/sealed/watchlist", label: "Sealed watchlist", hint: "Sealed you're watching, market price and the cheapest reliable place to buy" },
       { to: "/sealed", label: "Sealed TODO", hint: "Sealed products to price or buy" },
     ],
   },
@@ -250,6 +252,7 @@ export default function App() {
             <Route path="/sealed" element={<SealedTodoPage />} />
             <Route path="/sealed/timing" element={<SealedTimingPage />} />
             <Route path="/sealed/reprints" element={<SealedReprintsPage />} />
+            <Route path="/sealed/watchlist" element={<SealedWatchlistPage />} />
             <Route path="/roadmap" element={<RoadmapPage />} />
             <Route path="/watchlist" element={<WatchlistPage />} />
             <Route path="/channels" element={<ChannelsPage />} />
