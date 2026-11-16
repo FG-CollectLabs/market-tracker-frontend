@@ -31,6 +31,7 @@ import SealedTodoPage from "./pages/SealedTodoPage";
 import SealedTimingPage from "./pages/SealedTimingPage";
 import SealedReprintsPage from "./pages/SealedReprintsPage";
 import SealedWatchlistPage from "./pages/SealedWatchlistPage";
+import ShopsPage from "./pages/ShopsPage";
 import { SignIn } from "./components/SignIn";
 import { Mark } from "./brand/Mark";
 import { COMPANY_NAME, PRODUCT_NAME } from "./brand/brand";
@@ -48,6 +49,7 @@ const SHARED: NavEntry[] = [
     items: [
       { to: "/settings", label: "Settings", hint: "Grading costs, fees, value source" },
       { to: "/automation", label: "Automation", hint: "Scheduled jobs and card priority" },
+      { to: "/shops", label: "Shops", hint: "Online shops the sealed watchlist checks; shipping and tax per shop" },
       { to: "/developer", label: "Developer", hint: "APIs, architecture, roadmap" },
     ],
   },
@@ -253,6 +255,7 @@ export default function App() {
             <Route path="/sealed/timing" element={<SealedTimingPage />} />
             <Route path="/sealed/reprints" element={<SealedReprintsPage />} />
             <Route path="/sealed/watchlist" element={<SealedWatchlistPage />} />
+            <Route path="/shops" element={<ShopsPage />} />
             <Route path="/roadmap" element={<RoadmapPage />} />
             <Route path="/watchlist" element={<WatchlistPage />} />
             <Route path="/channels" element={<ChannelsPage />} />
