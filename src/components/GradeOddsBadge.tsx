@@ -1,3 +1,4 @@
+import AICheck from "./AICheck";
 import { useEffect, useState } from "react";
 import { GRADE_ODDS_REFRESHED, refreshGradeOdds, type CopyRank, type GradeOdds } from "../lib/api";
 
@@ -70,6 +71,7 @@ export default function GradeOddsBadge({ o: given, compact }: { o: GradeOdds; co
         Grade odds: {STATUS[o.status] ?? o.status}
         {o.review_url && <> · <a href={o.review_url} target="_blank" rel="noreferrer" className="text-indigo-300 hover:text-indigo-200">check</a></>}
         {" "}<RefreshOdds o={o} onDone={setO} />
+        {(o.copy_id || o.listing_id) && <>{" "}<AICheck initial={o.ai} copyId={o.copy_id} source={o.listing_id ? o.source : undefined} listingId={o.listing_id} /></>}
       </span>
     );
   }
@@ -92,6 +94,7 @@ export default function GradeOddsBadge({ o: given, compact }: { o: GradeOdds; co
       )}
       {o.review_url && <a href={o.review_url} target="_blank" rel="noreferrer" className="text-indigo-300 hover:text-indigo-200">check</a>}
       <RefreshOdds o={o} onDone={setO} />
+      {(o.copy_id || o.listing_id) && <AICheck initial={o.ai} copyId={o.copy_id} source={o.listing_id ? o.source : undefined} listingId={o.listing_id} />}
     </span>
   );
 }

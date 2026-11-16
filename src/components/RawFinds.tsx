@@ -51,6 +51,7 @@ export default function RawFinds() {
   const [ending, setEnding] = useState<Ending>("");
   const [measured, setMeasured] = useState<Measured>("above15");
   const [evPos, setEvPos] = useState(true);
+  const [aiOnly, setAiOnly] = useState(false);
   const [show, setShow] = useState<Show>("open");
   const [shown, setShown] = useState(PAGE);
   const [rv, setRv] = useState<Record<string, HitReview | undefined>>({});
@@ -91,9 +92,10 @@ export default function RawFinds() {
       if (measured === "above15" && !(l != null && l >= 0.15)) return false;
       if (measured === "above30" && !(l != null && l >= 0.3)) return false;
       if (evPos && !((bestEv(h) ?? -1) > 0)) return false;
+      if (aiOnly && !h.grade_odds?.ai?.validated) return false;
       return true;
     });
-  }, [all, ending, measured, evPos]);
+  }, [all, ending, measured, evPos, aiOnly]);
   const counts = useMemo(() => countShows(base, (r) => reviewOf(r.h)), [base, rv]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const rows = useMemo(() => {
@@ -102,7 +104,7 @@ export default function RawFinds() {
     const val = (r: Row) => sort === "lift" ? lift(r.h) : sort === "best_ev" ? bestEv(r.h) : sort === "under" ? (r.h.max_cents - r.h.all_in_cents) / Math.max(1, r.h.max_cents) : null;
     return [...out].sort((a, b) => sort === "ending" ? end(a.h) - end(b.h) : (val(b) ?? -Infinity) - (val(a) ?? -Infinity));
   }, [base, show, rv, sort]); // eslint-disable-line react-hooks/exhaustive-deps
-  useEffect(() => setShown(PAGE), [sort, ending, measured, evPos, show]);
+  useEffect(() => setShown(PAGE), [sort, ending, measured, evPos, aiOnly, show]);
 
   if (err) return <ErrorMsg msg={err} />;
   if (!items) return <div className="text-sm text-gray-500 flex items-center gap-2"><Spinner /> Loading the watchlist…</div>;
@@ -134,6 +136,7 @@ export default function RawFinds() {
           </select>
         </label>
         <label className="flex items-center gap-1.5"><input type="checkbox" checked={evPos} onChange={(e) => setEvPos(e.target.checked)} /> Grading EV positive (PSA or CGC)</label>
+        <label className="flex items-center gap-1.5" title="The pre-grader's full AI check (outline, corners and edges) has run on the copy"><input type="checkbox" checked={aiOnly} onChange={(e) => setAiOnly(e.target.checked)} /> AI validated only</label>
         <label className="flex items-center gap-1.5">Sort
           <select value={sort} onChange={(e) => setSort(e.target.value as Sort)} className={sel}>
             <option value="lift">Odds above the gem rate</option><option value="best_ev">Best grading EV</option>
