@@ -3839,3 +3839,17 @@ export function markSealedReprint(productId: number, signalMonth: string, status
     body: JSON.stringify({ product_id: productId, signal_month: signalMonth, status, note }),
   });
 }
+
+export interface SealedEarlyPoint { month: string; cents: number; source: "tcgplayer_archive" | "msrp" | "pricecharting" }
+export interface SealedEarlyRow {
+  product_id: number; set_code: string; set_name: string; name: string; kind: SealedKind; release_date: string | null;
+  launch: SealedEarlyPoint | null; archive: SealedEarlyPoint[]; first_pricecharting: SealedEarlyPoint | null; latest: SealedEarlyPoint | null;
+  to_first_pc_per_year: number | null; to_latest_per_year: number | null; years_to_first_pc: number | null;
+}
+export interface SealedEarly {
+  kind: SealedKind; label: string; products: SealedEarlyRow[]; median_to_first_pc_per_year: number | null;
+  median_to_latest_per_year: number | null; launch_sources: Record<string, number>; costs: string; method: string;
+}
+export function fetchSealedEarly(kind: string, gross = false): Promise<SealedEarly> {
+  return get(`/v1/sealed/early?kind=${kind}${gross ? "&gross=1" : ""}`);
+}
