@@ -3853,3 +3853,32 @@ export interface SealedEarly {
 export function fetchSealedEarly(kind: string, gross = false): Promise<SealedEarly> {
   return get(`/v1/sealed/early?kind=${kind}${gross ? "&gross=1" : ""}`);
 }
+
+// ---- Sealed watchlist ---------------------------------------------------------
+
+export interface SealedOffer {
+  id: number; source: string; retailer: string; title?: string; url: string; price_cents: number; shipping_cents?: number;
+  seller?: string; seller_note?: string; reference_only: boolean; note?: string; checked_at: string; stale: boolean;
+}
+export interface SealedWatchRow {
+  product: SealedProduct; target_cents: number | null; note?: string; added_at: string;
+  offers: SealedOffer[]; best_offer: SealedOffer | null; below_target: boolean;
+}
+export function fetchSealedWatch(): Promise<{ products: SealedWatchRow[]; count: number; last_refresh: string | null; sources: string }> {
+  return get(`/v1/sealed/watch`);
+}
+export function watchSealed(productId: number, targetCents: number | null = null, note = ""): Promise<{ ok: boolean }> {
+  return adminFetch(`/v1/admin/sealed/watch`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ product_id: productId, target_cents: targetCents, note }) });
+}
+export function unwatchSealed(productId: number): Promise<{ ok: boolean }> {
+  return adminFetch(`/v1/admin/sealed/watch/${productId}`, { method: "DELETE" });
+}
+export function refreshSealedWatch(productIds: number[] = []): Promise<{ job_id: number }> {
+  return adminFetch(`/v1/admin/sealed/watch/refresh`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ product_ids: productIds }) });
+}
+export function addSealedOffer(o: { product_id: number; retailer: string; url: string; price_cents: number; shipping_cents?: number; note?: string }): Promise<{ ok: boolean }> {
+  return adminFetch(`/v1/admin/sealed/offers`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(o) });
+}
+export function removeSealedOffer(id: number): Promise<{ ok: boolean }> {
+  return adminFetch(`/v1/admin/sealed/offers/${id}`, { method: "DELETE" });
+}
