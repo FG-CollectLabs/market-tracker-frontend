@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import {
   fetchSealedReprints, fetchSealedSets, markSealedReprint,
-  type ReprintEvent, type SealedKind, type SealedReprints, type SealedSetChart,
+  SEALED_KIND_LABEL, type ReprintEvent, type SealedKind, type SealedReprints, type SealedSetChart,
 } from "../lib/api";
 import { Spinner } from "../components/Spinner";
 import { SEALED_COLORS, pct, usd } from "./SealedTimingPage";
@@ -11,7 +11,7 @@ import { SEALED_COLORS, pct, usd } from "./SealedTimingPage";
 // chart (a reprint or a fresh wave of product), to confirm or reject. The
 // timing stats use confirmed reprints once a product type has three.
 
-const KINDS: [SealedKind | "", string][] = [["", "All"], ["etb", "ETB"], ["pc_etb", "PC ETB"], ["booster_box", "Booster box"], ["booster_bundle", "Bundle"], ["booster_pack", "Pack"]];
+const KINDS: [SealedKind | "", string][] = [["", "All"], ...(Object.entries(SEALED_KIND_LABEL) as [SealedKind, string][])];
 
 function Chart({ points, events }: { points: { month: string; cents: number }[]; events: ReprintEvent[] }) {
   if (points.length < 2) return <div className="text-xs text-gray-600">no chart</div>;
@@ -112,7 +112,7 @@ export default function SealedReprintsPage() {
               return (
                 <section key={p.id} className="rounded-lg border border-gray-800 bg-gray-900 p-3 space-y-2">
                   <div className="flex flex-wrap items-baseline gap-2 text-sm">
-                    <span style={{ color: SEALED_COLORS[p.kind] }}>●</span>
+                    <span style={{ color: SEALED_COLORS[p.kind] ?? "#e5e7eb" }}>●</span>
                     <a href={p.pricecharting_url} target="_blank" rel="noreferrer" className="text-gray-100 hover:text-indigo-300">{charts.set_name} · {p.name}</a>
                     <span className="text-xs text-gray-500">released {charts.release_date ?? "?"}</span>
                   </div>

@@ -860,6 +860,7 @@ export interface AnalysisSettings {
   ebay_ship_cents: number;
   ebay_envelope_cents?: number; // raw cards under ebay_envelope_max_cents ship as an eBay Standard Envelope
   ebay_envelope_max_cents?: number;
+  sealed_ship_cents?: Record<string, number>; // sealed timing: shipping per sealed product type, for returns after selling costs
   vault_inbound_cents: number;
   vault_withdraw_cents: number;
   list_markup_pct: number;
@@ -3762,7 +3763,13 @@ export function fetchPcgAnalysis(game: "pokemon" | "riftbound"): Promise<PcgAnal
 
 // ---- Sealed timing (import-sealed) -------------------------------------------
 
-export type SealedKind = "etb" | "pc_etb" | "booster_box" | "booster_bundle" | "booster_pack";
+export type SealedKind = "etb" | "pc_etb" | "booster_box" | "booster_bundle" | "booster_pack"
+  | "upc" | "premium_collection" | "special_collection" | "collection_box" | "tin" | "blister" | "build_battle";
+export const SEALED_KIND_LABEL: Record<SealedKind, string> = {
+  etb: "ETB", pc_etb: "PC ETB", booster_box: "Booster box", booster_bundle: "Bundle", booster_pack: "Pack",
+  upc: "Ultra Premium", premium_collection: "Premium Collection", special_collection: "Special Collection",
+  collection_box: "Collection box", tin: "Tin", blister: "Blister", build_battle: "Build & Battle",
+};
 export interface SealedRet { n: number; median: number | null; p25: number | null; p75: number | null; up_share: number | null; annualized: number | null }
 export interface SealedPlay { month: number; returns: SealedRet }
 export interface SealedKindTiming {
@@ -3808,8 +3815,8 @@ export interface SealedPriorityItem {
   expected: SealedRet; best_month?: number; reason: string;
 }
 
-export function fetchSealedTiming(era = "all"): Promise<{ kinds: SealedKindTiming[]; method: string; era: string; eras: { key: string; label: string }[] }> {
-  return get(`/v1/sealed/timing?era=${era}`);
+export function fetchSealedTiming(era = "all", gross = false): Promise<{ kinds: SealedKindTiming[]; method: string; era: string; eras: { key: string; label: string }[]; costs: string; net: boolean }> {
+  return get(`/v1/sealed/timing?era=${era}${gross ? "&gross=1" : ""}`);
 }
 export function fetchSealedProducts(kind = ""): Promise<{ products: SealedProduct[]; count: number }> {
   return get(`/v1/sealed/products${kind ? `?kind=${kind}` : ""}`);
@@ -3823,8 +3830,8 @@ export function fetchSealedReprints(kind = "", set = "", era = "all"): Promise<S
 export function fetchSealedSets(kind: string, era = "all"): Promise<{ sets: SealedSetChart[]; count: number }> {
   return get(`/v1/sealed/sets?kind=${kind}&era=${era}`);
 }
-export function fetchSealedPriority(hold = 24): Promise<{ products: SealedPriorityItem[]; hold_months: number; method: string }> {
-  return get(`/v1/sealed/priority?hold=${hold}`);
+export function fetchSealedPriority(hold = 36, gross = false): Promise<{ products: SealedPriorityItem[]; hold_months: number; method: string; costs: string }> {
+  return get(`/v1/sealed/priority?hold=${hold}${gross ? "&gross=1" : ""}`);
 }
 export function markSealedReprint(productId: number, signalMonth: string, status: "confirmed" | "rejected" | "clear", note = ""): Promise<{ ok: boolean }> {
   return adminFetch(`/v1/admin/sealed/reprints`, {

@@ -12,6 +12,8 @@ import { Spinner } from "../components/Spinner";
 
 export const SEALED_COLORS: Record<SealedKind, string> = {
   etb: "#818cf8", pc_etb: "#f472b6", booster_box: "#34d399", booster_bundle: "#fbbf24", booster_pack: "#60a5fa",
+  upc: "#f87171", premium_collection: "#c084fc", special_collection: "#2dd4bf", collection_box: "#fb923c", tin: "#a3e635",
+  blister: "#94a3b8", build_battle: "#e879f9",
 };
 const HOLDS = ["12", "24", "36"];
 export const pct = (v: number | null | undefined, digits = 0) => (v == null ? "–" : `${v >= 0 ? "+" : ""}${(v * 100).toFixed(digits)}%`);
@@ -97,43 +99,44 @@ function RetCell({ r }: { r?: SealedRet }) {
   );
 }
 
+function PlayLine({ p, hold, what }: { p?: { month: number; returns: SealedRet } | null; hold: string; what: "release" | "reprint" }) {
+  if (!p) return <div className="text-gray-600">{hold}m hold: not enough data</div>;
+  const when = what === "release" ? <>buy at <b>month {p.month}</b></> : <>buy <b>{p.month === 0 ? "the month of the signal" : `${p.month}mo after`}</b></>;
+  return (
+    <div className="text-gray-200">{hold}m hold: {when} → <span className={tone(p.returns.median)}>{pct(p.returns.median)}</span>
+      <span className="text-gray-500"> ({pct(p.returns.annualized)}/yr, {share(p.returns.up_share)}, n={p.returns.n})</span></div>
+  );
+}
+
 function PlayCard({ k }: { k: SealedKindTiming }) {
-  const rel = k.release_play?.["24"] ?? k.release_play?.["12"];
-  const relHold = k.release_play?.["24"] ? 24 : 12;
-  const rp = k.reprint_play?.["24"] ?? k.reprint_play?.["12"];
-  const rpHold = k.reprint_play?.["24"] ? 24 : 12;
   return (
     <div className="rounded-lg border border-gray-800 bg-gray-950/60 p-3 space-y-2 text-xs">
-      <div className="font-medium" style={{ color: SEALED_COLORS[k.kind] }}>{k.label}</div>
-      <div>
+      <div className="font-medium" style={{ color: SEALED_COLORS[k.kind] ?? "#e5e7eb" }}>{k.label} <span className="text-gray-600 font-normal">{k.with_history} products</span></div>
+      <div className="space-y-0.5">
         <div className="text-gray-500">New release</div>
-        {rel ? (
-          <div className="text-gray-200">Buy at <b>month {rel.month}</b>, hold {relHold}m: <span className={tone(rel.returns.median)}>{pct(rel.returns.median)}</span>
-            <span className="text-gray-500"> ({pct(rel.returns.annualized)}/yr, {share(rel.returns.up_share)}, {rel.returns.n} sets)</span></div>
-        ) : <div className="text-gray-600">not enough data</div>}
+        <PlayLine p={k.release_play?.["24"]} hold="24" what="release" />
+        <PlayLine p={k.release_play?.["36"]} hold="36" what="release" />
       </div>
-      <div>
+      <div className="space-y-0.5">
         <div className="text-gray-500">After a reprint signal <span className="text-gray-600">({k.reprint_basis === "confirmed" ? "confirmed reprints" : "detected drops"}, {k.reprint_events})</span></div>
-        {rp ? (
-          <div className="text-gray-200">Buy <b>{rp.month === 0 ? "the month of the signal" : `${rp.month} months after`}</b>, hold {rpHold}m: <span className={tone(rp.returns.median)}>{pct(rp.returns.median)}</span>
-            <span className="text-gray-500"> ({pct(rp.returns.annualized)}/yr, {share(rp.returns.up_share)}, {rp.returns.n} events)</span></div>
-        ) : <div className="text-gray-600">not enough events</div>}
+        <PlayLine p={k.reprint_play?.["24"]} hold="24" what="reprint" />
+        <PlayLine p={k.reprint_play?.["36"]} hold="36" what="reprint" />
       </div>
     </div>
   );
 }
 
-function Priority() {
-  const [hold, setHold] = useState(24);
+function Priority({ gross }: { gross: boolean }) {
+  const [hold, setHold] = useState(36);
   const [rows, setRows] = useState<SealedPriorityItem[] | null>(null);
   const [method, setMethod] = useState("");
-  useEffect(() => { setRows(null); fetchSealedPriority(hold).then((r) => { setRows(r.products); setMethod(r.method); }).catch(() => setRows([])); }, [hold]);
+  useEffect(() => { setRows(null); fetchSealedPriority(hold, gross).then((r) => { setRows(r.products); setMethod(`${r.method} ${r.costs ?? ""}`); }).catch(() => setRows([])); }, [hold, gross]);
   return (
     <section className="rounded-lg border border-emerald-900/60 bg-gray-900 p-4 space-y-2">
       <div className="flex flex-wrap items-center gap-3">
         <span className="text-sm font-medium text-emerald-300">Priority: where to focus buying now</span>
         <span className="flex gap-1 text-xs">
-          {[12, 24].map((h) => (
+          {[24, 36].map((h) => (
             <button key={h} onClick={() => setHold(h)} className={`rounded px-2 py-0.5 ${hold === h ? "bg-emerald-700 text-white" : "text-gray-400 hover:text-gray-200"}`}>hold {h}m</button>
           ))}
         </span>
@@ -156,7 +159,7 @@ function Priority() {
               {rows.map((p) => (
                 <tr key={p.product_id} className="border-t border-gray-800 align-top">
                   <td className="px-2 py-1 whitespace-nowrap">
-                    <span style={{ color: SEALED_COLORS[p.kind] }}>●</span>{" "}
+                    <span style={{ color: SEALED_COLORS[p.kind] ?? "#e5e7eb" }}>●</span>{" "}
                     <a href={p.pricecharting_url} target="_blank" rel="noreferrer" className="text-gray-100 hover:text-indigo-300">{p.set_name} · {p.name}</a>
                   </td>
                   <td className="px-2 py-1 text-right tabular-nums text-gray-200">{usd(p.latest_cents)}</td>
@@ -230,17 +233,19 @@ function BySet({ kind, era }: { kind: SealedKind; era: string }) {
 export default function SealedTimingPage() {
   const [kinds, setKinds] = useState<SealedKindTiming[] | null>(null);
   const [method, setMethod] = useState("");
-  const [on, setOn] = useState<Set<SealedKind>>(new Set(["etb", "pc_etb", "booster_box", "booster_bundle", "booster_pack"]));
+  const [on, setOn] = useState<Set<SealedKind>>(new Set(["etb", "pc_etb", "booster_box", "booster_bundle", "upc", "premium_collection"]));
   const [kind, setKind] = useState<SealedKind>("etb");
   const [hold, setHold] = useState("24");
   const [era, setEra] = useState("all");
   const [eras, setEras] = useState<{ key: string; label: string }[]>([]);
+  const [gross, setGross] = useState(false);
+  const [costs, setCosts] = useState("");
   const [err, setErr] = useState("");
 
   useEffect(() => {
     setKinds(null);
-    fetchSealedTiming(era).then((r) => { setKinds(r.kinds); setMethod(r.method); setEras(r.eras ?? []); }).catch((e) => setErr(String(e)));
-  }, [era]);
+    fetchSealedTiming(era, gross).then((r) => { setKinds(r.kinds); setMethod(r.method); setEras(r.eras ?? []); setCosts(r.costs ?? ""); }).catch((e) => setErr(String(e)));
+  }, [era, gross]);
   const cur = useMemo(() => kinds?.find((k) => k.kind === kind), [kinds, kind]);
 
   return (
@@ -255,7 +260,15 @@ export default function SealedTimingPage() {
       </header>
       {err && <div className="text-sm text-rose-400">{err}</div>}
 
-      <Priority />
+      <div className="flex flex-wrap items-center gap-2 text-xs">
+        <span className="flex rounded border border-gray-800 overflow-hidden">
+          <button onClick={() => setGross(false)} className={`px-2.5 py-1 ${!gross ? "bg-emerald-700 text-white" : "text-gray-400"}`}>after selling costs</button>
+          <button onClick={() => setGross(true)} className={`px-2.5 py-1 ${gross ? "bg-gray-700 text-white" : "text-gray-400"}`}>gross</button>
+        </span>
+        <span className="text-gray-500">{costs} <Link to="/settings" className="text-indigo-300 hover:underline">Settings</Link></span>
+      </div>
+
+      <Priority gross={gross} />
 
       {eras.length > 0 && (
         <div className="flex flex-wrap items-center gap-1 text-xs">
@@ -270,7 +283,7 @@ export default function SealedTimingPage() {
         <>
           <section className="space-y-2">
             <div className="text-sm text-gray-200 font-medium">Best historic plays</div>
-            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">{kinds.map((k) => <PlayCard key={k.kind} k={k} />)}</div>
+            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">{kinds.filter((k) => k.with_history > 0).map((k) => <PlayCard key={k.kind} k={k} />)}</div>
           </section>
 
           <section className="rounded-lg border border-gray-800 bg-gray-900 p-4 space-y-3">
@@ -279,7 +292,7 @@ export default function SealedTimingPage() {
               {kinds.map((k) => (
                 <label key={k.kind} className="flex items-center gap-1 text-gray-400">
                   <input type="checkbox" checked={on.has(k.kind)} onChange={() => setOn((s) => { const n = new Set(s); if (n.has(k.kind)) n.delete(k.kind); else n.add(k.kind); return n; })} />
-                  <span style={{ color: SEALED_COLORS[k.kind] }}>●</span> {k.label}
+                  <span style={{ color: SEALED_COLORS[k.kind] ?? "#e5e7eb" }}>●</span> {k.label}
                 </label>
               ))}
             </div>
