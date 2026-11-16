@@ -69,7 +69,9 @@ export default function SealedWatchlistPage() {
       <header className="space-y-1">
         <h1 className="text-xl font-semibold text-white">Sealed watchlist</h1>
         <p className="text-sm text-gray-400 max-w-4xl">
-          Sealed products you&apos;re keeping an eye on, their market price and the cheapest reliable place to buy each right now.
+          Sealed products you&apos;re keeping an eye on, their market price and the cheapest reliable place to buy each right now:
+          TCGplayer (singles and cases per unit), hobby shops (Zulu&apos;s Games, Galactic Toys, Hobbiesville, The Card Vault, Potomac
+          Distribution; prices before shipping) and any offer you add.
           Add products from <Link to="/sealed/timing" className="text-indigo-300 hover:underline">Sealed timing</Link> (Watch on the priority list or by-set table).
         </p>
       </header>
@@ -130,8 +132,8 @@ export default function SealedWatchlistPage() {
                         <table className="w-full text-xs">
                           <tbody>
                             {r.offers.map((o) => (
-                              <tr key={o.id} className={o.stale ? "opacity-50" : ""}>
-                                <td className="py-0.5 pr-3 whitespace-nowrap text-gray-300">{o.retailer}{o.reference_only && <span className="text-gray-500"> (reference)</span>}</td>
+                              <tr key={o.id} className={o.stale || !o.in_stock ? "opacity-50" : ""}>
+                                <td className="py-0.5 pr-3 whitespace-nowrap text-gray-300">{o.retailer}{o.reference_only && <span className="text-gray-500"> (reference)</span>}{!o.in_stock && <span className="text-rose-300"> sold out</span>}</td>
                                 <td className="py-0.5 pr-3 tabular-nums text-gray-100">{usd(o.price_cents)}{o.shipping_cents ? <span className="text-gray-500"> incl. {usd(o.shipping_cents)} ship</span> : ""}</td>
                                 <td className="py-0.5 pr-3 text-gray-500 max-w-md truncate" title={o.title}>{o.title ?? o.seller_note ?? ""}{o.title && o.seller_note ? ` · ${o.seller_note}` : ""}</td>
                                 <td className="py-0.5 pr-3 text-gray-600 whitespace-nowrap">{ago(o.checked_at)}</td>
