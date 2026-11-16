@@ -1,8 +1,8 @@
 import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import {
-  fetchSealedPriority, fetchSealedSets, fetchSealedTiming,
-  type SealedKind, type SealedKindTiming, type SealedPriorityItem, type SealedRet, type SealedSetChart,
+  fetchSealedEarly, fetchSealedPriority, fetchSealedSets, fetchSealedTiming,
+  type SealedEarly, type SealedKind, type SealedKindTiming, type SealedPriorityItem, type SealedRet, type SealedSetChart,
 } from "../lib/api";
 import { Spinner } from "../components/Spinner";
 
@@ -230,6 +230,66 @@ function BySet({ kind, era }: { kind: SealedKind; era: string }) {
   );
 }
 
+// Early years of pre-2021 sets: PriceCharting's charts start in 2021, so
+// growth from launch to the first chart month (archived price or MSRP).
+function EarlyYears({ gross }: { gross: boolean }) {
+  const [kind, setKind] = useState<"booster_box" | "etb">("booster_box");
+  const [d, setD] = useState<SealedEarly | null>(null);
+  useEffect(() => { setD(null); fetchSealedEarly(kind, gross).then(setD).catch(() => setD(null)); }, [kind, gross]);
+  return (
+    <section className="rounded-lg border border-gray-800 bg-gray-900 p-4 space-y-2">
+      <div className="flex flex-wrap items-center gap-3 text-sm">
+        <span className="text-gray-200 font-medium">Early years of older sets</span>
+        <span className="flex gap-1 text-xs">
+          {(["booster_box", "etb"] as const).map((k) => (
+            <button key={k} onClick={() => setKind(k)} className={`rounded px-2 py-0.5 ${kind === k ? "bg-gray-700 text-white" : "text-gray-400 hover:text-gray-200"}`}>{k === "etb" ? "ETB" : "Booster box"}</button>
+          ))}
+        </span>
+        {d && (
+          <span className="text-xs text-gray-400">
+            median launch → 2021+ <span className={tone(d.median_to_first_pc_per_year)}>{pct(d.median_to_first_pc_per_year)}/yr</span>,
+            launch → now <span className={tone(d.median_to_latest_per_year)}>{pct(d.median_to_latest_per_year)}/yr</span>
+            <span className="text-gray-600"> · launch from {Object.entries(d.launch_sources).map(([k, v]) => `${v} ${k === "msrp" ? "MSRP" : "archived price"}`).join(", ")}</span>
+          </span>
+        )}
+      </div>
+      {!d ? <Spinner /> : d.products.length === 0 ? <div className="text-sm text-gray-500">No older products missing early history.</div> : (
+        <div className="overflow-x-auto max-h-[480px]">
+          <table className="w-full text-xs">
+            <thead className="text-gray-500 text-left sticky top-0 bg-gray-900">
+              <tr>
+                <th className="px-2 py-1 font-medium">Set · product</th>
+                <th className="px-2 py-1 font-medium text-right">Launch</th>
+                <th className="px-2 py-1 font-medium" title="Archived TCGplayer market prices (Internet Archive)">Archived prices</th>
+                <th className="px-2 py-1 font-medium text-right">First chart</th>
+                <th className="px-2 py-1 font-medium text-right" title="Launch to first PriceCharting month, after selling costs">Per year to then</th>
+                <th className="px-2 py-1 font-medium text-right">Latest</th>
+                <th className="px-2 py-1 font-medium text-right">Per year to now</th>
+              </tr>
+            </thead>
+            <tbody>
+              {d.products.map((p) => (
+                <tr key={p.product_id} className="border-t border-gray-800 align-top">
+                  <td className="px-2 py-1"><span className="text-gray-200">{p.set_name}</span> <span className="text-gray-500">{p.name}</span>
+                    <div className="text-[10px] text-gray-600">released {p.release_date}</div></td>
+                  <td className="px-2 py-1 text-right tabular-nums whitespace-nowrap">{usd(p.launch?.cents)}
+                    <div className="text-[10px] text-gray-500">{p.launch ? (p.launch.source === "msrp" ? "MSRP (approx.)" : `archived ${p.launch.month}`) : ""}</div></td>
+                  <td className="px-2 py-1 text-gray-400 whitespace-nowrap">{p.archive.length ? p.archive.map((a) => `${a.month} ${usd(a.cents)}`).join(" · ") : <span className="text-gray-700">none</span>}</td>
+                  <td className="px-2 py-1 text-right tabular-nums text-gray-300 whitespace-nowrap">{usd(p.first_pricecharting?.cents)}<div className="text-[10px] text-gray-500">{p.first_pricecharting?.month}</div></td>
+                  <td className={`px-2 py-1 text-right tabular-nums ${tone(p.to_first_pc_per_year)}`}>{pct(p.to_first_pc_per_year)}<div className="text-[10px] text-gray-500">{p.years_to_first_pc != null ? `${p.years_to_first_pc}y` : ""}</div></td>
+                  <td className="px-2 py-1 text-right tabular-nums text-gray-200">{usd(p.latest?.cents)}</td>
+                  <td className={`px-2 py-1 text-right tabular-nums ${tone(p.to_latest_per_year)}`}>{pct(p.to_latest_per_year)}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+      {d && <p className="text-[11px] text-gray-500 max-w-4xl">{d.method} {d.costs}</p>}
+    </section>
+  );
+}
+
 export default function SealedTimingPage() {
   const [kinds, setKinds] = useState<SealedKindTiming[] | null>(null);
   const [method, setMethod] = useState("");
@@ -345,6 +405,8 @@ export default function SealedTimingPage() {
                   </table>
                 </div>
               </section>
+
+              <EarlyYears gross={gross} />
 
               <section className="rounded-lg border border-gray-800 bg-gray-900 p-4 space-y-2">
                 <span className="text-sm text-gray-200 font-medium">{cur.label}: by set (the data points)</span>
