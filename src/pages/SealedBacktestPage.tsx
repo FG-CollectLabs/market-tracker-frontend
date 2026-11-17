@@ -29,6 +29,14 @@ const PRESETS: Strategy[] = [
     ],
   },
   {
+    name: "My ETB plan v3: v2 with dips bought weekly until 90% recovered, capped at $500 a month",
+    legs: [
+      leg({ name: "1 a week from month 2 until out of print", rule: "schedule", kinds: ["etb"], cadence: "week", start_month: 2, until_oop: true, hold_months: 36 }),
+      leg({ name: "+1 a month from month 12 until out of print", rule: "schedule", kinds: ["etb"], start_month: 12, until_oop: true, hold_months: 36 }),
+      leg({ name: "+1 a week on a reprint dip until 90% back, ≤$500/mo", rule: "dip", kinds: ["etb"], cadence: "week", dip_pct: 0.2, dip_own: true, dip_follow: "recovered", dip_recover_frac: 0.9, month_cap_cents: 50000, hold_months: 48 }),
+    ],
+  },
+  {
     name: "My ETB plan: month 12 until out of print + reprint dips + 20%-off early buys",
     legs: [
       leg({ name: "Month 12 until out of print", rule: "schedule", kinds: ["etb"], start_month: 12, until_oop: true, hold_months: 36 }),
@@ -68,7 +76,7 @@ function followText(s: SealedRule) {
   const per = `${s.units ?? 1} a ${s.cadence === "week" ? "week" : "month"}`;
   switch (s.dip_follow) {
     case "months": return `, then ${per} for ${s.dip_follow_months ?? 6} months`;
-    case "recovered": return `, then ${per} until back at its high`;
+    case "recovered": return s.dip_recover_frac && s.dip_recover_frac < 1 ? `, then ${per} until ${Math.round(s.dip_recover_frac * 100)}% of the way back to its high` : `, then ${per} until back at its high`;
     case "oop": return `, then ${per} until out of print`;
   }
   return "";
@@ -294,6 +302,10 @@ function LegEditor({ r, onChange, onRemove, canRemove }: { r: SealedRule; onChan
               <option value="oop">keep buying until out of print</option>
             </select>
           </label>
+          {r.dip_follow === "recovered" && <label className={lbl} title="Stop once the price is this far back from the dip's low to its pre-dip high (the 6-month high before the drop)">
+            until <input value={Math.round((r.dip_recover_frac ?? 1) * 100)} onChange={(e) => { const v = (num(e.target.value) ?? 100) / 100; set({ dip_recover_frac: v > 0 && v < 1 ? v : undefined }); }} className={`${inp} w-10`} />% back</label>}
+          {r.dip_follow && <label className={lbl} title="At most this much a calendar month across every product (blank = no cap)">cap $<input value={r.month_cap_cents ? r.month_cap_cents / 100 : ""} placeholder="–"
+            onChange={(e) => set({ month_cap_cents: Math.round((num(e.target.value) ?? 0) * 100) || undefined })} className={`${inp} w-14`} />/mo</label>}
           {r.dip_follow === "months" && <label className={lbl}><input value={r.dip_follow_months ?? 6} onChange={(e) => set({ dip_follow_months: num(e.target.value) })} className={`${inp} w-10`} /> months</label>}
           {r.dip_follow && <label className={lbl}><input value={r.units ?? 1} onChange={(e) => set({ units: num(e.target.value) ?? 1 })} className={`${inp} w-10`} /> a
             <select value={r.cadence ?? "month"} onChange={(e) => set({ cadence: e.target.value as SealedRule["cadence"] })} className={inp}><option value="week">week</option><option value="month">month</option></select></label>}
@@ -426,7 +438,9 @@ const FOLLOWS: { name: string; p: Partial<SealedRule> }[] = [
   { name: "Keep buying 3 months", p: { dip_follow: "months", dip_follow_months: 3 } },
   { name: "Keep buying 6 months", p: { dip_follow: "months", dip_follow_months: 6 } },
   { name: "Keep buying 12 months", p: { dip_follow: "months", dip_follow_months: 12 } },
-  { name: "Keep buying until back at its high", p: { dip_follow: "recovered" } },
+  { name: "Keep buying until 50% of the way back", p: { dip_follow: "recovered", dip_recover_frac: 0.5 } },
+  { name: "Keep buying until 90% of the way back", p: { dip_follow: "recovered", dip_recover_frac: 0.9 } },
+  { name: "Keep buying until back at its high", p: { dip_follow: "recovered", dip_recover_frac: undefined } },
   { name: "Keep buying until out of print", p: { dip_follow: "oop" } },
   { name: "Until out of print, but not past month 36", p: { dip_follow: "oop", end_month: 36 } },
   { name: "Until out of print, but not past month 24", p: { dip_follow: "oop", end_month: 24 } },
