@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import {
-  addSealedOffer, fetchSealedWatch, refreshSealedWatch, removeSealedOffer, unwatchSealed, watchSealed,
+  addSealedOffer, fetchSealedPriority, fetchSealedWatch, refreshSealedWatch, removeSealedOffer, unwatchSealed, watchSealed,
   type SealedWatchRow,
 } from "../lib/api";
 import { Spinner } from "../components/Spinner";
@@ -57,6 +57,23 @@ export default function SealedWatchlistPage() {
     setMsg("");
     try { const r = await refreshSealedWatch(ids); setMsg(`Refresh queued (job ${r.job_id}); prices update in a few minutes.`); } catch (e) { setErr(String(e)); }
   };
+  // every product on Sealed timing's priority list that isn't watched yet
+  const [adding, setAdding] = useState("");
+  const addPriority = async () => {
+    setErr(""); setAdding("loading the priority list…");
+    try {
+      const pr = await fetchSealedPriority(36);
+      const have = new Set((rows ?? []).map((r) => r.product.id));
+      const todo = [...new Set(pr.products.map((p) => p.product_id))].filter((id) => !have.has(id));
+      for (let i = 0; i < todo.length; i++) {
+        setAdding(`adding ${i + 1} of ${todo.length}…`);
+        await watchSealed(todo[i]);
+      }
+      setAdding("");
+      setMsg(todo.length ? `Added ${todo.length} priority products. Refresh prices to fetch their offers.` : "Every priority product is already watched.");
+      load();
+    } catch (e) { setErr(String(e)); setAdding(""); }
+  };
   const setTarget = async (r: SealedWatchRow) => {
     const v = window.prompt("Buy below ($)", r.target_cents ? String(r.target_cents / 100) : "");
     if (v === null) return;
@@ -71,13 +88,16 @@ export default function SealedWatchlistPage() {
         <p className="text-sm text-gray-400 max-w-4xl">
           Sealed products you&apos;re keeping an eye on, their market price and the cheapest reliable place to buy each right now:
           TCGplayer (singles and cases per unit), the hobby shops on the <Link to="/shops" className="text-indigo-300 hover:underline">Shops</Link> page
-          and any offer you add, ranked by landed cost (price + each shop&apos;s shipping and tax settings).
+          Fanatics Collect (Buy Now; auctions for reference) and any offer you add, ranked by landed cost (price + each shop&apos;s shipping and tax settings).
+          Fanatics offers also show their FanCash cost: what that FanCash would have cashed out for after the cash seller fee.
           Add products from <Link to="/sealed/timing" className="text-indigo-300 hover:underline">Sealed timing</Link> (Watch on the priority list or by-set table).
         </p>
       </header>
       {err && <div className="text-sm text-rose-400">{err}</div>}
       <div className="flex flex-wrap items-center gap-3 text-xs text-gray-400">
         <button onClick={() => refresh()} className="rounded bg-indigo-600 px-3 py-1 text-white hover:bg-indigo-500">Refresh prices now</button>
+        <button onClick={addPriority} disabled={adding !== ""} className="rounded border border-gray-700 px-3 py-1 text-gray-200 hover:bg-gray-800 disabled:opacity-50"
+          title="Watch every product on Sealed timing's priority list (36-month hold) that isn't watched yet">{adding || "Watch the priority list"}</button>
         <span>last refresh {ago(meta.last)} · automatic twice a week</span>
         {msg && <span className="text-emerald-300">{msg}</span>}
       </div>
@@ -93,6 +113,7 @@ export default function SealedWatchlistPage() {
                 <th className="px-2 py-2 font-medium text-right">12m</th>
                 <th className="px-2 py-2 font-medium text-right">Buy below</th>
                 <th className="px-2 py-2 font-medium">Cheapest reliable offer</th>
+                <th className="px-2 py-2 font-medium" title="The cheapest Fanatics Collect Buy Now, and what it costs paid in FanCash (valued at what that FanCash would cash out for, less the cash seller fee)">Fanatics / FanCash</th>
                 <th className="px-2 py-2 font-medium"></th>
               </tr>
             </thead>
@@ -122,6 +143,18 @@ export default function SealedWatchlistPage() {
                         </span>
                       ) : <span className="text-gray-600">no offers yet</span>}
                     </td>
+                    <td className="px-2 py-2">
+                      {r.best_fancash ? (
+                        <span>
+                          <a href={r.best_fancash.url} target="_blank" rel="noreferrer" className="text-gray-200 hover:underline">{usd(r.best_fancash.landed_cents)} Buy Now ↗</a>
+                          <div className={`text-[10px] ${r.fancash_wins ? "text-emerald-300" : "text-gray-500"}`}>
+                            {usd(r.best_fancash.fancash_cents)} in FanCash{r.fancash_saves_cents != null && r.best_offer && r.best_offer.source !== r.best_fancash.source
+                              ? r.fancash_wins ? ` · ${usd(r.fancash_saves_cents)} under cash` : ` · ${usd(-r.fancash_saves_cents)} over cash` : ""}
+                          </div>
+                          {!r.best_fancash.shipping_known && <div className="text-[10px] text-amber-300">set Fanatics shipping on Shops</div>}
+                        </span>
+                      ) : <span className="text-gray-600">none listed</span>}
+                    </td>
                     <td className="px-2 py-2 whitespace-nowrap text-right">
                       <button onClick={() => setOpen((o) => ({ ...o, [p.id]: !o[p.id] }))} className="text-gray-400 hover:text-gray-200">{open[p.id] ? "hide" : `all ${r.offers.length}`}</button>
                       <button onClick={() => refresh([p.id])} className="ml-2 text-gray-500 hover:text-gray-300">refresh</button>
@@ -130,7 +163,7 @@ export default function SealedWatchlistPage() {
                   </tr>,
                   open[p.id] && (
                     <tr key={`${p.id}-o`} className="bg-gray-950/50">
-                      <td colSpan={6} className="px-4 py-2 space-y-1.5">
+                      <td colSpan={7} className="px-4 py-2 space-y-1.5">
                         <table className="w-full text-xs">
                           <tbody>
                             {r.offers.map((o) => (
@@ -139,7 +172,9 @@ export default function SealedWatchlistPage() {
                                 <td className="py-0.5 pr-3 tabular-nums text-gray-100">{usd(o.landed_cents)}
                                   {o.landed_cents !== o.price_cents && <span className="text-gray-500"> ({usd(o.price_cents)} + {usd(o.add_ship_cents)} ship + {usd(o.tax_cents)} tax)</span>}
                                   {!o.shipping_known && <span className="text-amber-300"> no shipping set</span>}
-                                  {o.shipping_cents ? <span className="text-gray-500"> incl. {usd(o.shipping_cents)} ship</span> : ""}</td>
+                                  {o.shipping_cents ? <span className="text-gray-500"> incl. {usd(o.shipping_cents)} ship</span> : ""}
+                                  {o.premium_cents ? <span className="text-gray-500"> (bid {usd(o.price_cents)} + {usd(o.premium_cents)} premium)</span> : ""}
+                                  {o.fancash_cents != null && <span className="text-emerald-300/80"> · {usd(o.fancash_cents)} in FanCash</span>}</td>
                                 <td className="py-0.5 pr-3 text-gray-500 max-w-md truncate" title={o.title}>{o.title ?? o.seller_note ?? ""}{o.title && o.seller_note ? ` · ${o.seller_note}` : ""}</td>
                                 <td className="py-0.5 pr-3 text-gray-600 whitespace-nowrap">{ago(o.checked_at)}</td>
                                 <td className="py-0.5 whitespace-nowrap">
