@@ -3884,10 +3884,13 @@ export interface SealedOffer {
   id: number; source: string; retailer: string; title?: string; url: string; price_cents: number; shipping_cents?: number;
   seller?: string; seller_note?: string; reference_only: boolean; in_stock: boolean; note?: string; checked_at: string; stale: boolean;
   landed_cents: number; add_ship_cents: number; tax_cents: number; shipping_known: boolean;
+  premium_cents?: number; // Fanatics auction: buyer's premium on the current bid (in landed)
+  fancash_cents?: number; // Fanatics: paid in FanCash, valued at what it would cash out for
 }
 export interface SealedWatchRow {
   product: SealedProduct; target_cents: number | null; note?: string; added_at: string;
   offers: SealedOffer[]; best_offer: SealedOffer | null; below_target: boolean;
+  best_fancash?: SealedOffer; fancash_wins?: boolean; fancash_saves_cents?: number;
 }
 export function fetchSealedWatch(): Promise<{ products: SealedWatchRow[]; count: number; last_refresh: string | null; sources: string }> {
   return get(`/v1/sealed/watch`);
