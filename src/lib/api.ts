@@ -3821,6 +3821,13 @@ export interface SealedKindTiming {
   reprint_play: Record<string, SealedPlay | null>;
   reprint_basis: "confirmed" | "detected";
   reprint_events: number;
+  years?: SealedYearRow[];
+}
+// Year Y after release (months 12(Y-1) to 12Y): that year's return, the same
+// net of the product type's market, and release to then annualized.
+export interface SealedYearRow {
+  year: number; ret: SealedRet; excess: SealedRet; from_release: SealedRet;
+  released_from?: string; released_to?: string;
 }
 export interface SealedProduct {
   id: number; set_code: string; set_name: string; kind: SealedKind; variant?: string; name: string; pricecharting_url: string;
