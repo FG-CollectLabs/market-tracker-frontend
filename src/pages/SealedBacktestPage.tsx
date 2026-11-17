@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { Link } from "react-router-dom";
 import {
-  fetchSealedBacktestBest, runSealedBacktest, sweepSealedBacktest, sweepSealedExits, SEALED_KIND_LABEL,
+  fetchSealedBacktestBest, runSealedBacktest, type SetClass, sweepSealedBacktest, sweepSealedExits, SEALED_KIND_LABEL,
   type BacktestExitRow, type BacktestKindBest, type BacktestLot, type BacktestResult, type BacktestSweepRow, type SealedKind, type SealedRule,
 } from "../lib/api";
 import { Spinner } from "../components/Spinner";
@@ -85,7 +85,7 @@ function describe(s: SealedRule) {
     const end = s.until_oop ? (s.end_month != null ? ` to month ${s.end_month} or out of print` : " until out of print") : s.end_month != null && s.end_month !== s.start_month ? ` to month ${s.end_month}` : " only";
     buy = `${qty} a ${s.cadence ?? "month"}, month ${s.start_month ?? 0}${end}`;
   }
-  return `${buy}${off} · ${exitText(s)}`;
+  return `${buy}${off}${s.set_class ? ` (${s.set_class} sets)` : ""} · ${exitText(s)}`;
 }
 
 // what goes to the API: one leg = that rule; several = a portfolio
@@ -141,7 +141,8 @@ function BestPerKind({ gross, onAdd }: { gross: boolean; onAdd: (st: Strategy) =
   const [kind, setKind] = useState<SealedKind>("etb");
   const [err, setErr] = useState("");
   const [showGaps, setShowGaps] = useState(false);
-  useEffect(() => { setData(null); fetchSealedBacktestBest(gross).then(setData).catch((e) => setErr(String(e))); }, [gross]);
+  const [cls, setCls] = useState<SetClass>("all");
+  useEffect(() => { setData(null); fetchSealedBacktestBest(gross, cls).then(setData).catch((e) => setErr(String(e))); }, [gross, cls]);
   const k = data?.kinds.find((x) => x.kind === kind);
   return (
     <Card title="Best rule per product type"
@@ -149,6 +150,12 @@ function BestPerKind({ gross, onAdd }: { gross: boolean; onAdd: (st: Strategy) =
         <button key={x} onClick={() => setKind(x)} className={`rounded px-2.5 py-1 ${kind === x ? "bg-gray-700 text-white" : "text-gray-400 hover:text-gray-200"}`}>{SEALED_KIND_LABEL[x]}</button>
       ))}</div>}>
       {err && <div className="text-sm text-rose-400 break-all">{err}</div>}
+      <div className="flex flex-wrap items-center gap-1 text-xs">
+        <span className="text-gray-500 mr-1" title="Special sets print no booster box (Hidden Fates, Crown Zenith, 151, Prismatic Evolutions, ...): their ETBs, PC ETBs and bundles are the main way to open them">Sets:</span>
+        {([["all", "All"], ["standard", "Standard (booster box)"], ["special", "Special (no booster box)"]] as [SetClass, string][]).map(([c, l]) => (
+          <button key={c} onClick={() => setCls(c)} className={`rounded px-2.5 py-1 ${cls === c ? "bg-fuchsia-700 text-white" : "bg-gray-900 border border-gray-800 text-gray-400 hover:text-gray-200"}`}>{l}</button>
+        ))}
+      </div>
       {!data ? <Spinner /> : !k ? <div className="text-sm text-gray-500">No {SEALED_KIND_LABEL[kind]} products charted.</div> : (
         <div className="space-y-3">
           <p className="text-xs text-gray-400">
@@ -186,7 +193,7 @@ function BestPerKind({ gross, onAdd }: { gross: boolean; onAdd: (st: Strategy) =
                   )}
                   <div className="flex items-center justify-between text-[11px]">
                     <span className="text-gray-500">{f.variants} variants · worst month {pct(b.worst_drawdown)}</span>
-                    <button onClick={() => onAdd({ name: `${SEALED_KIND_LABEL[kind]}: best ${f.label.toLowerCase()}`, legs: [{ ...b.strategy, name: "" }] })}
+                    <button onClick={() => onAdd({ name: `${SEALED_KIND_LABEL[kind]}${cls !== "all" ? ` (${cls} sets)` : ""}: best ${f.label.toLowerCase()}`, legs: [{ ...b.strategy, name: "" }] })}
                       className="text-indigo-300 hover:underline">add to my strategies</button>
                   </div>
                 </div>
@@ -334,6 +341,10 @@ function LegEditor({ r, onChange, onRemove, canRemove }: { r: SealedRule; onChan
           <label className={lbl}>sell <input value={r.wind_units ?? ""} placeholder="–" onChange={(e) => set({ wind_units: num(e.target.value) })} className={`${inp} w-12`} /> a month</label>
           <label className={lbl}>or all over <input value={r.wind_months ?? 24} onChange={(e) => set({ wind_months: num(e.target.value), wind_units: undefined })} className={`${inp} w-12`} /> months</label>
         </>}
+        <label className={lbl} title="Special sets print no booster box">
+          <select value={r.set_class ?? ""} onChange={(e) => set({ set_class: (e.target.value || undefined) as SealedRule["set_class"] })} className={inp}>
+            <option value="">all sets</option><option value="standard">standard sets only</option><option value="special">special sets only</option>
+          </select></label>
         <label className={lbl}>sets released <input value={r.released_from ?? ""} placeholder="YYYY-MM" onChange={(e) => set({ released_from: e.target.value || undefined })} className={`${inp} w-20`} />
           to <input value={r.released_to ?? ""} placeholder="YYYY-MM" onChange={(e) => set({ released_to: e.target.value || undefined })} className={`${inp} w-20`} /></label>
       </div>
