@@ -4092,6 +4092,7 @@ export interface PcgRatio {
 export interface PcgGate { grade: string; front_worst: number; front_best?: number; back_worst: number }
 export interface PcgModel {
   game: string; sales: number; cards: number; first_sale?: string; ratios: PcgRatio[]; centering_gates: PcgGate[]; notes: string[]; method: string;
+  fits?: { grade: string; label: string; n: number; w_raw: number; log_k: number; median_error: number; ratio_error: number; borrowed_w?: boolean }[];
 }
 export function fetchPcgModel(game = "pokemon"): Promise<PcgModel> {
   return get(`/v1/analysis/pcg/model?game=${game}`);
