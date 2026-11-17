@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import {
   fetchSealedEarly, fetchSealedPriority, fetchSealedSets, fetchSealedTiming, fetchSealedWatch, watchSealed,
-  type SealedEarly, type SealedKind, type SealedKindTiming, type SealedPriorityItem, type SealedRet, type SealedSetChart, type SealedYearRow,
+  type SealedEarly, type SealedKind, type SealedKindTiming, type SealedPriorityItem, type SealedRet, type SealedSetChart, type SealedYearRow, type SetClass,
 } from "../lib/api";
 import { Spinner } from "../components/Spinner";
 
@@ -325,10 +325,12 @@ export function YearStrip({ points }: { points: { m: number; cents: number }[] }
   );
 }
 
-function BySet({ kind, era }: { kind: SealedKind; era: string }) {
+const SpecialTag = () => <span className="ml-1 rounded border border-fuchsia-900 px-1 text-[10px] text-fuchsia-300" title="Special set: no booster box printed">special</span>;
+
+function BySet({ kind, era, cls }: { kind: SealedKind; era: string; cls: SetClass }) {
   const [sets, setSets] = useState<SealedSetChart[] | null>(null);
   const [view, setView] = useState<"prices" | "years">("prices");
-  useEffect(() => { setSets(null); fetchSealedSets(kind, era).then((r) => setSets(r.sets)).catch(() => setSets([])); }, [kind, era]);
+  useEffect(() => { setSets(null); fetchSealedSets(kind, era, cls).then((r) => setSets(r.sets)).catch(() => setSets([])); }, [kind, era, cls]);
   if (!sets) return <Spinner />;
   const toggle = (
     <span className="flex gap-1 text-xs">
@@ -358,7 +360,7 @@ function BySet({ kind, era }: { kind: SealedKind; era: string }) {
               return (
                 <tr key={p.id} className="border-t border-gray-800">
                   <td className="px-2 py-1 whitespace-nowrap">
-                    <span className="text-gray-300">{s.set_name}</span> <span className="text-gray-500">{p.variant ?? ""}</span>
+                    <span className="text-gray-300">{s.set_name}</span>{s.set_class === "special" && <SpecialTag />}{s.set_class === "special" && <SpecialTag />} <span className="text-gray-500">{p.variant ?? ""}</span>
                     <div className="text-[10px] text-gray-600">{s.release_date ?? "no date"} · chart from {first?.month ?? "–"}</div>
                   </td>
                   <td className="px-2 py-1"><Spark points={p.points} /></td>
@@ -478,6 +480,8 @@ export default function SealedTimingPage() {
   const [hold, setHold] = useState("24");
   const [yearMetric, setYearMetric] = useState<YearMetric>("ret");
   const [era, setEra] = useState("all");
+  const [cls, setCls] = useState<SetClass>("all");
+  const [classes, setClasses] = useState<{ key: SetClass; label: string }[]>([]);
   const [eras, setEras] = useState<{ key: string; label: string }[]>([]);
   const [gross, setGross] = useState(false);
   const [costs, setCosts] = useState("");
@@ -485,8 +489,8 @@ export default function SealedTimingPage() {
 
   useEffect(() => {
     setKinds(null);
-    fetchSealedTiming(era, gross).then((r) => { setKinds(r.kinds); setMethod(r.method); setEras(r.eras ?? []); setCosts(r.costs ?? ""); }).catch((e) => setErr(String(e)));
-  }, [era, gross]);
+    fetchSealedTiming(era, gross, cls).then((r) => { setKinds(r.kinds); setMethod(r.method); setEras(r.eras ?? []); setClasses(r.classes ?? []); setCosts(r.costs ?? ""); }).catch((e) => setErr(String(e)));
+  }, [era, gross, cls]);
   const cur = useMemo(() => kinds?.find((k) => k.kind === kind), [kinds, kind]);
 
   return (
@@ -517,6 +521,15 @@ export default function SealedTimingPage() {
           {eras.map((e) => (
             <button key={e.key} onClick={() => setEra(e.key)}
               className={`rounded px-2.5 py-1 ${era === e.key ? "bg-indigo-600 text-white" : "bg-gray-900 border border-gray-800 text-gray-400 hover:text-gray-200"}`}>{e.label}</button>
+          ))}
+        </div>
+      )}
+      {classes.length > 0 && (
+        <div className="flex flex-wrap items-center gap-1 text-xs">
+          <span className="text-gray-500 mr-1" title="Special sets print no booster box: their ETBs, PC ETBs and bundles are the main way to open them">Set type:</span>
+          {classes.map((c) => (
+            <button key={c.key} onClick={() => setCls(c.key)}
+              className={`rounded px-2.5 py-1 ${cls === c.key ? "bg-fuchsia-700 text-white" : "bg-gray-900 border border-gray-800 text-gray-400 hover:text-gray-200"}`}>{c.label}</button>
           ))}
         </div>
       )}
@@ -611,7 +624,7 @@ export default function SealedTimingPage() {
 
               <section className="rounded-lg border border-gray-800 bg-gray-900 p-4 space-y-2">
                 <span className="text-sm text-gray-200 font-medium">{cur.label}: by set (the data points)</span>
-                <BySet kind={kind} era={era} />
+                <BySet kind={kind} era={era} cls={cls} />
               </section>
             </>
           )}

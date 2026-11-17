@@ -3850,7 +3850,7 @@ export interface SealedReprints {
   method: string;
 }
 export interface SealedSetChart {
-  set_code: string; set_name: string; release_date: string | null;
+  set_code: string; set_name: string; release_date: string | null; set_class?: "standard" | "special";
   products: { id: number; kind: SealedKind; name: string; variant?: string; pricecharting_url: string; points: { m: number; month: string; cents: number }[] }[];
 }
 export interface SealedPriorityItem {
@@ -3859,8 +3859,10 @@ export interface SealedPriorityItem {
   expected: SealedRet; best_month?: number; reason: string;
 }
 
-export function fetchSealedTiming(era = "all", gross = false): Promise<{ kinds: SealedKindTiming[]; method: string; era: string; eras: { key: string; label: string }[]; costs: string; net: boolean }> {
-  return get(`/v1/sealed/timing?era=${era}${gross ? "&gross=1" : ""}`);
+// standard = sets with a booster box; special = no booster box (Hidden Fates, Crown Zenith, 151, Prismatic, ...)
+export type SetClass = "all" | "standard" | "special";
+export function fetchSealedTiming(era = "all", gross = false, cls: SetClass = "all"): Promise<{ kinds: SealedKindTiming[]; method: string; era: string; eras: { key: string; label: string }[]; classes?: { key: SetClass; label: string }[]; costs: string; net: boolean }> {
+  return get(`/v1/sealed/timing?era=${era}${gross ? "&gross=1" : ""}${cls !== "all" ? `&class=${cls}` : ""}`);
 }
 export function fetchSealedProducts(kind = ""): Promise<{ products: SealedProduct[]; count: number }> {
   return get(`/v1/sealed/products${kind ? `?kind=${kind}` : ""}`);
@@ -3871,8 +3873,8 @@ export function fetchSealedReprints(kind = "", set = "", era = "all"): Promise<S
   if (set) q.set("set", set);
   return get(`/v1/sealed/reprints?${q}`);
 }
-export function fetchSealedSets(kind: string, era = "all"): Promise<{ sets: SealedSetChart[]; count: number }> {
-  return get(`/v1/sealed/sets?kind=${kind}&era=${era}`);
+export function fetchSealedSets(kind: string, era = "all", cls: SetClass = "all"): Promise<{ sets: SealedSetChart[]; count: number }> {
+  return get(`/v1/sealed/sets?kind=${kind}&era=${era}${cls !== "all" ? `&class=${cls}` : ""}`);
 }
 export function fetchSealedPriority(hold = 36, gross = false): Promise<{ products: SealedPriorityItem[]; hold_months: number; method: string; costs: string }> {
   return get(`/v1/sealed/priority?hold=${hold}${gross ? "&gross=1" : ""}`);
@@ -3965,6 +3967,7 @@ export interface SealedRule {
   kinds: SealedKind[];
   released_from?: string; // YYYY-MM
   released_to?: string;
+  set_class?: "standard" | "special"; // standard = sets with a booster box; special = none printed
   buy_from?: string;
   buy_to?: string;
   cadence?: "week" | "month";
@@ -4040,6 +4043,9 @@ export interface BacktestKindBest {
   kind: SealedKind; sets: number; full_history: number; families: BacktestFamilyBest[];
   missing_early: { set: string; set_name: string; release: string; first_month: string; missing_months: number }[];
 }
-export function fetchSealedBacktestBest(gross = false): Promise<{ kinds: BacktestKindBest[]; latest: string; costs: string; method: string }> {
-  return get(`/v1/sealed/backtest/best${gross ? "?gross=1" : ""}`);
+export function fetchSealedBacktestBest(gross = false, cls: SetClass = "all"): Promise<{ kinds: BacktestKindBest[]; latest: string; costs: string; method: string }> {
+  const q = new URLSearchParams();
+  if (gross) q.set("gross", "1");
+  if (cls !== "all") q.set("class", cls);
+  return get(`/v1/sealed/backtest/best${q.size ? `?${q}` : ""}`);
 }
