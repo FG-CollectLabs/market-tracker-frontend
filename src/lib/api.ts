@@ -1670,6 +1670,7 @@ export interface TargetHit {
   review?: HitReview;
   grade_odds?: GradeOdds; // raw eBay hits sent to the grading predictor
   adj_ev?: AdjEV; // Raw to grade: grading EV with tailored odds
+  ai?: AIStatus; // graded hits: the pre-grader's full AI check (raw ones: grade_odds.ai)
 }
 
 // ---- Grade odds (grading predictor) ------------------------------------------
@@ -1700,7 +1701,8 @@ export interface GradeOdds {
   bought_at?: string; // you marked this copy bought
   model_version?: string;
   explain?: Record<string, OddsExplain>; // per grader (PSA, CGC, ...): why the odds are what they are
-  rank?: CopyRank[]; // where the centering sits among graded PSA 10s (and 9s)
+  rank?: CopyRank[]; // where the centering sits among each grader's top grades (PSA 10 / 9, CGC 10 Pristine / 10 ...)
+  rank_population?: CopyRank; // among every graded copy (any grade) of its rarity in its era
   ai?: AIStatus; // the pre-grader's full AI check
 }
 
@@ -1716,6 +1718,15 @@ export interface AIStatus {
 export function requestAICheck(body: { copy_id?: number; feed_id?: string; source?: string; listing_id?: string }): Promise<{ ai: AIStatus }> {
   return adminFetch(`/v1/admin/ai-check`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
 }
+// Full AI check on what a board shows: up to 50 a click; checked / queued
+// copies are skipped unless force.
+export function bulkAICheck(items: { source: string; listing_id: string }[], force = false): Promise<{ sent: number; failed: number; skipped: number; over_limit: number; limit: number; results: { source: string; listing_id: string; state?: AIState; error?: string }[] }> {
+  return adminFetch(`/v1/admin/ai-check/bulk`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ items, force }) });
+}
+// Re-read odds + AI status from the pre-grader for these grade odds ids (up to 200).
+export function bulkRefreshOdds(ids: number[]): Promise<{ refreshed: number; failed: number; not_sent: number; ai_statuses: number; over_limit: number; limit: number }> {
+  return adminFetch(`/v1/admin/grade-odds/refresh-bulk`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ ids }) });
+}
 export function fetchAIStatus(copyIds: number[], feedIds: string[], refresh = false): Promise<{ statuses: Record<string, AIStatus> }> {
   const q = new URLSearchParams();
   if (copyIds.length) q.set("copy_ids", copyIds.join(","));
@@ -1729,12 +1740,14 @@ export function fetchAIStatus(copyIds: number[], feedIds: string[], refresh = fa
 // Percentages are "better centered than this share of them"; overall weighs
 // each axis by how much it moves PSA's odds of a 10.
 export interface CopyRank {
-  grade: string; // "PSA 10" | "PSA 9"
+  grade: string; // "PSA 10" | "PSA 9" | "CGC 10 Pristine" | "BGS 9.5" ... | "All graded"
+  grader?: string; // PSA | CGC | PCG | BGS | TAG ("" for the population rank)
+  class?: string; // "10" | "10 pristine" | "9.5" ... | "all"
   overall: number;
   front: number;
   back: number;
   n: number;
-  of: string; // "this card" | "set sv3pt5" | "all cards"
+  of: string; // "this card" | "set sv3pt5" | "Special Illustration Rare in Scarlet & Violet" | "all cards"
 }
 
 // The pre-grader's explanation of a copy's odds.

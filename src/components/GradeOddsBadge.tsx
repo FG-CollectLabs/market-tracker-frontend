@@ -2,25 +2,37 @@ import AICheck from "./AICheck";
 import { useEffect, useState } from "react";
 import { GRADE_ODDS_REFRESHED, refreshGradeOdds, type CopyRank, type GradeOdds } from "../lib/api";
 
-// "Top 8% of PSA 10s": where this copy's centering sits among measured PSA 10s
-// of the card (else its set, else all cards), each axis weighted by how much
-// it moves PSA's odds.
-export function RankChip({ rank }: { rank?: CopyRank[] }) {
+// "Top 8% of PSA 10s": where this copy's centering sits among measured graded
+// copies of a grade (the card, else its set, else its rarity in its era,
+// else all cards), each axis weighted by how much it moves that grader's
+// odds. Chips: PSA 10, the best pristine grade measured (CGC 10 Pristine,
+// else CGC 10, BGS Black Label, TAG 10), and every graded copy of the
+// card's rarity in its era.
+const topOf = (overall: number) => Math.max(1, 100 - overall);
+const tone = (top: number) => top <= 10 ? "border-green-800 text-green-200" : top <= 25 ? "border-sky-800 text-sky-200"
+  : top <= 50 ? "border-gray-700 text-gray-300" : "border-gray-800 text-gray-500";
+const ofLabel = (r: CopyRank) => (r.of === "this card" ? "" : r.of === "all cards" ? " (all cards)" : ` (${r.of})`);
+const PRISTINE = ["CGC 10 Pristine", "BGS 10 Black Label", "TAG 10", "CGC 10"];
+
+export function RankChip({ rank, pop }: { rank?: CopyRank[]; pop?: CopyRank }) {
   const r = rank?.find((x) => x.grade === "PSA 10");
-  if (!r) return null;
-  const top = Math.max(1, 100 - r.overall);
-  const of = r.of === "this card" ? "" : r.of === "all cards" ? " (all cards)" : ` (${r.of})`;
-  const tone = top <= 10 ? "border-green-800 text-green-200" : top <= 25 ? "border-sky-800 text-sky-200"
-    : top <= 50 ? "border-gray-700 text-gray-300" : "border-gray-800 text-gray-500";
-  const r9 = rank?.find((x) => x.grade === "PSA 9");
+  const pr = PRISTINE.map((g) => rank?.find((x) => x.grade === g)).find(Boolean);
+  if (!r && !pr && !pop) return null;
   const tip = [
-    `Better centered than ${r.overall}% of ${r.n} measured PSA 10s of ${r.of}.`,
-    `Each axis is weighted by how much it moves PSA's odds of a 10.`,
-    `Front alone: top ${Math.max(1, 100 - r.front)}% · back alone: top ${Math.max(1, 100 - r.back)}%.`,
-    r9 ? `Among ${r9.n} PSA 9s of ${r9.of}: top ${Math.max(1, 100 - r9.overall)}%.` : "",
+    ...(rank ?? []).map((x) => `${x.grade}: top ${topOf(x.overall)}% of ${x.n} measured (${x.of}) · front top ${topOf(x.front)}% · back top ${topOf(x.back)}%`),
+    pop ? `All graded copies (any grade) of ${pop.of}: top ${topOf(pop.overall)}% of ${pop.n}` : "",
     "Centering and corner shape only; surface and edges aren't measured.",
   ].filter(Boolean).join("\n");
-  return <span className={`px-1.5 py-0.5 rounded border tabular-nums ${tone}`} title={tip}>Top {top}% of PSA 10s{of}</span>;
+  const chip = (x: CopyRank, label: string) => (
+    <span key={label} className={`px-1.5 py-0.5 rounded border tabular-nums ${tone(topOf(x.overall))}`} title={tip}>Top {topOf(x.overall)}% of {label}</span>
+  );
+  return (
+    <>
+      {r && chip(r, `PSA 10s${ofLabel(r)}`)}
+      {pr && chip(pr, `${pr.grade}s`)}
+      {pop && chip(pop, pop.of === "all cards" ? "all graded" : `all graded ${pop.of}`)}
+    </>
+  );
 }
 
 // ↻: re-read this copy's odds from the grading predictor now (after fixing
@@ -86,7 +98,7 @@ export default function GradeOddsBadge({ o: given, compact }: { o: GradeOdds; co
         {compact ? `PSA 10 ${(p * 100).toFixed(0)}%` : o.summary ?? `PSA 10 ${(p * 100).toFixed(0)}%`}
       </span>
       {compact && o.psa10_prior != null && <span className="text-gray-500 tabular-nums">prior {(o.psa10_prior * 100).toFixed(0)}%</span>}
-      <RankChip rank={o.rank} />
+      <RankChip rank={o.rank} pop={o.rank_population} />
       {o.ev_cents != null && (
         <span className={`tabular-nums ${o.ev_cents >= 0 ? "text-green-300" : "text-red-300"}`} title={o.ev_note}>
           EV {usd(o.ev_cents)}

@@ -1,6 +1,6 @@
 import { Fragment, useCallback, useEffect, useMemo, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
-import { BUY_TARGETS, clearHitReview, fetchWatchlist, putTargets, reviewHit, unwatchCard, type BuyTarget, type HitReason, type PlaySummary, type WatchItem, type WatchIntent, type WatchTarget } from "../lib/api";
+import { BUY_TARGETS, clearHitReview, fetchWatchlist, putTargets, reviewHit, unwatchCard, type BuyTarget, type HitReason, type PlaySummary, type TargetHit, type WatchItem, type WatchIntent, type WatchTarget } from "../lib/api";
 import { useSession } from "../lib/auth";
 import { STANCE } from "../components/BuyingGuide";
 import { CardPrepButtons, PresetBar, TARGET_LABEL, TargetEditor, usePresets } from "../components/WatchTargets";
@@ -18,9 +18,9 @@ import ConsignerBoard from "../components/ConsignerBoard";
 import RegradeBoard from "../components/RegradeBoard";
 import CCTens from "../components/CCTens";
 import type { CCLang } from "../lib/api";
+import FilterActions from "../components/FilterActions";
 import BidsResults from "../components/BidsResults";
 import RawFinds from "../components/RawFinds";
-import { CheckAll } from "../components/BoardTools";
 import BoughtToGrade from "../components/BoughtToGrade";
 
 const usd = (c?: number | null) => (c == null ? "—" : `$${(c / 100).toFixed(2)}`);
@@ -286,14 +286,12 @@ function WatchCards() {
     return { total, top: out.sort((a, b) => b.ch.under - a.ch.under).slice(0, BEST_HITS) };
   }, [filtered, hitsByCard]);
 
-  // Raw eBay hits shown under the filters that were never sent to the
-  // grading predictor (for "Check centering for all").
-  const uncheckedRaw = useMemo(() => {
-    const ids: string[] = [];
-    for (const v of hitsByCard.values())
-      for (const x of v.live)
-        if (x.h.source === "ebay" && x.h.grade_key === "raw" && !x.h.grade_odds && (x.h.image_count == null || x.h.image_count >= 2)) ids.push(x.h.listing_id);
-    return [...new Set(ids)];
+  // Every listing shown under the filters (one per listing), for the bulk
+  // pre-grade / AI check / refresh buttons.
+  const shownHits = useMemo(() => {
+    const m = new Map<string, TargetHit>();
+    for (const v of hitsByCard.values()) for (const x of v.live) m.set(`${x.h.source}|${x.h.listing_id}`, x.h);
+    return [...m.values()];
   }, [hitsByCard]);
 
   const passedCount = useMemo(() => filtered.reduce((n, it) => n + shownTargets(it).reduce((s, t) => s + (t.passed_hits ?? 0), 0), 0), [filtered, shownTargets]);
@@ -451,7 +449,6 @@ function WatchCards() {
         <label className="flex items-center gap-1 text-sm text-gray-300">
           <input type="checkbox" className="accent-indigo-500" checked={onlyHits} onChange={(e) => setOnlyHits(e.target.checked)} /> Only cards with hits
         </label>
-        <CheckAll listingIds={uncheckedRaw} />
         <span className="flex items-center gap-1 text-sm text-gray-300" title="Buy-raw-to-grade score tier: A 70+, B 50-69, C under 50">
           Grading tier
           <select value={tier} onChange={(e) => setTier(e.target.value as TierFilter)} className={sel}>
@@ -485,6 +482,9 @@ function WatchCards() {
           {filtered.length > 0 && filtered.every((i) => picked.has(i.display_key)) ? "Clear selection" : `Select all ${filtered.length} shown`}
         </label>
       </div>
+
+      <FilterActions hits={shownHits} onReload={load}
+        label={target ? `the ${BUY_TARGETS.find((t) => t.key === target)?.label ?? "No targets"} tab` : "this view"} />
 
       <PresetBar keys={[...picked]} onClear={() => setPicked(new Set())} onApplied={load}
         extra={
