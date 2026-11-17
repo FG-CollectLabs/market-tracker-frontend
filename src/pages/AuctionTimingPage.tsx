@@ -50,8 +50,12 @@ function Countdown({ w }: { w: InjectWindow }) {
 
 // a horizontal bar per bucket: median close as % of the eBay reference,
 // middle half as a lighter band, 100% marked
-function Bars({ b, overall }: { b: InjBreakdown; overall: number | null }) {
-  const lo = 0.5, hi = 1.4;
+function Bars({ b, overall, within }: { b: InjBreakdown; overall: number | null; within: boolean }) {
+  const lo = within ? 0.6 : 0.5, hi = within ? 1.3 : 1.4;
+  const pick = (r: InjStat) => within
+    ? { median: r.within_median, p25: r.within_p25, p75: r.within_p75, weeks: r.within_weeks, thin: r.within_thin }
+    : { median: r.median, p25: r.p25, p75: r.p75, weeks: r.weeks, thin: r.thin };
+  const ref = within ? 1 : overall;
   const x = (v: number) => `${Math.max(0, Math.min(100, ((v - lo) / (hi - lo)) * 100))}%`;
   return (
     <div className="rounded-lg border border-gray-800 bg-gray-900 p-4 space-y-2">
@@ -61,19 +65,19 @@ function Bars({ b, overall }: { b: InjBreakdown; overall: number | null }) {
       </div>
       {b.rows.length === 0 ? <div className="text-xs text-gray-600">No data yet.</div> : (
         <div className="space-y-1.5">
-          {b.rows.map((r: InjStat) => (
-            <div key={r.key} className="grid grid-cols-[minmax(7rem,11rem)_1fr_5.5rem] items-center gap-2 text-xs">
-              <span className={`truncate ${r.thin ? "text-gray-600" : "text-gray-300"}`} title={r.label}>{r.label}</span>
+          {b.rows.map((row: InjStat) => ({ row, r: pick(row) })).map(({ row, r }) => (
+            <div key={row.key} className="grid grid-cols-[minmax(7rem,11rem)_1fr_5.5rem] items-center gap-2 text-xs">
+              <span className={`truncate ${r.thin ? "text-gray-600" : "text-gray-300"}`} title={row.label}>{row.label}</span>
               <div className="relative h-4 rounded bg-gray-950">
-                <div className="absolute inset-y-0 w-px bg-gray-500" style={{ left: x(1) }} title="= eBay" />
-                {overall != null && <div className="absolute inset-y-0 w-px bg-indigo-500/70" style={{ left: x(overall) }} title="overall median" />}
+                <div className="absolute inset-y-0 w-px bg-gray-500" style={{ left: x(1) }} title={within ? "= the card's usual" : "= eBay"} />
+                {!within && overall != null && <div className="absolute inset-y-0 w-px bg-indigo-500/70" style={{ left: x(overall) }} title="overall median" />}
                 {r.p25 != null && r.p75 != null && (
                   <div className="absolute inset-y-1 rounded bg-emerald-500/20" style={{ left: x(r.p25), width: `calc(${x(r.p75)} - ${x(r.p25)})` }} />
                 )}
                 {r.median != null && <div className={`absolute top-0.5 bottom-0.5 w-1.5 -ml-[3px] rounded ${r.thin ? "bg-gray-500" : "bg-emerald-400"}`} style={{ left: x(r.median) }} />}
               </div>
-              <span className="text-right tabular-nums" title={`${r.weeks} card-weeks, ${r.copies} copies · middle half ${ratio(r.p25)}–${ratio(r.p75)}`}>
-                <span className={r.thin ? "text-gray-500" : tone(r.median, overall ?? 1)}>{ratio(r.median)}</span>
+              <span className="text-right tabular-nums" title={`${r.weeks} card-weeks, ${row.copies} copies · middle half ${ratio(r.p25)}–${ratio(r.p75)}`}>
+                <span className={r.thin ? "text-gray-500" : tone(r.median, ref ?? 1)}>{within && r.median != null ? signed(r.median - 1) : ratio(r.median)}</span>
                 <span className="text-gray-600 ml-1">{r.weeks}</span>
               </span>
             </div>
@@ -162,6 +166,7 @@ export default function AuctionTimingPage() {
   const [a, setA] = useState<InjectAnalytics | null>(null);
   const [weeks, setWeeks] = useState(104);
   const [err, setErr] = useState("");
+  const [within, setWithin] = useState(true);
   useEffect(() => { setA(null); fetchInjectAnalytics(weeks).then(setA).catch((e) => setErr(String(e))); }, [weeks]);
   const overall = a?.overall.median ?? null;
   return (
@@ -215,11 +220,21 @@ export default function AuctionTimingPage() {
 
           <Candidates />
 
+          <div className="flex flex-wrap items-center gap-2 text-xs">
+            <span className="text-gray-500">Show closes</span>
+            <span className="flex rounded border border-gray-800 overflow-hidden">
+              <button onClick={() => setWithin(true)} className={`px-2.5 py-1 ${within ? "bg-indigo-700 text-white" : "text-gray-400"}`}
+                title="Each close against what that card + grade usually gets vs eBay: timing with the card taken out">vs the card&apos;s usual</button>
+              <button onClick={() => setWithin(false)} className={`px-2.5 py-1 ${!within ? "bg-gray-700 text-white" : "text-gray-400"}`}
+                title="Raw close / eBay: mixes in which cards land in each bucket">vs eBay (raw)</button>
+            </span>
+          </div>
           <section className="grid gap-3 lg:grid-cols-2">
-            {a.breakdowns.map((b) => <Bars key={b.key} b={b} overall={overall} />)}
+            {a.breakdowns.map((b) => <Bars key={b.key} b={b} overall={overall} within={within} />)}
           </section>
           <p className="text-[11px] text-gray-500 max-w-5xl">
-            Bars: median close as a share of the eBay median of the 4 weeks before (dot), middle half (band), 100% = eBay (grey line), the overall median (blue line).
+            Bars: &quot;vs the card&apos;s usual&quot; divides each close / eBay by what that card + grade usually closes at vs eBay, so a bucket shows the timing effect alone
+            (0 = a normal week for that card); &quot;vs eBay&quot; is the raw close as a share of the eBay median of the 4 weeks before. Dot = median, band = middle half.
             Grey rows have under 8 weeks behind them. {a.method}
           </p>
         </>
