@@ -4049,3 +4049,34 @@ export function fetchSealedBacktestBest(gross = false, cls: SetClass = "all"): P
   if (cls !== "all") q.set("class", cls);
   return get(`/v1/sealed/backtest/best${q.size ? `?${q}` : ""}`);
 }
+
+// ---- Auction timing: when to put graded copies into the Fanatics Weekly Auction ----
+export interface InjectWindow {
+  now: string; close_at: string; cutoff_at: string; this_week: boolean; next_close_at: string; note: string;
+}
+export interface InjStat {
+  key: string; label: string; weeks: number; copies: number;
+  median: number | null; p25: number | null; p75: number | null; thin?: boolean;
+}
+export interface InjBreakdown { key: string; label: string; why: string; rows: InjStat[] }
+export interface InjTrigger { key: string; rule: string; value: number; basis: string }
+export interface InjectAnalytics {
+  window: InjectWindow; weeks: number; series: number; observations: number; with_ebay: number;
+  overall: InjStat; overall_own: InjStat; elasticity?: number; doubling_effect?: number;
+  breakdowns: InjBreakdown[]; triggers: InjTrigger[]; method: string;
+}
+export interface InjectCandidate {
+  item_id?: string; display_key: string; grade_key: string; quantity: number; cost_cents?: number; cert?: string; source?: string;
+  name: string; set_code: string; image_url?: string;
+  live_copies: number; next_live_copies: number; usual_per_week?: number; weeks_since_surge: number;
+  ebay_ref_cents?: number; auction_ref_cents?: number; trend?: number; raw_cents?: number;
+  expected_all_in_cents?: number; expected_ratio?: number;
+  net_fancash_cents?: number; net_cash_cents?: number; net_ebay_cents?: number; profit_cents?: number;
+  signal: "inject" | "wait" | "ebay" | "hold" | "no_data"; reasons: string[]; score: number;
+}
+export function fetchInjectAnalytics(weeks = 104): Promise<InjectAnalytics> {
+  return get(`/v1/fanatics/inject/analytics?weeks=${weeks}`);
+}
+export function fetchInjectCandidates(): Promise<{ window: InjectWindow; triggers: InjTrigger[]; candidates: InjectCandidate[]; count: number }> {
+  return adminFetch(`/v1/admin/fanatics/inject/candidates`);
+}
