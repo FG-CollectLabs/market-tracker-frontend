@@ -3924,3 +3924,57 @@ export function updateShop(key: string, patch: Partial<{ enabled: boolean; name:
 export function addShop(name: string, domain: string, games: string[]): Promise<{ ok: boolean; key: string }> {
   return adminFetch(`/v1/admin/shops`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ name, domain, games }) });
 }
+
+// ---- Sealed backtests ------------------------------------------------------------
+
+export type SealedRuleKind = "schedule" | "hype" | "dip";
+export interface SealedRule {
+  name?: string;
+  rule: SealedRuleKind;
+  kinds: SealedKind[];
+  released_from?: string; // YYYY-MM
+  released_to?: string;
+  buy_from?: string;
+  buy_to?: string;
+  cadence?: "week" | "month";
+  units?: number;
+  start_month?: number;
+  end_month?: number | null;
+  until_oop?: boolean;
+  oop_runup?: number;
+  dip_pct?: number;
+  cooldown_months?: number;
+  budget_cents?: number;
+  rotation_months?: number;
+  hype_by?: "momentum" | "premium" | "newest" | "rising12";
+  pick_n?: number;
+  exit?: "hold" | "mark";
+  hold_months?: number;
+}
+export interface BacktestLot { product_id: number; set: string; kind: SealedKind; month: string; units: number; cost_cents: number; sold?: string; exit_cents: number; open: boolean; age_months: number }
+export interface BacktestResult {
+  strategy: SealedRule;
+  invested_cents: number; value_cents: number; profit_cents: number; multiple: number; irr: number | null;
+  benchmark_cents: number; benchmark_irr: number;
+  units: number; buys: number; sets: number; open_lots: number; closed_lots: number; closed_multiple?: number;
+  win_share: number; worst_drawdown: number; avg_cost_cents: number; first_buy?: string; last_buy?: string;
+  by_set: { set: string; set_name: string; release?: string; units: number; invested_cents: number; value_cents: number; multiple: number }[];
+  timeline: { month: string; invested_cents: number; returned_cents: number; held_cents: number; benchmark_cents: number }[];
+  lots?: BacktestLot[];
+  notes?: string[];
+}
+export interface BacktestSweepRow {
+  strategy: SealedRule; invested_cents: number; profit_cents: number; multiple: number; closed_multiple?: number; irr: number | null;
+  sets: number; buys: number; open_lots: number; closed_lots: number; win_share: number; worst_drawdown: number;
+}
+async function postPublic<T>(path: string, body: unknown): Promise<T> {
+  const res = await fetch(`${BASE}${path}`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+  if (!res.ok) throw new Error(`${res.status} ${path}: ${await res.text().catch(() => "")}`);
+  return res.json() as Promise<T>;
+}
+export function runSealedBacktest(strategies: SealedRule[], gross = false, lots = false): Promise<{ results: BacktestResult[]; latest: string; costs: string; method: string }> {
+  return postPublic(`/v1/sealed/backtest${gross ? "?gross=1" : ""}`, { strategies, lots });
+}
+export function sweepSealedBacktest(base: SealedRule, holds: number[], gross = false): Promise<{ rows: BacktestSweepRow[]; latest: string; costs: string; method: string }> {
+  return postPublic(`/v1/sealed/backtest/sweep${gross ? "?gross=1" : ""}`, { base, holds });
+}

@@ -30,6 +30,7 @@ import AutomationPage from "./pages/AutomationPage";
 import SealedTodoPage from "./pages/SealedTodoPage";
 import SealedTimingPage from "./pages/SealedTimingPage";
 import SealedReprintsPage from "./pages/SealedReprintsPage";
+import SealedBacktestPage from "./pages/SealedBacktestPage";
 import SealedWatchlistPage from "./pages/SealedWatchlistPage";
 import ShopsPage from "./pages/ShopsPage";
 import { SignIn } from "./components/SignIn";
@@ -135,6 +136,7 @@ const NAV: NavEntry[] = [
       { to: "/timing", label: "Timing", hint: "Release curves and buy timing" },
       { to: "/sealed/timing", label: "Sealed timing", hint: "Priority buys, best plays after release and after a reprint, set-by-set data" },
       { to: "/sealed/reprints", label: "Sealed reprints", hint: "Each set's price drops (reprints / waves) to confirm" },
+      { to: "/sealed/backtest", label: "Sealed backtests", hint: "Mechanical buying rules replayed over every set's chart" },
       { to: "/rankings", label: "Rankings", hint: "Cards ranked by play" },
       { to: "/channels", label: "Sell channels", hint: "What cards sell for by platform and consigner" },
       { to: "/promos", label: "Promos", hint: "Card classes: promos, exotics" },
@@ -254,6 +256,7 @@ export default function App() {
             <Route path="/sealed" element={<SealedTodoPage />} />
             <Route path="/sealed/timing" element={<SealedTimingPage />} />
             <Route path="/sealed/reprints" element={<SealedReprintsPage />} />
+            <Route path="/sealed/backtest" element={<SealedBacktestPage />} />
             <Route path="/sealed/watchlist" element={<SealedWatchlistPage />} />
             <Route path="/shops" element={<ShopsPage />} />
             <Route path="/roadmap" element={<RoadmapPage />} />
