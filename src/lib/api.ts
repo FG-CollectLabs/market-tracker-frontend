@@ -3959,6 +3959,9 @@ export interface SealedRule {
   sizing?: "units" | "dollars"; // same count of each, or the same money on each buy
   dollars_cents?: number;
   dip_own?: boolean; // dips: only the product's own drops (reprints / waves)
+  // dips: after a trigger keep buying (units a cadence): for N months, until back at the pre-dip high, or until out of print
+  dip_follow?: "" | "months" | "recovered" | "oop";
+  dip_follow_months?: number;
   kinds: SealedKind[];
   released_from?: string; // YYYY-MM
   released_to?: string;
@@ -4031,6 +4034,7 @@ export function sweepSealedBacktest(base: SealedRule, holds: number[], gross = f
 export interface BacktestFamilyBest {
   family: string; label: string; rationale: string; thin: boolean; variants: number; exits: string;
   best: BacktestSweepRow;
+  discounts?: { discount: number; irr: number | null; multiple: number }[]; // the best rule with every buy that much under market
 }
 export interface BacktestKindBest {
   kind: SealedKind; sets: number; full_history: number; families: BacktestFamilyBest[];
