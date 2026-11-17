@@ -1,8 +1,8 @@
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import {
-  runSealedBacktest, sweepSealedBacktest, SEALED_KIND_LABEL,
-  type BacktestResult, type BacktestSweepRow, type SealedKind, type SealedRule,
+  runSealedBacktest, sweepSealedBacktest, sweepSealedExits, SEALED_KIND_LABEL,
+  type BacktestExitRow, type BacktestLot, type BacktestResult, type BacktestSweepRow, type SealedKind, type SealedRule,
 } from "../lib/api";
 import { Spinner } from "../components/Spinner";
 import { pct, usd } from "./SealedTimingPage";
@@ -18,6 +18,8 @@ const PRESETS: SealedRule[] = [
   { name: "1 ETB a week, month 3 until out of print", rule: "schedule", kinds: ["etb"], cadence: "week", units: 1, start_month: 3, until_oop: true, exit: "hold", hold_months: 36 },
   { name: "Hottest ETB in rotation, $60 a month", rule: "hype", kinds: ["etb"], budget_cents: 6000, hype_by: "momentum", rotation_months: 24, pick_n: 1, exit: "hold", hold_months: 36 },
   { name: "1 ETB at release, then monthly for 2 years", rule: "schedule", kinds: ["etb"], cadence: "month", units: 1, start_month: 0, end_month: 24, exit: "hold", hold_months: 36 },
+  { name: "Hottest ETB in rotation, sell at 3× MSRP (else after 4 years)", rule: "hype", kinds: ["etb"], budget_cents: 6000, hype_by: "momentum", rotation_months: 24, pick_n: 1, exit: "target", target_mult: 3, target_basis: "msrp", max_hold_months: 48 },
+  { name: "1 ETB a week from month 3, wind down from year 3 over 2 years", rule: "schedule", kinds: ["etb"], cadence: "week", units: 1, start_month: 3, until_oop: true, exit: "winddown", wind_start: 36, wind_months: 24 },
   { name: "1 ETB at release, hold 3 years (baseline)", rule: "schedule", kinds: ["etb"], cadence: "month", units: 1, start_month: 0, end_month: 0, exit: "hold", hold_months: 36 },
 ];
 
@@ -32,9 +34,19 @@ const loadRules = (): SealedRule[] => {
 };
 const saveRules = (r: SealedRule[]) => { try { localStorage.setItem(STORE, JSON.stringify(r)); } catch { /* private window */ } };
 
+function exitText(s: SealedRule) {
+  switch (s.exit ?? "hold") {
+    case "mark": return "hold, valued today";
+    case "all_at": return s.sell_date ? `sell all on ${s.sell_date}` : `sell all ${s.all_at_months ?? 48}mo after the first buy`;
+    case "target": return `sell at ${s.target_mult ?? 3}× ${s.target_basis === "msrp" ? "MSRP" : "cost"}${s.max_hold_months ? `, else after ${s.max_hold_months}mo` : ""}`;
+    case "winddown": return `wind down from ${s.wind_start ?? 36}mo: ${s.wind_units ? `${s.wind_units}/mo` : `over ${s.wind_months ?? 24}mo`}`;
+  }
+  return `sell after ${s.hold_months ?? 36}mo`;
+}
+
 function describe(s: SealedRule) {
   const k = s.kinds.map((x) => SEALED_KIND_LABEL[x]).join(" + ");
-  const hold = s.exit === "mark" ? "valued today" : `sell after ${s.hold_months ?? 36}mo`;
+  const hold = exitText(s);
   if (s.rule === "hype") return `$${((s.budget_cents ?? 0) / 100).toFixed(0)}/mo on the ${s.pick_n ?? 1} most hyped ${k} (${s.hype_by}, sets ≤${s.rotation_months ?? 24}mo old) · ${hold}`;
   if (s.rule === "dip") return `${s.units ?? 1} ${k} on every ${Math.round((s.dip_pct ?? 0.15) * 100)}% dip under the 6-month high · ${hold}`;
   const end = s.until_oop ? (s.end_month != null ? ` to month ${s.end_month} or out of print` : " until out of print") : s.end_month != null && s.end_month !== s.start_month ? ` to month ${s.end_month}` : " only";
@@ -110,12 +122,33 @@ function RuleEditor({ r, onChange, onRemove, color }: { r: SealedRule; onChange:
         </div>
       )}
       <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5">
-        <label className="flex items-center gap-1">Exit
-          <select value={r.exit ?? "hold"} onChange={(e) => set({ exit: e.target.value as "hold" | "mark" })} className={inp}>
-            <option value="hold">sell each lot after</option><option value="mark">hold, value today</option>
+        <label className="flex items-center gap-1">Sell
+          <select value={r.exit ?? "hold"} onChange={(e) => set({ exit: e.target.value as SealedRule["exit"] })} className={inp}>
+            <option value="hold">each lot after N months</option>
+            <option value="all_at">everything at once</option>
+            <option value="target">at a price target</option>
+            <option value="winddown">wind down each product</option>
+            <option value="mark">never (value today)</option>
           </select>
         </label>
         {(r.exit ?? "hold") === "hold" && <label className="flex items-center gap-1"><input value={r.hold_months ?? 36} onChange={(e) => set({ hold_months: num(e.target.value) })} className={`${inp} w-12`} /> months</label>}
+        {r.exit === "all_at" && <>
+          <label className="flex items-center gap-1"><input value={r.all_at_months ?? 48} onChange={(e) => set({ all_at_months: num(e.target.value), sell_date: undefined })} className={`${inp} w-12`} /> months after the first buy</label>
+          <label className="flex items-center gap-1">or on <input value={r.sell_date ?? ""} placeholder="YYYY-MM" onChange={(e) => set({ sell_date: e.target.value || undefined })} className={`${inp} w-20`} /></label>
+        </>}
+        {r.exit === "target" && <>
+          <label className="flex items-center gap-1">at <input value={r.target_mult ?? 3} onChange={(e) => set({ target_mult: num(e.target.value) })} className={`${inp} w-12`} />×
+            <select value={r.target_basis ?? "cost"} onChange={(e) => set({ target_basis: e.target.value as "cost" | "msrp" })} className={inp}>
+              <option value="cost">what I paid</option><option value="msrp">MSRP</option>
+            </select>
+          </label>
+          <label className="flex items-center gap-1" title="Sell then if the target never hits (blank: hold until it does)">else after <input value={r.max_hold_months ?? ""} placeholder="–" onChange={(e) => set({ max_hold_months: num(e.target.value) })} className={`${inp} w-12`} /> months</label>
+        </>}
+        {r.exit === "winddown" && <>
+          <label className="flex items-center gap-1">from <input value={r.wind_start ?? 36} onChange={(e) => set({ wind_start: num(e.target.value) })} className={`${inp} w-12`} /> months after a product&apos;s first buy,</label>
+          <label className="flex items-center gap-1">sell <input value={r.wind_units ?? ""} placeholder="–" onChange={(e) => set({ wind_units: num(e.target.value) })} className={`${inp} w-12`} /> a month</label>
+          <label className="flex items-center gap-1">or all of it over <input value={r.wind_months ?? 24} onChange={(e) => set({ wind_months: num(e.target.value), wind_units: undefined })} className={`${inp} w-12`} /> months</label>
+        </>}
         <label className="flex items-center gap-1">sets released <input value={r.released_from ?? ""} placeholder="YYYY-MM" onChange={(e) => set({ released_from: e.target.value || undefined })} className={`${inp} w-20`} />
           to <input value={r.released_to ?? ""} placeholder="YYYY-MM" onChange={(e) => set({ released_to: e.target.value || undefined })} className={`${inp} w-20`} /></label>
       </div>
@@ -155,18 +188,56 @@ function Chart({ results, mode }: { results: BacktestResult[]; mode: "value" | "
   );
 }
 
-function Detail({ r, color }: { r: BacktestResult; color: string }) {
-  const [open, setOpen] = useState(false);
+type Tab = "sets" | "buys" | "sales" | "held" | "exits";
+
+function groupBy<T>(xs: T[], key: (x: T) => string) {
+  const m = new Map<string, T[]>();
+  for (const x of xs) { const k = key(x); m.set(k, [...(m.get(k) ?? []), x]); }
+  return [...m.entries()];
+}
+const u = (n: number) => (Math.round(n * 10) / 10).toString();
+
+function Detail({ r, color, gross, onUseExit }: { r: BacktestResult; color: string; gross: boolean; onUseExit: (exit: Partial<SealedRule>) => void }) {
+  const [tab, setTab] = useState<Tab | null>(null);
+  const [lots, setLots] = useState<BacktestLot[] | null>(null);
+  const [exits, setExits] = useState<BacktestExitRow[] | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState("");
+  useEffect(() => { setLots(null); setExits(null); }, [r]);
+  const open = async (t: Tab) => {
+    if (tab === t) { setTab(null); return; }
+    setTab(t); setErr("");
+    try {
+      if ((t === "buys" || t === "sales" || t === "held") && !lots) {
+        setBusy(true);
+        setLots((await runSealedBacktest([r.strategy], gross, true)).results[0]?.lots ?? []);
+      }
+      if (t === "exits" && !exits) {
+        setBusy(true);
+        setExits((await sweepSealedExits(r.strategy, gross)).rows);
+      }
+    } catch (e) { setErr(String(e)); } finally { setBusy(false); }
+  };
+  const tabBtn = (t: Tab, label: string) => (
+    <button onClick={() => open(t)} className={`rounded px-2 py-0.5 ${tab === t ? "bg-gray-700 text-white" : "text-indigo-300 hover:underline"}`}>{label}</button>
+  );
+  const sales = (lots ?? []).flatMap((l) => (l.sales ?? []).map((x) => ({ ...x, l })));
+  const held = groupBy((lots ?? []).filter((l) => l.open_units > 0), (l) => `${l.set_name} · ${SEALED_KIND_LABEL[l.kind]}`);
   return (
     <div className="rounded-lg border border-gray-800 bg-gray-900 p-3 space-y-2 text-xs">
       <div className="flex flex-wrap items-baseline gap-2">
         <span style={{ color }}>●</span>
         <span className="text-sm text-gray-100">{r.strategy.name}</span>
-        <span className="text-gray-500">{r.first_buy} → {r.last_buy} · {r.buys} buys · {r.sets} sets · avg cost {usd(r.avg_cost_cents)}</span>
-        <button onClick={() => setOpen(!open)} className="ml-auto text-indigo-300 hover:underline">{open ? "hide sets" : `by set (${r.by_set.length})`}</button>
+        <span className="text-gray-500">{r.first_buy} → {r.last_buy} · {r.buys} buys · {r.sets} sets · avg cost {usd(r.avg_cost_cents)} · {u(r.sold_units)} sold, {u(r.open_units)} still held · avg hold {r.avg_hold_months}mo</span>
       </div>
+      <div className="flex flex-wrap items-center gap-1">
+        {tabBtn("buys", "What it bought")}{tabBtn("sales", "What it sold")}{tabBtn("held", "Still held")}{tabBtn("sets", `By set (${r.by_set.length})`)}
+        {tabBtn("exits", "Best way to sell these buys")}
+        {busy && <span className="text-gray-500 ml-2">loading…</span>}
+      </div>
+      {err && <div className="text-rose-400 break-all">{err}</div>}
       {r.notes?.map((n) => <div key={n} className="text-[11px] text-amber-300/80">{n}</div>)}
-      {open && (
+      {tab === "sets" && (
         <div className="overflow-x-auto">
           <table className="w-full text-xs">
             <thead className="text-gray-500 text-left"><tr>
@@ -179,10 +250,122 @@ function Detail({ r, color }: { r: BacktestResult; color: string }) {
                 <tr key={s.set} className="border-t border-gray-800">
                   <td className="py-0.5 pr-3 text-gray-200">{s.set_name}</td>
                   <td className="py-0.5 pr-3 text-gray-500">{s.release?.slice(0, 7)}</td>
-                  <td className="py-0.5 pr-3 text-right tabular-nums">{Math.round(s.units * 10) / 10}</td>
+                  <td className="py-0.5 pr-3 text-right tabular-nums">{u(s.units)}</td>
                   <td className="py-0.5 pr-3 text-right tabular-nums">{usd(s.invested_cents)}</td>
                   <td className="py-0.5 pr-3 text-right tabular-nums">{usd(s.value_cents)}</td>
                   <td className={`py-0.5 text-right tabular-nums ${s.multiple >= 1 ? "text-emerald-300" : "text-rose-300"}`}>{s.multiple.toFixed(2)}×</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+      {tab === "buys" && lots && (
+        <div className="overflow-x-auto max-h-[60vh] overflow-y-auto">
+          <table className="w-full text-xs">
+            <thead className="text-gray-500 text-left sticky top-0 bg-gray-900"><tr>
+              <th className="py-1 pr-3 font-medium">Month</th><th className="py-1 pr-3 font-medium">Bought</th>
+              <th className="py-1 pr-3 font-medium text-right">Units</th><th className="py-1 pr-3 font-medium text-right">Price</th>
+              <th className="py-1 pr-3 font-medium text-right">Spent</th><th className="py-1 pr-3 font-medium">Why</th>
+              <th className="py-1 font-medium">What became of it</th>
+            </tr></thead>
+            <tbody>
+              {groupBy(lots, (l) => l.month).map(([m, ls]) => ls.map((l, i) => (
+                <tr key={`${m}-${i}`} className={i === 0 ? "border-t border-gray-800" : ""}>
+                  <td className="py-0.5 pr-3 text-gray-400 whitespace-nowrap">{i === 0 ? m : ""}</td>
+                  <td className="py-0.5 pr-3 text-gray-200 whitespace-nowrap">{l.set_name} · {SEALED_KIND_LABEL[l.kind]}</td>
+                  <td className="py-0.5 pr-3 text-right tabular-nums">{u(l.units)}</td>
+                  <td className="py-0.5 pr-3 text-right tabular-nums">{usd(l.cost_cents)}</td>
+                  <td className="py-0.5 pr-3 text-right tabular-nums">{usd(Math.round(l.cost_cents * l.units))}</td>
+                  <td className="py-0.5 pr-3 text-gray-500">{l.why ?? ""}</td>
+                  <td className="py-0.5 text-gray-400 whitespace-nowrap">
+                    {(l.sales ?? []).length === 1 && l.open_units === 0 ? `sold ${l.sales![0].month} at ${usd(l.sales![0].price_cents)} (${(l.sales![0].net_cents / l.cost_cents).toFixed(2)}× net)`
+                      : <>{(l.sales ?? []).length > 0 && `${(l.sales ?? []).length} sales, ${u((l.sales ?? []).reduce((a, x) => a + x.units, 0))} units`}
+                        {l.open_units > 0 && <span className="text-amber-300/80">{(l.sales ?? []).length ? " · " : ""}{u(l.open_units)} held, worth {usd(l.open_net_cents)} net each</span>}</>}
+                  </td>
+                </tr>
+              )))}
+            </tbody>
+          </table>
+        </div>
+      )}
+      {tab === "sales" && lots && (sales.length === 0 ? <div className="text-gray-500">Nothing sold yet under this sell rule: everything is still held.</div> : (
+        <div className="overflow-x-auto max-h-[60vh] overflow-y-auto">
+          <table className="w-full text-xs">
+            <thead className="text-gray-500 text-left sticky top-0 bg-gray-900"><tr>
+              <th className="py-1 pr-3 font-medium">Month</th><th className="py-1 pr-3 font-medium">Sold</th>
+              <th className="py-1 pr-3 font-medium text-right">Units</th><th className="py-1 pr-3 font-medium text-right">Price</th>
+              <th className="py-1 pr-3 font-medium text-right">Kept (net)</th><th className="py-1 pr-3 font-medium text-right">vs cost</th>
+              <th className="py-1 pr-3 font-medium">Bought</th><th className="py-1 font-medium">Why</th>
+            </tr></thead>
+            <tbody>
+              {groupBy([...sales].sort((a, b) => a.month.localeCompare(b.month)), (x) => x.month).map(([m, xs]) => xs.map((x, i) => (
+                <tr key={`${m}-${i}`} className={i === 0 ? "border-t border-gray-800" : ""}>
+                  <td className="py-0.5 pr-3 text-gray-400 whitespace-nowrap">{i === 0 ? m : ""}</td>
+                  <td className="py-0.5 pr-3 text-gray-200 whitespace-nowrap">{x.l.set_name} · {SEALED_KIND_LABEL[x.l.kind]}</td>
+                  <td className="py-0.5 pr-3 text-right tabular-nums">{u(x.units)}</td>
+                  <td className="py-0.5 pr-3 text-right tabular-nums">{usd(x.price_cents)}</td>
+                  <td className="py-0.5 pr-3 text-right tabular-nums">{usd(Math.round(x.net_cents * x.units))}</td>
+                  <td className={`py-0.5 pr-3 text-right tabular-nums ${x.net_cents >= x.l.cost_cents ? "text-emerald-300" : "text-rose-300"}`}>{(x.net_cents / x.l.cost_cents).toFixed(2)}×</td>
+                  <td className="py-0.5 pr-3 text-gray-500 whitespace-nowrap">{x.l.month} at {usd(x.l.cost_cents)}</td>
+                  <td className="py-0.5 text-gray-500">{x.why}</td>
+                </tr>
+              )))}
+            </tbody>
+          </table>
+        </div>
+      ))}
+      {tab === "held" && lots && (held.length === 0 ? <div className="text-gray-500">Everything sold.</div> : (
+        <table className="w-full text-xs">
+          <thead className="text-gray-500 text-left"><tr>
+            <th className="py-1 pr-3 font-medium">Product</th><th className="py-1 pr-3 font-medium text-right">Units</th>
+            <th className="py-1 pr-3 font-medium text-right">Cost</th><th className="py-1 pr-3 font-medium text-right">Worth today (net)</th>
+            <th className="py-1 font-medium text-right">Multiple</th>
+          </tr></thead>
+          <tbody>
+            {held.map(([k, ls]) => {
+              const units = ls.reduce((a, l) => a + l.open_units, 0);
+              const cost = ls.reduce((a, l) => a + l.cost_cents * l.open_units, 0);
+              const worth = ls.reduce((a, l) => a + l.open_net_cents * l.open_units, 0);
+              return (
+                <tr key={k} className="border-t border-gray-800">
+                  <td className="py-0.5 pr-3 text-gray-200">{k}</td>
+                  <td className="py-0.5 pr-3 text-right tabular-nums">{u(units)}</td>
+                  <td className="py-0.5 pr-3 text-right tabular-nums">{usd(Math.round(cost))}</td>
+                  <td className="py-0.5 pr-3 text-right tabular-nums">{usd(Math.round(worth))}</td>
+                  <td className={`py-0.5 text-right tabular-nums ${worth >= cost ? "text-emerald-300" : "text-rose-300"}`}>{(worth / Math.max(1, cost)).toFixed(2)}×</td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      ))}
+      {tab === "exits" && exits && (
+        <div className="overflow-x-auto max-h-[60vh] overflow-y-auto">
+          <table className="w-full text-xs">
+            <thead className="text-gray-500 text-left sticky top-0 bg-gray-900"><tr>
+              <th className="py-1 pr-3 font-medium">Sell rule (same buys)</th><th className="py-1 pr-3 font-medium text-right">IRR /yr</th>
+              <th className="py-1 pr-3 font-medium text-right">Multiple</th><th className="py-1 pr-3 font-medium text-right">Profit</th>
+              <th className="py-1 pr-3 font-medium text-right">vs S&amp;P</th><th className="py-1 pr-3 font-medium text-right">Avg hold</th>
+              <th className="py-1 pr-3 font-medium text-right" title="Units sold under the rule / still held at the end of the data (valued at today's price)">Sold / held</th><th />
+            </tr></thead>
+            <tbody>
+              {exits.map((x, i) => (
+                <tr key={i} className="border-t border-gray-800">
+                  <td className="py-0.5 pr-3 text-gray-200">{x.exits}</td>
+                  <td className="py-0.5 pr-3 text-right tabular-nums font-semibold text-emerald-300">{pct(x.irr, 1)}</td>
+                  <td className="py-0.5 pr-3 text-right tabular-nums">{x.multiple.toFixed(2)}×</td>
+                  <td className="py-0.5 pr-3 text-right tabular-nums">{usd(x.profit_cents)}</td>
+                  <td className={`py-0.5 pr-3 text-right tabular-nums ${x.vs_sp_cents >= 0 ? "text-emerald-300" : "text-rose-300"}`}>{usd(x.vs_sp_cents)}</td>
+                  <td className="py-0.5 pr-3 text-right tabular-nums">{x.avg_hold_months}mo</td>
+                  <td className={`py-0.5 pr-3 text-right tabular-nums ${x.open_units > x.sold_units ? "text-amber-300" : "text-gray-400"}`}>{u(x.sold_units)} / {u(x.open_units)}</td>
+                  <td className="py-0.5 whitespace-nowrap">
+                    <button onClick={() => onUseExit({
+                      exit: x.strategy.exit, hold_months: x.strategy.hold_months, all_at_months: x.strategy.all_at_months, sell_date: x.strategy.sell_date,
+                      target_mult: x.strategy.target_mult, target_basis: x.strategy.target_basis, max_hold_months: x.strategy.max_hold_months || undefined,
+                      wind_start: x.strategy.wind_start, wind_months: x.strategy.wind_months, wind_units: x.strategy.wind_units || undefined,
+                    })} className="text-indigo-300 hover:underline">use this</button>
+                  </td>
                 </tr>
               ))}
             </tbody>
@@ -223,9 +406,10 @@ export default function SealedBacktestPage() {
       <header className="space-y-1">
         <h1 className="text-xl font-semibold text-white">Sealed backtests</h1>
         <p className="text-sm text-gray-400 max-w-4xl">
-          Write a buying rule down as mechanics, then see what it would have made on every set&apos;s chart: what you put in, what you got back
+          Write a buying rule and a selling rule down as mechanics, then see what they would have made on every set&apos;s chart: what you put in, what you got back
           after selling costs, the money-weighted yearly return (IRR), and the same cash in the S&amp;P. Compare up to 12 rules side by side,
-          or sweep every start month, length and hold to find the best schedule. The data behind it is on <Link to="/sealed/timing" className="text-indigo-300 hover:underline">Sealed timing</Link>.
+          or sweep every start month, length and hold to find the best schedule. Each rule&apos;s details show what it bought each month (and why),
+          what it sold and when, what&apos;s still held, and the best way to sell those same buys (all at once, at a price target, or a wind-down). The data behind it is on <Link to="/sealed/timing" className="text-indigo-300 hover:underline">Sealed timing</Link>.
         </p>
       </header>
       {err && <div className="text-sm text-rose-400 break-all">{err}</div>}
@@ -265,7 +449,7 @@ export default function SealedBacktestPage() {
                   <th className="px-2 py-2 font-medium text-right" title="The same cash flows at the S&P benchmark rate">vs S&amp;P</th>
                   <th className="px-2 py-2 font-medium text-right" title="Lots that sold (or are worth) more than they cost, net">Win share</th>
                   <th className="px-2 py-2 font-medium text-right" title="The worst month: what the lots still held would sell for against what they cost">Worst month</th>
-                  <th className="px-2 py-2 font-medium text-right" title="Lots sold after their hold / still open (valued at today's price)">Sold / open</th>
+                  <th className="px-2 py-2 font-medium text-right" title="Units sold under the sell rule / still held at the end of the data (valued at today's price)">Sold / held</th>
                 </tr>
               </thead>
               <tbody>
@@ -280,7 +464,7 @@ export default function SealedBacktestPage() {
                     <td className={`px-2 py-1.5 text-right tabular-nums ${r.value_cents >= r.benchmark_cents ? "text-emerald-300" : "text-rose-300"}`}>{usd(r.value_cents - r.benchmark_cents)}</td>
                     <td className="px-2 py-1.5 text-right tabular-nums">{Math.round(r.win_share * 100)}%</td>
                     <td className="px-2 py-1.5 text-right tabular-nums text-rose-300">{pct(r.worst_drawdown)}</td>
-                    <td className="px-2 py-1.5 text-right tabular-nums text-gray-400">{r.closed_lots} / {r.open_lots}</td>
+                    <td className={`px-2 py-1.5 text-right tabular-nums ${r.open_units > r.sold_units ? "text-amber-300" : "text-gray-400"}`}>{u(r.sold_units)} / {u(r.open_units)}</td>
                   </tr>
                 ))}
               </tbody>
@@ -299,7 +483,8 @@ export default function SealedBacktestPage() {
             <Chart results={res.results} mode={mode} />
           </div>
           <div className="space-y-2">
-            {res.results.map((r, i) => <Detail key={i} r={r} color={LINE_COLORS[i % LINE_COLORS.length]} />)}
+            {res.results.map((r, i) => <Detail key={i} r={r} color={LINE_COLORS[i % LINE_COLORS.length]} gross={gross}
+              onUseExit={(ex) => { const n = rules.map((x, j) => (j === i ? { ...x, ...ex, name: "" } : x)); setRules(n); run(n); }} />)}
           </div>
           <p className="text-[11px] text-gray-500 max-w-5xl">{res.costs} {res.method} Data through {res.latest}.</p>
         </section>
