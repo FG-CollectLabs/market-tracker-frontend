@@ -21,6 +21,14 @@ interface Strategy { name: string; legs: SealedRule[] }
 const leg = (r: SealedRule): SealedRule => ({ units: 1, cadence: "month", exit: "hold", hold_months: 36, ...r });
 const PRESETS: Strategy[] = [
   {
+    name: "My ETB plan v2: weekly from month 2 + monthly from month 12 + weekly on reprint dips",
+    legs: [
+      leg({ name: "1 a week from month 2 until out of print", rule: "schedule", kinds: ["etb"], cadence: "week", start_month: 2, until_oop: true, hold_months: 36 }),
+      leg({ name: "+1 a month from month 12 until out of print", rule: "schedule", kinds: ["etb"], start_month: 12, until_oop: true, hold_months: 36 }),
+      leg({ name: "+1 a week on a reprint dip until back at its high", rule: "dip", kinds: ["etb"], cadence: "week", dip_pct: 0.2, dip_own: true, dip_follow: "recovered", hold_months: 48 }),
+    ],
+  },
+  {
     name: "My ETB plan: month 12 until out of print + reprint dips + 20%-off early buys",
     legs: [
       leg({ name: "Month 12 until out of print", rule: "schedule", kinds: ["etb"], start_month: 12, until_oop: true, hold_months: 36 }),
@@ -56,13 +64,23 @@ function exitText(s: SealedRule) {
   return `sell after ${s.hold_months ?? 36}mo`;
 }
 
+function followText(s: SealedRule) {
+  const per = `${s.units ?? 1} a ${s.cadence === "week" ? "week" : "month"}`;
+  switch (s.dip_follow) {
+    case "months": return `, then ${per} for ${s.dip_follow_months ?? 6} months`;
+    case "recovered": return `, then ${per} until back at its high`;
+    case "oop": return `, then ${per} until out of print`;
+  }
+  return "";
+}
+
 function describe(s: SealedRule) {
   const k = s.kinds.map((x) => SEALED_KIND_LABEL[x]).join(" + ");
   const qty = s.sizing === "dollars" ? `$${((s.dollars_cents ?? 5000) * (s.units ?? 1) / 100).toFixed(0)} of ${k}` : `${s.units ?? 1} ${k}`;
   const off = s.buy_discount ? ` at ${Math.round(s.buy_discount * 100)}% off` : "";
   let buy: string;
   if (s.rule === "hype") buy = `$${((s.budget_cents ?? 0) / 100).toFixed(0)}/mo on the ${s.pick_n ?? 1} most hyped ${k} (${s.hype_by}, sets ≤${s.rotation_months ?? 24}mo old)`;
-  else if (s.rule === "dip") buy = `${qty} on every ${Math.round((s.dip_pct ?? 0.15) * 100)}% dip${s.dip_own ? " of its own (reprint)" : ""}${s.start_month || s.end_month != null ? `, months ${s.start_month ?? 0}–${s.end_month ?? "∞"}` : ""}`;
+  else if (s.rule === "dip") buy = `${qty} on every ${Math.round((s.dip_pct ?? 0.15) * 100)}% dip${s.dip_own ? " of its own (reprint)" : ""}${followText(s)}${s.start_month || s.end_month != null ? `, months ${s.start_month ?? 0}–${s.end_month ?? "∞"}` : ""}`;
   else {
     const end = s.until_oop ? (s.end_month != null ? ` to month ${s.end_month} or out of print` : " until out of print") : s.end_month != null && s.end_month !== s.start_month ? ` to month ${s.end_month}` : " only";
     buy = `${qty} a ${s.cadence ?? "month"}, month ${s.start_month ?? 0}${end}`;
@@ -154,6 +172,18 @@ function BestPerKind({ gross, onAdd }: { gross: boolean; onAdd: (st: Strategy) =
                     <div><div className="text-gray-500">sets</div><div className="text-gray-200 tabular-nums">{b.sets}</div></div>
                     <div><div className="text-gray-500">sold / held</div><div className={`tabular-nums ${b.open_lots > b.closed_lots ? "text-amber-300" : "text-gray-200"}`}>{b.closed_lots} / {b.open_lots}</div></div>
                   </div>
+                  {f.discounts && f.discounts.length > 1 && (
+                    <div className="text-[11px]" title="The same rule with every buy this much under the month's market price">
+                      <div className="text-gray-500 mb-0.5">if bought under market</div>
+                      <div className="flex flex-wrap gap-1">
+                        {f.discounts.map((x) => (
+                          <span key={x.discount} className="rounded bg-gray-900 border border-gray-800 px-1.5 py-0.5 tabular-nums">
+                            <span className="text-gray-500">{x.discount ? `−${Math.round(x.discount * 100)}%` : "market"}</span> <span className={irrTone(x.irr)}>{pct(x.irr, 0)}</span>
+                          </span>
+                        ))}
+                      </div>
+                    </div>
+                  )}
                   <div className="flex items-center justify-between text-[11px]">
                     <span className="text-gray-500">{f.variants} variants · worst month {pct(b.worst_drawdown)}</span>
                     <button onClick={() => onAdd({ name: `${SEALED_KIND_LABEL[kind]}: best ${f.label.toLowerCase()}`, legs: [{ ...b.strategy, name: "" }] })}
@@ -249,7 +279,18 @@ function LegEditor({ r, onChange, onRemove, canRemove }: { r: SealedRule; onChan
         <div className={row}>
           <label className={lbl}>when <input value={Math.round((r.dip_pct ?? 0.15) * 100)} onChange={(e) => set({ dip_pct: (num(e.target.value) ?? 15) / 100 })} className={`${inp} w-10`} />% under its 6-month high</label>
           <label className={lbl} title="Only when it fell 15% more than every other set's same product: a reprint or fresh wave, not the whole market"><input type="checkbox" checked={!!r.dip_own} onChange={(e) => set({ dip_own: e.target.checked })} /> reprints only (its own drop)</label>
-          <label className={lbl}>at most every <input value={r.cooldown_months ?? 6} onChange={(e) => set({ cooldown_months: num(e.target.value) })} className={`${inp} w-10`} /> months</label>
+          <label className={lbl} title="After a trigger: buy once, or keep buying on a cadence">then
+            <select value={r.dip_follow ?? ""} onChange={(e) => set({ dip_follow: e.target.value as SealedRule["dip_follow"] })} className={inp}>
+              <option value="">buy once</option>
+              <option value="months">keep buying for…</option>
+              <option value="recovered">keep buying until back at its high</option>
+              <option value="oop">keep buying until out of print</option>
+            </select>
+          </label>
+          {r.dip_follow === "months" && <label className={lbl}><input value={r.dip_follow_months ?? 6} onChange={(e) => set({ dip_follow_months: num(e.target.value) })} className={`${inp} w-10`} /> months</label>}
+          {r.dip_follow && <label className={lbl}><input value={r.units ?? 1} onChange={(e) => set({ units: num(e.target.value) ?? 1 })} className={`${inp} w-10`} /> a
+            <select value={r.cadence ?? "month"} onChange={(e) => set({ cadence: e.target.value as SealedRule["cadence"] })} className={inp}><option value="week">week</option><option value="month">month</option></select></label>}
+          <label className={lbl}>{r.dip_follow ? "next trigger" : "at most every"} <input value={r.cooldown_months ?? 6} onChange={(e) => set({ cooldown_months: num(e.target.value) })} className={`${inp} w-10`} /> months</label>
           <label className={lbl}>months <input value={r.start_month ?? 0} onChange={(e) => set({ start_month: num(e.target.value) ?? 0 })} className={`${inp} w-10`} />
             to <input value={r.end_month ?? ""} placeholder="∞" onChange={(e) => set({ end_month: num(e.target.value) ?? null })} className={`${inp} w-10`} /> after release</label>
         </div>
@@ -367,7 +408,18 @@ function groupBy<T>(xs: T[], key: (x: T) => string) {
   return [...m.entries()];
 }
 
-type Tab = "buys" | "sales" | "held" | "sets" | "exits" | "discount" | "sizing";
+type Tab = "buys" | "sales" | "held" | "sets" | "exits" | "discount" | "sizing" | "follow";
+// how long a dip keeps buying, as the experiment tries it
+const FOLLOWS: { name: string; p: Partial<SealedRule> }[] = [
+  { name: "Buy once per dip", p: { dip_follow: "" } },
+  { name: "Keep buying 3 months", p: { dip_follow: "months", dip_follow_months: 3 } },
+  { name: "Keep buying 6 months", p: { dip_follow: "months", dip_follow_months: 6 } },
+  { name: "Keep buying 12 months", p: { dip_follow: "months", dip_follow_months: 12 } },
+  { name: "Keep buying until back at its high", p: { dip_follow: "recovered" } },
+  { name: "Keep buying until out of print", p: { dip_follow: "oop" } },
+  { name: "Until out of print, but not past month 36", p: { dip_follow: "oop", end_month: 36 } },
+  { name: "Until out of print, but not past month 24", p: { dip_follow: "oop", end_month: 24 } },
+];
 
 function Detail({ r, color, gross, onUseExit, onAdd }: {
   r: BacktestResult; color: string; gross: boolean; onUseExit: (exit: Partial<SealedRule>) => void; onAdd: (st: Strategy) => void;
@@ -377,9 +429,11 @@ function Detail({ r, color, gross, onUseExit, onAdd }: {
   const [exits, setExits] = useState<BacktestExitRow[] | null>(null);
   const [disc, setDisc] = useState<BacktestResult[] | null>(null);
   const [sizing, setSizing] = useState<BacktestResult[] | null>(null);
+  const [follow, setFollow] = useState<BacktestResult[] | null>(null);
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState("");
-  useEffect(() => { setLots(null); setExits(null); setDisc(null); setSizing(null); }, [r]);
+  useEffect(() => { setLots(null); setExits(null); setDisc(null); setSizing(null); setFollow(null); }, [r]);
+  const hasDip = r.strategy.rule === "dip" || (r.strategy.legs ?? []).some((l) => l.rule === "dip");
   const portfolio = r.strategy.rule === "portfolio";
   const open = async (t: Tab) => {
     if (tab === t) { setTab(null); return; }
@@ -391,6 +445,9 @@ function Detail({ r, color, gross, onUseExit, onAdd }: {
       if (t === "discount" && !disc) {
         const ds = [0, 0.05, 0.1, 0.15, 0.2, 0.25, 0.3];
         setDisc((await runSealedBacktest(ds.map((d) => ({ ...mapLegs(r.strategy, (l) => ({ ...l, buy_discount: d || undefined })), name: `${Math.round(d * 100)}% under market` })), gross)).results);
+      }
+      if (t === "follow" && !follow) {
+        setFollow((await runSealedBacktest(FOLLOWS.map((f) => ({ ...mapLegs(r.strategy, (l) => (l.rule === "dip" ? { ...l, ...f.p, name: "" } : l)), name: f.name })), gross)).results);
       }
       if (t === "sizing" && !sizing) {
         const avg = Math.max(100, r.avg_cost_cents);
@@ -417,7 +474,7 @@ function Detail({ r, color, gross, onUseExit, onAdd }: {
           <span className="text-gray-500 mr-1">Deep dive</span>
           {tabBtn("buys", "What it bought")}{tabBtn("sales", "What it sold")}{tabBtn("held", "Still held")}{tabBtn("sets", "By set")}
           <span className="text-gray-500 ml-4 mr-1">Experiments</span>
-          {tabBtn("exits", "Best way to sell")}{tabBtn("discount", "Buying at a discount")}{tabBtn("sizing", "Same count vs same money")}
+          {tabBtn("exits", "Best way to sell")}{tabBtn("discount", "Buying at a discount")}{tabBtn("sizing", "Same count vs same money")}{hasDip && tabBtn("follow", "How long to buy after a dip")}
           {busy && <span className="text-gray-500 ml-2">working…</span>}
         </div>
         {err && <div className="text-rose-400 break-all">{err}</div>}
@@ -536,6 +593,27 @@ function Detail({ r, color, gross, onUseExit, onAdd }: {
                   <td className={`${td} text-gray-200`}>{x.strategy.name}</td>
                   <td className={`${tdr} font-semibold ${irrTone(x.irr)}`}>{pct(x.irr, 1)}</td>
                   <td className={tdr}>{x.multiple.toFixed(2)}×</td><td className={tdr}>{usd(x.invested_cents)}</td><td className={tdr}>{usd(x.profit_cents)}</td>
+                  <td className={`${tdr} ${x.value_cents >= x.benchmark_cents ? "text-emerald-300" : "text-rose-300"}`}>{usd(x.value_cents - x.benchmark_cents)}</td>
+                  <td className={tdr}>{Math.round(x.win_share * 100)}%</td>
+                </tr>
+              ))}</tbody>
+            </table>
+          </>
+        )}
+
+        {tab === "follow" && follow && (
+          <>
+            <p className="text-gray-400">
+              The dip leg{portfolio ? "s" : ""} of this strategy, buying once per trigger against keeping on buying ({portfolio ? "other legs unchanged" : "units a cadence as set"}).
+              A higher yearly return per dollar can still mean less profit if it buys less: compare both.
+            </p>
+            <table className="w-full">{head([["After a dip"], ["IRR /yr", true], ["Multiple", true], ["Buys", true], ["Put in", true], ["Profit", true], ["vs S&P", true], ["Win share", true]])}
+              <tbody>{follow.map((x, i) => (
+                <tr key={i} className="border-t border-gray-800">
+                  <td className={`${td} text-gray-200`}>{x.strategy.name}</td>
+                  <td className={`${tdr} font-semibold ${irrTone(x.irr)}`}>{pct(x.irr, 1)}</td>
+                  <td className={tdr}>{x.multiple.toFixed(2)}×</td><td className={tdr}>{x.buys}</td>
+                  <td className={tdr}>{usd(x.invested_cents)}</td><td className={tdr}>{usd(x.profit_cents)}</td>
                   <td className={`${tdr} ${x.value_cents >= x.benchmark_cents ? "text-emerald-300" : "text-rose-300"}`}>{usd(x.value_cents - x.benchmark_cents)}</td>
                   <td className={tdr}>{Math.round(x.win_share * 100)}%</td>
                 </tr>
