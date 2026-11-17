@@ -1,42 +1,54 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { Link } from "react-router-dom";
 import {
-  runSealedBacktest, sweepSealedBacktest, sweepSealedExits, SEALED_KIND_LABEL,
-  type BacktestExitRow, type BacktestLot, type BacktestResult, type BacktestSweepRow, type SealedKind, type SealedRule,
+  fetchSealedBacktestBest, runSealedBacktest, sweepSealedBacktest, sweepSealedExits, SEALED_KIND_LABEL,
+  type BacktestExitRow, type BacktestKindBest, type BacktestLot, type BacktestResult, type BacktestSweepRow, type SealedKind, type SealedRule,
 } from "../lib/api";
 import { Spinner } from "../components/Spinner";
 import { pct, usd } from "./SealedTimingPage";
 
-// Sealed backtests: write buying rules down as hard mechanics, replay them
-// over every set's chart, and compare what each would have made (net of
-// selling costs, against the same money in the S&P).
+// Sealed backtests: buying and selling rules written down as mechanics,
+// replayed over every set's chart. The best rule per product type sits on
+// top; strategies (one rule, or several legs run as one book) below, each
+// with a deep dive and experiments (sell rules, discounts, sizing).
 
 const KINDS: SealedKind[] = ["etb", "pc_etb", "booster_box", "booster_bundle", "booster_pack", "upc", "premium_collection", "special_collection", "collection_box", "tin", "blister"];
+const MAIN_KINDS: SealedKind[] = ["etb", "pc_etb", "booster_box", "booster_bundle", "booster_pack"];
 const LINE_COLORS = ["#34d399", "#60a5fa", "#f472b6", "#fbbf24", "#a78bfa", "#f87171", "#2dd4bf", "#fb923c"];
 
-const PRESETS: SealedRule[] = [
-  { name: "1 ETB a week, month 3 until out of print", rule: "schedule", kinds: ["etb"], cadence: "week", units: 1, start_month: 3, until_oop: true, exit: "hold", hold_months: 36 },
-  { name: "Hottest ETB in rotation, $60 a month", rule: "hype", kinds: ["etb"], budget_cents: 6000, hype_by: "momentum", rotation_months: 24, pick_n: 1, exit: "hold", hold_months: 36 },
-  { name: "1 ETB at release, then monthly for 2 years", rule: "schedule", kinds: ["etb"], cadence: "month", units: 1, start_month: 0, end_month: 24, exit: "hold", hold_months: 36 },
-  { name: "Hottest ETB in rotation, sell at 3× MSRP (else after 4 years)", rule: "hype", kinds: ["etb"], budget_cents: 6000, hype_by: "momentum", rotation_months: 24, pick_n: 1, exit: "target", target_mult: 3, target_basis: "msrp", max_hold_months: 48 },
-  { name: "1 ETB a week from month 3, wind down from year 3 over 2 years", rule: "schedule", kinds: ["etb"], cadence: "week", units: 1, start_month: 3, until_oop: true, exit: "winddown", wind_start: 36, wind_months: 24 },
-  { name: "1 ETB at release, hold 3 years (baseline)", rule: "schedule", kinds: ["etb"], cadence: "month", units: 1, start_month: 0, end_month: 0, exit: "hold", hold_months: 36 },
+interface Strategy { name: string; legs: SealedRule[] }
+
+const leg = (r: SealedRule): SealedRule => ({ units: 1, cadence: "month", exit: "hold", hold_months: 36, ...r });
+const PRESETS: Strategy[] = [
+  {
+    name: "My ETB plan: month 12 until out of print + reprint dips + 20%-off early buys",
+    legs: [
+      leg({ name: "Month 12 until out of print", rule: "schedule", kinds: ["etb"], start_month: 12, until_oop: true, hold_months: 36 }),
+      leg({ name: "Reprint dips (20%, own drop)", rule: "dip", kinds: ["etb"], dip_pct: 0.2, dip_own: true, hold_months: 48 }),
+      leg({ name: "Months 0–12 at 20% under market", rule: "schedule", kinds: ["etb"], start_month: 0, end_month: 12, buy_discount: 0.2, hold_months: 36 }),
+    ],
+  },
+  { name: "Month 12 until out of print", legs: [leg({ rule: "schedule", kinds: ["etb"], start_month: 12, until_oop: true })] },
+  { name: "Hottest ETB in rotation, $60 a month", legs: [leg({ rule: "hype", kinds: ["etb"], budget_cents: 6000, hype_by: "momentum", rotation_months: 24, pick_n: 1 })] },
+  { name: "1 ETB at release, hold 3 years (baseline)", legs: [leg({ rule: "schedule", kinds: ["etb"], start_month: 0, end_month: 0 })] },
 ];
 
-const STORE = "sealed.backtest.rules";
-const loadRules = (): SealedRule[] => {
+const STORE = "sealed.backtest.strategies.v2";
+const loadStrategies = (): Strategy[] => {
   try {
     const v = JSON.parse(localStorage.getItem(STORE) ?? "null");
-    return Array.isArray(v) && v.length ? v : PRESETS;
-  } catch {
-    return PRESETS;
-  }
+    if (Array.isArray(v) && v.length) return v;
+    // v1: a flat list of rules, one strategy each
+    const old = JSON.parse(localStorage.getItem("sealed.backtest.rules") ?? "null");
+    if (Array.isArray(old) && old.length) return old.map((r: SealedRule) => ({ name: r.name ?? "", legs: [{ ...r, name: "" }] }));
+  } catch { /* private window */ }
+  return PRESETS;
 };
-const saveRules = (r: SealedRule[]) => { try { localStorage.setItem(STORE, JSON.stringify(r)); } catch { /* private window */ } };
+const saveStrategies = (s: Strategy[]) => { try { localStorage.setItem(STORE, JSON.stringify(s)); } catch { /* private window */ } };
 
 function exitText(s: SealedRule) {
   switch (s.exit ?? "hold") {
-    case "mark": return "hold, valued today";
+    case "mark": return "never sell (valued today)";
     case "all_at": return s.sell_date ? `sell all on ${s.sell_date}` : `sell all ${s.all_at_months ?? 48}mo after the first buy`;
     case "target": return `sell at ${s.target_mult ?? 3}× ${s.target_basis === "msrp" ? "MSRP" : "cost"}${s.max_hold_months ? `, else after ${s.max_hold_months}mo` : ""}`;
     case "winddown": return `wind down from ${s.wind_start ?? 36}mo: ${s.wind_units ? `${s.wind_units}/mo` : `over ${s.wind_months ?? 24}mo`}`;
@@ -46,32 +58,152 @@ function exitText(s: SealedRule) {
 
 function describe(s: SealedRule) {
   const k = s.kinds.map((x) => SEALED_KIND_LABEL[x]).join(" + ");
-  const hold = exitText(s);
-  if (s.rule === "hype") return `$${((s.budget_cents ?? 0) / 100).toFixed(0)}/mo on the ${s.pick_n ?? 1} most hyped ${k} (${s.hype_by}, sets ≤${s.rotation_months ?? 24}mo old) · ${hold}`;
-  if (s.rule === "dip") return `${s.units ?? 1} ${k} on every ${Math.round((s.dip_pct ?? 0.15) * 100)}% dip under the 6-month high · ${hold}`;
-  const end = s.until_oop ? (s.end_month != null ? ` to month ${s.end_month} or out of print` : " until out of print") : s.end_month != null && s.end_month !== s.start_month ? ` to month ${s.end_month}` : " only";
-  return `${s.units ?? 1} ${k} a ${s.cadence ?? "month"}, month ${s.start_month ?? 0}${end} · ${hold}`;
+  const qty = s.sizing === "dollars" ? `$${((s.dollars_cents ?? 5000) * (s.units ?? 1) / 100).toFixed(0)} of ${k}` : `${s.units ?? 1} ${k}`;
+  const off = s.buy_discount ? ` at ${Math.round(s.buy_discount * 100)}% off` : "";
+  let buy: string;
+  if (s.rule === "hype") buy = `$${((s.budget_cents ?? 0) / 100).toFixed(0)}/mo on the ${s.pick_n ?? 1} most hyped ${k} (${s.hype_by}, sets ≤${s.rotation_months ?? 24}mo old)`;
+  else if (s.rule === "dip") buy = `${qty} on every ${Math.round((s.dip_pct ?? 0.15) * 100)}% dip${s.dip_own ? " of its own (reprint)" : ""}${s.start_month || s.end_month != null ? `, months ${s.start_month ?? 0}–${s.end_month ?? "∞"}` : ""}`;
+  else {
+    const end = s.until_oop ? (s.end_month != null ? ` to month ${s.end_month} or out of print` : " until out of print") : s.end_month != null && s.end_month !== s.start_month ? ` to month ${s.end_month}` : " only";
+    buy = `${qty} a ${s.cadence ?? "month"}, month ${s.start_month ?? 0}${end}`;
+  }
+  return `${buy}${off} · ${exitText(s)}`;
 }
+
+// what goes to the API: one leg = that rule; several = a portfolio
+function toRule(st: Strategy): SealedRule {
+  const legs = st.legs.map((l) => ({ ...l, name: l.name || describe(l) }));
+  const name = st.name || legs.map((l) => l.name).join(" + ");
+  return legs.length === 1 ? { ...legs[0], name } : { name, rule: "portfolio", kinds: legs[0]?.kinds ?? ["etb"], legs };
+}
+const mapLegs = (r: SealedRule, f: (l: SealedRule) => SealedRule): SealedRule =>
+  r.rule === "portfolio" ? { ...r, legs: (r.legs ?? []).map(f) } : f(r);
 
 const inp = "rounded border border-gray-700 bg-gray-950 px-1.5 py-0.5 text-xs text-gray-200 tabular-nums";
 const num = (v: string) => (v.trim() === "" ? undefined : Number(v));
+const u = (n: number) => (Math.round(n * 10) / 10).toString();
+const irrTone = (v: number | null | undefined, bench = 0.1) => (v == null ? "text-gray-500" : v >= bench ? "text-emerald-300" : v >= 0 ? "text-amber-300" : "text-rose-300");
 
-function RuleEditor({ r, onChange, onRemove, color }: { r: SealedRule; onChange: (r: SealedRule) => void; onRemove: () => void; color: string }) {
-  const set = (p: Partial<SealedRule>) => onChange({ ...r, ...p });
+function Card({ title, right, children }: { title: ReactNode; right?: ReactNode; children: ReactNode }) {
   return (
-    <div className="rounded-lg border border-gray-800 bg-gray-900 p-3 space-y-2 text-xs text-gray-300">
-      <div className="flex items-center gap-2">
-        <span style={{ color }}>●</span>
-        <input value={r.name ?? ""} onChange={(e) => set({ name: e.target.value })} placeholder={describe(r)} className={`${inp} flex-1 text-sm`} />
-        <button onClick={onRemove} className="text-gray-500 hover:text-rose-300">remove</button>
+    <section className="rounded-lg border border-gray-800 bg-gray-900">
+      <div className="flex flex-wrap items-center gap-2 border-b border-gray-800 px-4 py-2.5">
+        <h2 className="text-sm font-semibold text-gray-100">{title}</h2>
+        <div className="ml-auto flex flex-wrap items-center gap-2 text-xs">{right}</div>
       </div>
-      <div className="text-[11px] text-gray-500">{describe(r)}</div>
-      <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5">
-        <label className="flex items-center gap-1">Rule
+      <div className="p-4">{children}</div>
+    </section>
+  );
+}
+
+function More<T>({ rows, initial = 15, render }: { rows: T[]; initial?: number; render: (rows: T[]) => ReactNode }) {
+  const [n, setN] = useState(initial);
+  return (
+    <>
+      {render(rows.slice(0, n))}
+      {rows.length > n && (
+        <div className="pt-2 text-xs">
+          <button onClick={() => setN(n + 25)} className="text-indigo-300 hover:underline">show {Math.min(25, rows.length - n)} more</button>
+          <button onClick={() => setN(rows.length)} className="ml-3 text-gray-500 hover:text-gray-300">show all {rows.length}</button>
+        </div>
+      )}
+    </>
+  );
+}
+
+const th = "py-1.5 pr-4 font-medium whitespace-nowrap";
+const thr = `${th} text-right`;
+const td = "py-1 pr-4 align-top";
+const tdr = `${td} text-right tabular-nums whitespace-nowrap`;
+
+// ---- best per product type --------------------------------------------------------
+
+function BestPerKind({ gross, onAdd }: { gross: boolean; onAdd: (st: Strategy) => void }) {
+  const [data, setData] = useState<{ kinds: BacktestKindBest[]; latest: string } | null>(null);
+  const [kind, setKind] = useState<SealedKind>("etb");
+  const [err, setErr] = useState("");
+  const [showGaps, setShowGaps] = useState(false);
+  useEffect(() => { setData(null); fetchSealedBacktestBest(gross).then(setData).catch((e) => setErr(String(e))); }, [gross]);
+  const k = data?.kinds.find((x) => x.kind === kind);
+  return (
+    <Card title="Best rule per product type"
+      right={<div className="flex flex-wrap gap-1">{MAIN_KINDS.map((x) => (
+        <button key={x} onClick={() => setKind(x)} className={`rounded px-2.5 py-1 ${kind === x ? "bg-gray-700 text-white" : "text-gray-400 hover:text-gray-200"}`}>{SEALED_KIND_LABEL[x]}</button>
+      ))}</div>}>
+      {err && <div className="text-sm text-rose-400 break-all">{err}</div>}
+      {!data ? <Spinner /> : !k ? <div className="text-sm text-gray-500">No {SEALED_KIND_LABEL[kind]} products charted.</div> : (
+        <div className="space-y-3">
+          <p className="text-xs text-gray-400">
+            Every variant of each family tried on all {k.sets} {SEALED_KIND_LABEL[kind]} sets (hold 24 / 36 / 48 months); the highest yearly return among
+            rules with 8+ sets and 10+ finished sales. <span className="text-amber-300">Thin</span>: nothing in the family had that much evidence.
+          </p>
+          <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+            {k.families.map((f) => {
+              const b = f.best;
+              return (
+                <div key={f.family} className={`rounded-lg border p-3 space-y-2 ${f.thin ? "border-amber-900/60" : "border-gray-800"} bg-gray-950/40`}>
+                  <div className="flex items-baseline gap-2">
+                    <span className="text-xs font-semibold uppercase tracking-wide text-gray-400">{f.label}</span>
+                    {f.thin && <span className="text-[10px] rounded border border-amber-800 px-1 text-amber-300">thin</span>}
+                    <span className={`ml-auto text-xl font-semibold tabular-nums ${irrTone(b.irr)}`}>{pct(b.irr, 1)}<span className="text-xs text-gray-500">/yr</span></span>
+                  </div>
+                  <div className="text-sm text-gray-100">{describe(b.strategy)}</div>
+                  <div className="grid grid-cols-4 gap-2 text-[11px] text-gray-400">
+                    <div><div className="text-gray-500">multiple</div><div className="text-gray-200 tabular-nums">{b.multiple.toFixed(2)}×</div></div>
+                    <div><div className="text-gray-500">finished sales</div><div className="text-gray-200 tabular-nums">{b.closed_multiple != null ? `${b.closed_multiple.toFixed(2)}×` : "–"}</div></div>
+                    <div><div className="text-gray-500">sets</div><div className="text-gray-200 tabular-nums">{b.sets}</div></div>
+                    <div><div className="text-gray-500">sold / held</div><div className={`tabular-nums ${b.open_lots > b.closed_lots ? "text-amber-300" : "text-gray-200"}`}>{b.closed_lots} / {b.open_lots}</div></div>
+                  </div>
+                  <div className="flex items-center justify-between text-[11px]">
+                    <span className="text-gray-500">{f.variants} variants · worst month {pct(b.worst_drawdown)}</span>
+                    <button onClick={() => onAdd({ name: `${SEALED_KIND_LABEL[kind]}: best ${f.label.toLowerCase()}`, legs: [{ ...b.strategy, name: "" }] })}
+                      className="text-indigo-300 hover:underline">add to my strategies</button>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+          <div className="text-xs text-gray-400">
+            Data: {k.full_history} of {k.sets} sets charted from release.
+            {k.missing_early.length > 0 && <>
+              {" "}<span className="text-amber-300">{k.missing_early.length} start months or years later</span>, so they can only take part in later-month rules.
+              <button onClick={() => setShowGaps(!showGaps)} className="ml-2 text-indigo-300 hover:underline">{showGaps ? "hide" : "which"}</button>
+            </>}
+          </div>
+          {showGaps && (
+            <div className="flex flex-wrap gap-1.5 text-[11px]">
+              {k.missing_early.map((m) => (
+                <span key={m.set} className="rounded border border-gray-800 px-1.5 py-0.5 text-gray-300" title={`released ${m.release}, chart from ${m.first_month}`}>
+                  {m.set_name} <span className="text-gray-500">{m.missing_months}mo missing</span>
+                </span>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+    </Card>
+  );
+}
+
+// ---- strategy editor ----------------------------------------------------------------
+
+function LegEditor({ r, onChange, onRemove, canRemove }: { r: SealedRule; onChange: (r: SealedRule) => void; onRemove: () => void; canRemove: boolean }) {
+  const set = (p: Partial<SealedRule>) => onChange({ ...r, ...p });
+  const row = "flex flex-wrap items-center gap-x-4 gap-y-1.5";
+  const lbl = "flex items-center gap-1";
+  return (
+    <div className="rounded border border-gray-800 bg-gray-950/40 p-3 space-y-2 text-xs text-gray-300">
+      <div className="flex items-center gap-2">
+        <input value={r.name ?? ""} onChange={(e) => set({ name: e.target.value })} placeholder="Leg name (optional)" className={`${inp} w-64`} />
+        <span className="text-[11px] text-gray-500 truncate">{describe(r)}</span>
+        {canRemove && <button onClick={onRemove} className="ml-auto text-gray-500 hover:text-rose-300">remove leg</button>}
+      </div>
+      <div className={row}>
+        <label className={lbl}>Buy rule
           <select value={r.rule} onChange={(e) => set({ rule: e.target.value as SealedRule["rule"] })} className={inp}>
-            <option value="schedule">Schedule (after release)</option>
-            <option value="hype">Hype pick (each month)</option>
+            <option value="schedule">Schedule after release</option>
             <option value="dip">Buy the dip</option>
+            <option value="hype">Hype pick each month</option>
           </select>
         </label>
         <span className="flex flex-wrap items-center gap-1">
@@ -84,77 +216,121 @@ function RuleEditor({ r, onChange, onRemove, color }: { r: SealedRule; onChange:
           ))}
         </span>
       </div>
+      {r.rule !== "hype" && (
+        <div className={row}>
+          <label className={lbl}>Size
+            <select value={r.sizing ?? "units"} onChange={(e) => set({ sizing: e.target.value as "units" | "dollars" })} className={inp}>
+              <option value="units">same count of each</option><option value="dollars">same money on each</option>
+            </select>
+          </label>
+          {(r.sizing ?? "units") === "units"
+            ? <label className={lbl}><input value={r.units ?? 1} onChange={(e) => set({ units: num(e.target.value) })} className={`${inp} w-12`} /> per buy</label>
+            : <label className={lbl}>$<input value={(r.dollars_cents ?? 5000) / 100} onChange={(e) => set({ dollars_cents: Math.round((num(e.target.value) ?? 50) * 100) })} className={`${inp} w-16`} /> per buy</label>}
+          <label className={lbl} title="Every buy at this much under the month's market price (a store discount or fire sale)">
+            at <input value={Math.round((r.buy_discount ?? 0) * 100)} onChange={(e) => set({ buy_discount: (num(e.target.value) ?? 0) / 100 || undefined })} className={`${inp} w-10`} />% under market
+          </label>
+        </div>
+      )}
       {r.rule === "schedule" && (
-        <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5">
-          <label className="flex items-center gap-1">Buy <input value={r.units ?? 1} onChange={(e) => set({ units: num(e.target.value) })} className={`${inp} w-12`} /></label>
-          <label className="flex items-center gap-1">every
+        <div className={row}>
+          <label className={lbl}>every
             <select value={r.cadence ?? "month"} onChange={(e) => set({ cadence: e.target.value as "week" | "month" })} className={inp}>
               <option value="week">week</option><option value="month">month</option>
             </select>
           </label>
-          <label className="flex items-center gap-1">from month <input value={r.start_month ?? 0} onChange={(e) => set({ start_month: num(e.target.value) ?? 0 })} className={`${inp} w-12`} /></label>
-          <label className="flex items-center gap-1">to month <input value={r.end_month ?? ""} placeholder="–" onChange={(e) => set({ end_month: num(e.target.value) ?? null })} className={`${inp} w-12`} /></label>
-          <label className="flex items-center gap-1"><input type="checkbox" checked={!!r.until_oop} onChange={(e) => set({ until_oop: e.target.checked })} /> stop once out of print</label>
-          {r.until_oop && <label className="flex items-center gap-1" title="Out of print = the price this far above its low since buying started">
+          <label className={lbl}>from month <input value={r.start_month ?? 0} onChange={(e) => set({ start_month: num(e.target.value) ?? 0 })} className={`${inp} w-12`} /></label>
+          <label className={lbl}>to month <input value={r.end_month ?? ""} placeholder="–" onChange={(e) => set({ end_month: num(e.target.value) ?? null })} className={`${inp} w-12`} /></label>
+          <label className={lbl}><input type="checkbox" checked={!!r.until_oop} onChange={(e) => set({ until_oop: e.target.checked })} /> stop once out of print</label>
+          {r.until_oop && <label className={lbl} title="Out of print = the price this far above its low since buying started">
             at +<input value={Math.round((r.oop_runup ?? 0.3) * 100)} onChange={(e) => set({ oop_runup: (num(e.target.value) ?? 30) / 100 })} className={`${inp} w-10`} />% off the low</label>}
         </div>
       )}
+      {r.rule === "dip" && (
+        <div className={row}>
+          <label className={lbl}>when <input value={Math.round((r.dip_pct ?? 0.15) * 100)} onChange={(e) => set({ dip_pct: (num(e.target.value) ?? 15) / 100 })} className={`${inp} w-10`} />% under its 6-month high</label>
+          <label className={lbl} title="Only when it fell 15% more than every other set's same product: a reprint or fresh wave, not the whole market"><input type="checkbox" checked={!!r.dip_own} onChange={(e) => set({ dip_own: e.target.checked })} /> reprints only (its own drop)</label>
+          <label className={lbl}>at most every <input value={r.cooldown_months ?? 6} onChange={(e) => set({ cooldown_months: num(e.target.value) })} className={`${inp} w-10`} /> months</label>
+          <label className={lbl}>months <input value={r.start_month ?? 0} onChange={(e) => set({ start_month: num(e.target.value) ?? 0 })} className={`${inp} w-10`} />
+            to <input value={r.end_month ?? ""} placeholder="∞" onChange={(e) => set({ end_month: num(e.target.value) ?? null })} className={`${inp} w-10`} /> after release</label>
+        </div>
+      )}
       {r.rule === "hype" && (
-        <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5">
-          <label className="flex items-center gap-1">$<input value={(r.budget_cents ?? 6000) / 100} onChange={(e) => set({ budget_cents: Math.round((num(e.target.value) ?? 0) * 100) })} className={`${inp} w-16`} /> a month</label>
-          <label className="flex items-center gap-1">on the top <input value={r.pick_n ?? 1} onChange={(e) => set({ pick_n: num(e.target.value) })} className={`${inp} w-10`} /></label>
-          <label className="flex items-center gap-1">by
+        <div className={row}>
+          <label className={lbl}>$<input value={(r.budget_cents ?? 6000) / 100} onChange={(e) => set({ budget_cents: Math.round((num(e.target.value) ?? 0) * 100) })} className={`${inp} w-16`} /> a month</label>
+          <label className={lbl}>on the top <input value={r.pick_n ?? 1} onChange={(e) => set({ pick_n: num(e.target.value) })} className={`${inp} w-10`} /></label>
+          <label className={lbl}>by
             <select value={r.hype_by ?? "momentum"} onChange={(e) => set({ hype_by: e.target.value as SealedRule["hype_by"] })} className={inp}>
-              <option value="momentum">3-month momentum</option>
-              <option value="rising12">12-month rise</option>
-              <option value="premium">premium over MSRP</option>
-              <option value="newest">newest set</option>
+              <option value="momentum">3-month momentum</option><option value="rising12">12-month rise</option>
+              <option value="premium">premium over MSRP</option><option value="newest">newest set</option>
             </select>
           </label>
-          <label className="flex items-center gap-1">sets released in the last <input value={r.rotation_months ?? 24} onChange={(e) => set({ rotation_months: num(e.target.value) })} className={`${inp} w-12`} /> months</label>
+          <label className={lbl}>sets released in the last <input value={r.rotation_months ?? 24} onChange={(e) => set({ rotation_months: num(e.target.value) })} className={`${inp} w-12`} /> months</label>
         </div>
       )}
-      {r.rule === "dip" && (
-        <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5">
-          <label className="flex items-center gap-1">Buy <input value={r.units ?? 1} onChange={(e) => set({ units: num(e.target.value) })} className={`${inp} w-12`} /></label>
-          <label className="flex items-center gap-1">when <input value={Math.round((r.dip_pct ?? 0.15) * 100)} onChange={(e) => set({ dip_pct: (num(e.target.value) ?? 15) / 100 })} className={`${inp} w-10`} />% under its 6-month high</label>
-          <label className="flex items-center gap-1">at most every <input value={r.cooldown_months ?? 6} onChange={(e) => set({ cooldown_months: num(e.target.value) })} className={`${inp} w-10`} /> months</label>
-        </div>
-      )}
-      <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5">
-        <label className="flex items-center gap-1">Sell
+      <div className={row}>
+        <label className={lbl}>Sell
           <select value={r.exit ?? "hold"} onChange={(e) => set({ exit: e.target.value as SealedRule["exit"] })} className={inp}>
-            <option value="hold">each lot after N months</option>
-            <option value="all_at">everything at once</option>
-            <option value="target">at a price target</option>
-            <option value="winddown">wind down each product</option>
+            <option value="hold">each lot after N months</option><option value="all_at">everything at once</option>
+            <option value="target">at a price target</option><option value="winddown">wind down each product</option>
             <option value="mark">never (value today)</option>
           </select>
         </label>
-        {(r.exit ?? "hold") === "hold" && <label className="flex items-center gap-1"><input value={r.hold_months ?? 36} onChange={(e) => set({ hold_months: num(e.target.value) })} className={`${inp} w-12`} /> months</label>}
+        {(r.exit ?? "hold") === "hold" && <label className={lbl}><input value={r.hold_months ?? 36} onChange={(e) => set({ hold_months: num(e.target.value) })} className={`${inp} w-12`} /> months</label>}
         {r.exit === "all_at" && <>
-          <label className="flex items-center gap-1"><input value={r.all_at_months ?? 48} onChange={(e) => set({ all_at_months: num(e.target.value), sell_date: undefined })} className={`${inp} w-12`} /> months after the first buy</label>
-          <label className="flex items-center gap-1">or on <input value={r.sell_date ?? ""} placeholder="YYYY-MM" onChange={(e) => set({ sell_date: e.target.value || undefined })} className={`${inp} w-20`} /></label>
+          <label className={lbl}><input value={r.all_at_months ?? 48} onChange={(e) => set({ all_at_months: num(e.target.value), sell_date: undefined })} className={`${inp} w-12`} /> months after the first buy</label>
+          <label className={lbl}>or on <input value={r.sell_date ?? ""} placeholder="YYYY-MM" onChange={(e) => set({ sell_date: e.target.value || undefined })} className={`${inp} w-20`} /></label>
         </>}
         {r.exit === "target" && <>
-          <label className="flex items-center gap-1">at <input value={r.target_mult ?? 3} onChange={(e) => set({ target_mult: num(e.target.value) })} className={`${inp} w-12`} />×
+          <label className={lbl}>at <input value={r.target_mult ?? 3} onChange={(e) => set({ target_mult: num(e.target.value) })} className={`${inp} w-12`} />×
             <select value={r.target_basis ?? "cost"} onChange={(e) => set({ target_basis: e.target.value as "cost" | "msrp" })} className={inp}>
               <option value="cost">what I paid</option><option value="msrp">MSRP</option>
             </select>
           </label>
-          <label className="flex items-center gap-1" title="Sell then if the target never hits (blank: hold until it does)">else after <input value={r.max_hold_months ?? ""} placeholder="–" onChange={(e) => set({ max_hold_months: num(e.target.value) })} className={`${inp} w-12`} /> months</label>
+          <label className={lbl}>else after <input value={r.max_hold_months ?? ""} placeholder="–" onChange={(e) => set({ max_hold_months: num(e.target.value) })} className={`${inp} w-12`} /> months</label>
         </>}
         {r.exit === "winddown" && <>
-          <label className="flex items-center gap-1">from <input value={r.wind_start ?? 36} onChange={(e) => set({ wind_start: num(e.target.value) })} className={`${inp} w-12`} /> months after a product&apos;s first buy,</label>
-          <label className="flex items-center gap-1">sell <input value={r.wind_units ?? ""} placeholder="–" onChange={(e) => set({ wind_units: num(e.target.value) })} className={`${inp} w-12`} /> a month</label>
-          <label className="flex items-center gap-1">or all of it over <input value={r.wind_months ?? 24} onChange={(e) => set({ wind_months: num(e.target.value), wind_units: undefined })} className={`${inp} w-12`} /> months</label>
+          <label className={lbl}>from <input value={r.wind_start ?? 36} onChange={(e) => set({ wind_start: num(e.target.value) })} className={`${inp} w-12`} /> months after a product&apos;s first buy,</label>
+          <label className={lbl}>sell <input value={r.wind_units ?? ""} placeholder="–" onChange={(e) => set({ wind_units: num(e.target.value) })} className={`${inp} w-12`} /> a month</label>
+          <label className={lbl}>or all over <input value={r.wind_months ?? 24} onChange={(e) => set({ wind_months: num(e.target.value), wind_units: undefined })} className={`${inp} w-12`} /> months</label>
         </>}
-        <label className="flex items-center gap-1">sets released <input value={r.released_from ?? ""} placeholder="YYYY-MM" onChange={(e) => set({ released_from: e.target.value || undefined })} className={`${inp} w-20`} />
+        <label className={lbl}>sets released <input value={r.released_from ?? ""} placeholder="YYYY-MM" onChange={(e) => set({ released_from: e.target.value || undefined })} className={`${inp} w-20`} />
           to <input value={r.released_to ?? ""} placeholder="YYYY-MM" onChange={(e) => set({ released_to: e.target.value || undefined })} className={`${inp} w-20`} /></label>
       </div>
     </div>
   );
 }
+
+function StrategyEditor({ st, color, onChange, onRemove }: { st: Strategy; color: string; onChange: (s: Strategy) => void; onRemove: () => void }) {
+  const [open, setOpen] = useState(false);
+  return (
+    <div className="rounded-lg border border-gray-800 bg-gray-900 p-3 space-y-2">
+      <div className="flex flex-wrap items-center gap-2 text-xs">
+        <span style={{ color }} className="text-base">●</span>
+        <input value={st.name} onChange={(e) => onChange({ ...st, name: e.target.value })} placeholder="Strategy name" className={`${inp} flex-1 min-w-[12rem] text-sm`} />
+        <span className="text-gray-500">{st.legs.length === 1 ? "1 rule" : `${st.legs.length} legs`}</span>
+        <button onClick={() => setOpen(!open)} className="text-indigo-300 hover:underline">{open ? "done" : "edit"}</button>
+        <button onClick={onRemove} className="text-gray-500 hover:text-rose-300">remove</button>
+      </div>
+      {!open ? (
+        <ul className="space-y-0.5 text-[11px] text-gray-400 pl-5 list-disc">
+          {st.legs.map((l, i) => <li key={i}>{l.name ? <span className="text-gray-300">{l.name}: </span> : null}{describe(l)}</li>)}
+        </ul>
+      ) : (
+        <div className="space-y-2">
+          {st.legs.map((l, i) => (
+            <LegEditor key={i} r={l} canRemove={st.legs.length > 1}
+              onChange={(n) => onChange({ ...st, legs: st.legs.map((x, j) => (j === i ? n : x)) })}
+              onRemove={() => onChange({ ...st, legs: st.legs.filter((_, j) => j !== i) })} />
+          ))}
+          <button onClick={() => onChange({ ...st, legs: [...st.legs, leg({ rule: "schedule", kinds: st.legs[0]?.kinds ?? ["etb"] })] })}
+            className="text-xs text-indigo-300 hover:underline">+ add a leg (run another rule in the same book)</button>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ---- results ----------------------------------------------------------------------------
 
 function Chart({ results, mode }: { results: BacktestResult[]; mode: "value" | "multiple" }) {
   const series = results.map((r) => r.timeline.map((p) => ({
@@ -166,385 +342,409 @@ function Chart({ results, mode }: { results: BacktestResult[]; mode: "value" | "
   const vals = series.flatMap((s) => s.map((p) => p.v));
   const base = mode === "value" ? 0 : 1;
   const y0 = Math.min(base, ...vals), y1 = Math.max(base, ...vals);
-  const W = 760, H = 220, L = 60, B = 18;
-  const x = (m: string) => L + (months.indexOf(m) / (months.length - 1)) * (W - L - 8);
-  const y = (v: number) => 6 + (1 - (v - y0) / Math.max(1e-9, y1 - y0)) * (H - B - 10);
+  const W = 1200, H = 260, L = 64, B = 20;
+  const x = (m: string) => L + (months.indexOf(m) / (months.length - 1)) * (W - L - 10);
+  const y = (v: number) => 8 + (1 - (v - y0) / Math.max(1e-9, y1 - y0)) * (H - B - 12);
   const fmt = (v: number) => (mode === "value" ? usd(v) : `${v.toFixed(2)}×`);
+  const years = months.filter((m) => m.endsWith("-01"));
   return (
-    <div className="overflow-x-auto">
-      <svg viewBox={`0 0 ${W} ${H}`} className="w-full min-w-[520px]">
-        <line x1={L} x2={W - 8} y1={y(base)} y2={y(base)} stroke="#4b5563" strokeDasharray="3 3" />
-        <text x={L - 4} y={y(y1) + 4} textAnchor="end" className="fill-gray-500 text-[10px]">{fmt(y1)}</text>
-        <text x={L - 4} y={y(base) + 4} textAnchor="end" className="fill-gray-500 text-[10px]">{fmt(base)}</text>
-        {y0 < base && <text x={L - 4} y={y(y0) + 4} textAnchor="end" className="fill-gray-500 text-[10px]">{fmt(y0)}</text>}
-        <text x={L} y={H - 4} className="fill-gray-500 text-[10px]">{months[0]}</text>
-        <text x={W - 8} y={H - 4} textAnchor="end" className="fill-gray-500 text-[10px]">{months[months.length - 1]}</text>
-        {series.map((s, i) => (
-          <polyline key={i} fill="none" stroke={LINE_COLORS[i % LINE_COLORS.length]} strokeWidth={1.6}
-            points={s.map((p) => `${x(p.m)},${y(p.v)}`).join(" ")} />
-        ))}
-      </svg>
-    </div>
+    <svg viewBox={`0 0 ${W} ${H}`} className="w-full h-auto">
+      {years.map((m) => <g key={m}><line x1={x(m)} x2={x(m)} y1={8} y2={H - B} stroke="#1f2937" /><text x={x(m)} y={H - 5} textAnchor="middle" className="fill-gray-500 text-[11px]">{m.slice(0, 4)}</text></g>)}
+      <line x1={L} x2={W - 10} y1={y(base)} y2={y(base)} stroke="#4b5563" strokeDasharray="3 3" />
+      <text x={L - 6} y={y(y1) + 4} textAnchor="end" className="fill-gray-500 text-[11px]">{fmt(y1)}</text>
+      <text x={L - 6} y={y(base) + 4} textAnchor="end" className="fill-gray-500 text-[11px]">{fmt(base)}</text>
+      {y0 < base && <text x={L - 6} y={y(y0) + 4} textAnchor="end" className="fill-gray-500 text-[11px]">{fmt(y0)}</text>}
+      {series.map((s, i) => (
+        <polyline key={i} fill="none" stroke={LINE_COLORS[i % LINE_COLORS.length]} strokeWidth={2} points={s.map((p) => `${x(p.m)},${y(p.v)}`).join(" ")} />
+      ))}
+    </svg>
   );
 }
-
-type Tab = "sets" | "buys" | "sales" | "held" | "exits";
 
 function groupBy<T>(xs: T[], key: (x: T) => string) {
   const m = new Map<string, T[]>();
   for (const x of xs) { const k = key(x); m.set(k, [...(m.get(k) ?? []), x]); }
   return [...m.entries()];
 }
-const u = (n: number) => (Math.round(n * 10) / 10).toString();
 
-function Detail({ r, color, gross, onUseExit }: { r: BacktestResult; color: string; gross: boolean; onUseExit: (exit: Partial<SealedRule>) => void }) {
+type Tab = "buys" | "sales" | "held" | "sets" | "exits" | "discount" | "sizing";
+
+function Detail({ r, color, gross, onUseExit, onAdd }: {
+  r: BacktestResult; color: string; gross: boolean; onUseExit: (exit: Partial<SealedRule>) => void; onAdd: (st: Strategy) => void;
+}) {
   const [tab, setTab] = useState<Tab | null>(null);
   const [lots, setLots] = useState<BacktestLot[] | null>(null);
   const [exits, setExits] = useState<BacktestExitRow[] | null>(null);
+  const [disc, setDisc] = useState<BacktestResult[] | null>(null);
+  const [sizing, setSizing] = useState<BacktestResult[] | null>(null);
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState("");
-  useEffect(() => { setLots(null); setExits(null); }, [r]);
+  useEffect(() => { setLots(null); setExits(null); setDisc(null); setSizing(null); }, [r]);
+  const portfolio = r.strategy.rule === "portfolio";
   const open = async (t: Tab) => {
     if (tab === t) { setTab(null); return; }
     setTab(t); setErr("");
     try {
-      if ((t === "buys" || t === "sales" || t === "held") && !lots) {
-        setBusy(true);
-        setLots((await runSealedBacktest([r.strategy], gross, true)).results[0]?.lots ?? []);
+      setBusy(true);
+      if ((t === "buys" || t === "sales" || t === "held") && !lots) setLots((await runSealedBacktest([r.strategy], gross, true)).results[0]?.lots ?? []);
+      if (t === "exits" && !exits) setExits((await sweepSealedExits(r.strategy, gross)).rows);
+      if (t === "discount" && !disc) {
+        const ds = [0, 0.05, 0.1, 0.15, 0.2, 0.25, 0.3];
+        setDisc((await runSealedBacktest(ds.map((d) => ({ ...mapLegs(r.strategy, (l) => ({ ...l, buy_discount: d || undefined })), name: `${Math.round(d * 100)}% under market` })), gross)).results);
       }
-      if (t === "exits" && !exits) {
-        setBusy(true);
-        setExits((await sweepSealedExits(r.strategy, gross)).rows);
+      if (t === "sizing" && !sizing) {
+        const avg = Math.max(100, r.avg_cost_cents);
+        setSizing((await runSealedBacktest([
+          { ...mapLegs(r.strategy, (l) => ({ ...l, sizing: "units" })), name: "Same count of each (1 of every set)" },
+          { ...mapLegs(r.strategy, (l) => ({ ...l, sizing: "dollars", dollars_cents: avg })), name: `Same money on each (${usd(avg)} a buy)` },
+        ], gross)).results);
       }
     } catch (e) { setErr(String(e)); } finally { setBusy(false); }
   };
   const tabBtn = (t: Tab, label: string) => (
-    <button onClick={() => open(t)} className={`rounded px-2 py-0.5 ${tab === t ? "bg-gray-700 text-white" : "text-indigo-300 hover:underline"}`}>{label}</button>
+    <button key={t} onClick={() => open(t)} className={`rounded px-2.5 py-1 ${tab === t ? "bg-gray-700 text-white" : "text-gray-300 hover:bg-gray-800"}`}>{label}</button>
   );
   const sales = (lots ?? []).flatMap((l) => (l.sales ?? []).map((x) => ({ ...x, l })));
   const held = groupBy((lots ?? []).filter((l) => l.open_units > 0), (l) => `${l.set_name} · ${SEALED_KIND_LABEL[l.kind]}`);
+  const head = (cols: [string, boolean?][]) => (
+    <thead className="text-gray-500 text-left"><tr>{cols.map(([c, right], i) => <th key={i} className={right ? thr : th}>{c}</th>)}</tr></thead>
+  );
   return (
-    <div className="rounded-lg border border-gray-800 bg-gray-900 p-3 space-y-2 text-xs">
-      <div className="flex flex-wrap items-baseline gap-2">
-        <span style={{ color }}>●</span>
-        <span className="text-sm text-gray-100">{r.strategy.name}</span>
-        <span className="text-gray-500">{r.first_buy} → {r.last_buy} · {r.buys} buys · {r.sets} sets · avg cost {usd(r.avg_cost_cents)} · {u(r.sold_units)} sold, {u(r.open_units)} still held · avg hold {r.avg_hold_months}mo</span>
-      </div>
-      <div className="flex flex-wrap items-center gap-1">
-        {tabBtn("buys", "What it bought")}{tabBtn("sales", "What it sold")}{tabBtn("held", "Still held")}{tabBtn("sets", `By set (${r.by_set.length})`)}
-        {tabBtn("exits", "Best way to sell these buys")}
-        {busy && <span className="text-gray-500 ml-2">loading…</span>}
-      </div>
-      {err && <div className="text-rose-400 break-all">{err}</div>}
-      {r.notes?.map((n) => <div key={n} className="text-[11px] text-amber-300/80">{n}</div>)}
-      {tab === "sets" && (
-        <div className="overflow-x-auto">
-          <table className="w-full text-xs">
-            <thead className="text-gray-500 text-left"><tr>
-              <th className="py-1 pr-3 font-medium">Set</th><th className="py-1 pr-3 font-medium">Released</th>
-              <th className="py-1 pr-3 font-medium text-right">Units</th><th className="py-1 pr-3 font-medium text-right">In</th>
-              <th className="py-1 pr-3 font-medium text-right">Out (net)</th><th className="py-1 font-medium text-right">Multiple</th>
-            </tr></thead>
-            <tbody>
-              {r.by_set.map((s) => (
+    <Card title={<><span style={{ color }}>●</span> {r.strategy.name}</>}
+      right={<span className="text-gray-500">{r.first_buy} → {r.last_buy} · {r.buys} buys · {r.sets} sets · avg cost {usd(r.avg_cost_cents)} · avg hold {r.avg_hold_months}mo</span>}>
+      <div className="space-y-3 text-xs">
+        <div className="flex flex-wrap items-center gap-1">
+          <span className="text-gray-500 mr-1">Deep dive</span>
+          {tabBtn("buys", "What it bought")}{tabBtn("sales", "What it sold")}{tabBtn("held", "Still held")}{tabBtn("sets", "By set")}
+          <span className="text-gray-500 ml-4 mr-1">Experiments</span>
+          {tabBtn("exits", "Best way to sell")}{tabBtn("discount", "Buying at a discount")}{tabBtn("sizing", "Same count vs same money")}
+          {busy && <span className="text-gray-500 ml-2">working…</span>}
+        </div>
+        {err && <div className="text-rose-400 break-all">{err}</div>}
+        {r.notes && r.notes.length > 0 && <ul className="text-[11px] text-amber-300/80 list-disc pl-5">{r.notes.map((n) => <li key={n}>{n}</li>)}</ul>}
+
+        {tab === "sets" && (
+          <More rows={r.by_set} render={(rows) => (
+            <table className="w-full">{head([["Set"], ["Released"], ["Units", true], ["In", true], ["Out (net)", true], ["Multiple", true]])}
+              <tbody>{rows.map((s) => (
                 <tr key={s.set} className="border-t border-gray-800">
-                  <td className="py-0.5 pr-3 text-gray-200">{s.set_name}</td>
-                  <td className="py-0.5 pr-3 text-gray-500">{s.release?.slice(0, 7)}</td>
-                  <td className="py-0.5 pr-3 text-right tabular-nums">{u(s.units)}</td>
-                  <td className="py-0.5 pr-3 text-right tabular-nums">{usd(s.invested_cents)}</td>
-                  <td className="py-0.5 pr-3 text-right tabular-nums">{usd(s.value_cents)}</td>
-                  <td className={`py-0.5 text-right tabular-nums ${s.multiple >= 1 ? "text-emerald-300" : "text-rose-300"}`}>{s.multiple.toFixed(2)}×</td>
+                  <td className={`${td} text-gray-200`}>{s.set_name}</td><td className={`${td} text-gray-500`}>{s.release?.slice(0, 7)}</td>
+                  <td className={tdr}>{u(s.units)}</td><td className={tdr}>{usd(s.invested_cents)}</td><td className={tdr}>{usd(s.value_cents)}</td>
+                  <td className={`${tdr} ${s.multiple >= 1 ? "text-emerald-300" : "text-rose-300"}`}>{s.multiple.toFixed(2)}×</td>
                 </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      )}
-      {tab === "buys" && lots && (
-        <div className="overflow-x-auto max-h-[60vh] overflow-y-auto">
-          <table className="w-full text-xs">
-            <thead className="text-gray-500 text-left sticky top-0 bg-gray-900"><tr>
-              <th className="py-1 pr-3 font-medium">Month</th><th className="py-1 pr-3 font-medium">Bought</th>
-              <th className="py-1 pr-3 font-medium text-right">Units</th><th className="py-1 pr-3 font-medium text-right">Price</th>
-              <th className="py-1 pr-3 font-medium text-right">Spent</th><th className="py-1 pr-3 font-medium">Why</th>
-              <th className="py-1 font-medium">What became of it</th>
-            </tr></thead>
-            <tbody>
-              {groupBy(lots, (l) => l.month).map(([m, ls]) => ls.map((l, i) => (
+              ))}</tbody>
+            </table>
+          )} />
+        )}
+
+        {tab === "buys" && lots && (
+          <More rows={groupBy(lots, (l) => l.month)} initial={12} render={(months) => (
+            <table className="w-full">{head([["Month"], ["Bought"], ...(portfolio ? [["Leg"] as [string]] : []), ["Units", true], ["Price", true], ["Spent", true], ["Why"], ["What became of it"]])}
+              <tbody>{months.map(([m, ls]) => ls.map((l, i) => {
+                const ss = l.sales ?? [];
+                return (
+                  <tr key={`${m}-${i}`} className={i === 0 ? "border-t border-gray-800" : ""}>
+                    <td className={`${td} text-gray-400 whitespace-nowrap`}>{i === 0 ? m : ""}</td>
+                    <td className={`${td} text-gray-200 whitespace-nowrap`}>{l.set_name} · {SEALED_KIND_LABEL[l.kind]}</td>
+                    {portfolio && <td className={`${td} text-gray-400`}>{l.leg}</td>}
+                    <td className={tdr}>{u(l.units)}</td><td className={tdr}>{usd(l.cost_cents)}</td><td className={tdr}>{usd(Math.round(l.cost_cents * l.units))}</td>
+                    <td className={`${td} text-gray-500`}>{l.why ?? ""}</td>
+                    <td className={`${td} text-gray-400`}>
+                      {ss.length === 1 && l.open_units === 0 ? `sold ${ss[0].month} at ${usd(ss[0].price_cents)} (${(ss[0].net_cents / l.cost_cents).toFixed(2)}× net)`
+                        : <>{ss.length > 0 && `${ss.length} sales, ${u(ss.reduce((a, x) => a + x.units, 0))} units`}
+                          {l.open_units > 0 && <span className="text-amber-300/80">{ss.length ? " · " : ""}{u(l.open_units)} held, {usd(l.open_net_cents)} net each today</span>}</>}
+                    </td>
+                  </tr>
+                );
+              }))}</tbody>
+            </table>
+          )} />
+        )}
+
+        {tab === "sales" && lots && (sales.length === 0 ? <div className="text-gray-500">Nothing sold yet under this sell rule: everything is still held.</div> : (
+          <More rows={groupBy([...sales].sort((a, b) => a.month.localeCompare(b.month)), (x) => x.month)} initial={12} render={(months) => (
+            <table className="w-full">{head([["Month"], ["Sold"], ["Units", true], ["Price", true], ["Kept (net)", true], ["vs cost", true], ["Bought"], ["Why"]])}
+              <tbody>{months.map(([m, xs]) => xs.map((x, i) => (
                 <tr key={`${m}-${i}`} className={i === 0 ? "border-t border-gray-800" : ""}>
-                  <td className="py-0.5 pr-3 text-gray-400 whitespace-nowrap">{i === 0 ? m : ""}</td>
-                  <td className="py-0.5 pr-3 text-gray-200 whitespace-nowrap">{l.set_name} · {SEALED_KIND_LABEL[l.kind]}</td>
-                  <td className="py-0.5 pr-3 text-right tabular-nums">{u(l.units)}</td>
-                  <td className="py-0.5 pr-3 text-right tabular-nums">{usd(l.cost_cents)}</td>
-                  <td className="py-0.5 pr-3 text-right tabular-nums">{usd(Math.round(l.cost_cents * l.units))}</td>
-                  <td className="py-0.5 pr-3 text-gray-500">{l.why ?? ""}</td>
-                  <td className="py-0.5 text-gray-400 whitespace-nowrap">
-                    {(l.sales ?? []).length === 1 && l.open_units === 0 ? `sold ${l.sales![0].month} at ${usd(l.sales![0].price_cents)} (${(l.sales![0].net_cents / l.cost_cents).toFixed(2)}× net)`
-                      : <>{(l.sales ?? []).length > 0 && `${(l.sales ?? []).length} sales, ${u((l.sales ?? []).reduce((a, x) => a + x.units, 0))} units`}
-                        {l.open_units > 0 && <span className="text-amber-300/80">{(l.sales ?? []).length ? " · " : ""}{u(l.open_units)} held, worth {usd(l.open_net_cents)} net each</span>}</>}
-                  </td>
+                  <td className={`${td} text-gray-400 whitespace-nowrap`}>{i === 0 ? m : ""}</td>
+                  <td className={`${td} text-gray-200 whitespace-nowrap`}>{x.l.set_name} · {SEALED_KIND_LABEL[x.l.kind]}</td>
+                  <td className={tdr}>{u(x.units)}</td><td className={tdr}>{usd(x.price_cents)}</td><td className={tdr}>{usd(Math.round(x.net_cents * x.units))}</td>
+                  <td className={`${tdr} ${x.net_cents >= x.l.cost_cents ? "text-emerald-300" : "text-rose-300"}`}>{(x.net_cents / x.l.cost_cents).toFixed(2)}×</td>
+                  <td className={`${td} text-gray-500 whitespace-nowrap`}>{x.l.month} at {usd(x.l.cost_cents)}</td>
+                  <td className={`${td} text-gray-500`}>{x.why}</td>
                 </tr>
-              )))}
-            </tbody>
-          </table>
-        </div>
-      )}
-      {tab === "sales" && lots && (sales.length === 0 ? <div className="text-gray-500">Nothing sold yet under this sell rule: everything is still held.</div> : (
-        <div className="overflow-x-auto max-h-[60vh] overflow-y-auto">
-          <table className="w-full text-xs">
-            <thead className="text-gray-500 text-left sticky top-0 bg-gray-900"><tr>
-              <th className="py-1 pr-3 font-medium">Month</th><th className="py-1 pr-3 font-medium">Sold</th>
-              <th className="py-1 pr-3 font-medium text-right">Units</th><th className="py-1 pr-3 font-medium text-right">Price</th>
-              <th className="py-1 pr-3 font-medium text-right">Kept (net)</th><th className="py-1 pr-3 font-medium text-right">vs cost</th>
-              <th className="py-1 pr-3 font-medium">Bought</th><th className="py-1 font-medium">Why</th>
-            </tr></thead>
-            <tbody>
-              {groupBy([...sales].sort((a, b) => a.month.localeCompare(b.month)), (x) => x.month).map(([m, xs]) => xs.map((x, i) => (
-                <tr key={`${m}-${i}`} className={i === 0 ? "border-t border-gray-800" : ""}>
-                  <td className="py-0.5 pr-3 text-gray-400 whitespace-nowrap">{i === 0 ? m : ""}</td>
-                  <td className="py-0.5 pr-3 text-gray-200 whitespace-nowrap">{x.l.set_name} · {SEALED_KIND_LABEL[x.l.kind]}</td>
-                  <td className="py-0.5 pr-3 text-right tabular-nums">{u(x.units)}</td>
-                  <td className="py-0.5 pr-3 text-right tabular-nums">{usd(x.price_cents)}</td>
-                  <td className="py-0.5 pr-3 text-right tabular-nums">{usd(Math.round(x.net_cents * x.units))}</td>
-                  <td className={`py-0.5 pr-3 text-right tabular-nums ${x.net_cents >= x.l.cost_cents ? "text-emerald-300" : "text-rose-300"}`}>{(x.net_cents / x.l.cost_cents).toFixed(2)}×</td>
-                  <td className="py-0.5 pr-3 text-gray-500 whitespace-nowrap">{x.l.month} at {usd(x.l.cost_cents)}</td>
-                  <td className="py-0.5 text-gray-500">{x.why}</td>
-                </tr>
-              )))}
-            </tbody>
-          </table>
-        </div>
-      ))}
-      {tab === "held" && lots && (held.length === 0 ? <div className="text-gray-500">Everything sold.</div> : (
-        <table className="w-full text-xs">
-          <thead className="text-gray-500 text-left"><tr>
-            <th className="py-1 pr-3 font-medium">Product</th><th className="py-1 pr-3 font-medium text-right">Units</th>
-            <th className="py-1 pr-3 font-medium text-right">Cost</th><th className="py-1 pr-3 font-medium text-right">Worth today (net)</th>
-            <th className="py-1 font-medium text-right">Multiple</th>
-          </tr></thead>
-          <tbody>
-            {held.map(([k, ls]) => {
-              const units = ls.reduce((a, l) => a + l.open_units, 0);
-              const cost = ls.reduce((a, l) => a + l.cost_cents * l.open_units, 0);
-              const worth = ls.reduce((a, l) => a + l.open_net_cents * l.open_units, 0);
-              return (
-                <tr key={k} className="border-t border-gray-800">
-                  <td className="py-0.5 pr-3 text-gray-200">{k}</td>
-                  <td className="py-0.5 pr-3 text-right tabular-nums">{u(units)}</td>
-                  <td className="py-0.5 pr-3 text-right tabular-nums">{usd(Math.round(cost))}</td>
-                  <td className="py-0.5 pr-3 text-right tabular-nums">{usd(Math.round(worth))}</td>
-                  <td className={`py-0.5 text-right tabular-nums ${worth >= cost ? "text-emerald-300" : "text-rose-300"}`}>{(worth / Math.max(1, cost)).toFixed(2)}×</td>
-                </tr>
-              );
-            })}
-          </tbody>
-        </table>
-      ))}
-      {tab === "exits" && exits && (
-        <div className="overflow-x-auto max-h-[60vh] overflow-y-auto">
-          <table className="w-full text-xs">
-            <thead className="text-gray-500 text-left sticky top-0 bg-gray-900"><tr>
-              <th className="py-1 pr-3 font-medium">Sell rule (same buys)</th><th className="py-1 pr-3 font-medium text-right">IRR /yr</th>
-              <th className="py-1 pr-3 font-medium text-right">Multiple</th><th className="py-1 pr-3 font-medium text-right">Profit</th>
-              <th className="py-1 pr-3 font-medium text-right">vs S&amp;P</th><th className="py-1 pr-3 font-medium text-right">Avg hold</th>
-              <th className="py-1 pr-3 font-medium text-right" title="Units sold under the rule / still held at the end of the data (valued at today's price)">Sold / held</th><th />
-            </tr></thead>
-            <tbody>
-              {exits.map((x, i) => (
+              )))}</tbody>
+            </table>
+          )} />
+        ))}
+
+        {tab === "held" && lots && (held.length === 0 ? <div className="text-gray-500">Everything sold.</div> : (
+          <More rows={held} render={(rows) => (
+            <table className="w-full">{head([["Product"], ["Units", true], ["Cost", true], ["Worth today (net)", true], ["Multiple", true]])}
+              <tbody>{rows.map(([k, ls]) => {
+                const units = ls.reduce((a, l) => a + l.open_units, 0);
+                const cost = ls.reduce((a, l) => a + l.cost_cents * l.open_units, 0);
+                const worth = ls.reduce((a, l) => a + l.open_net_cents * l.open_units, 0);
+                return (
+                  <tr key={k} className="border-t border-gray-800">
+                    <td className={`${td} text-gray-200`}>{k}</td><td className={tdr}>{u(units)}</td><td className={tdr}>{usd(Math.round(cost))}</td>
+                    <td className={tdr}>{usd(Math.round(worth))}</td>
+                    <td className={`${tdr} ${worth >= cost ? "text-emerald-300" : "text-rose-300"}`}>{(worth / Math.max(1, cost)).toFixed(2)}×</td>
+                  </tr>
+                );
+              })}</tbody>
+            </table>
+          )} />
+        ))}
+
+        {tab === "exits" && exits && (
+          <>
+            <p className="text-gray-400">The same buys under each sell rule, best yearly return first.{portfolio && " (A portfolio's legs all get the same sell rule here.)"}</p>
+            <More rows={exits} render={(rows) => (
+              <table className="w-full">{head([["Sell rule"], ["IRR /yr", true], ["Multiple", true], ["Profit", true], ["vs S&P", true], ["Avg hold", true], ["Sold / held", true], [""]])}
+                <tbody>{rows.map((x, i) => (
+                  <tr key={i} className="border-t border-gray-800">
+                    <td className={`${td} text-gray-200`}>{x.exits.replace(/^Leg \d+ \([^)]*\): /, "")}</td>
+                    <td className={`${tdr} font-semibold ${irrTone(x.irr)}`}>{pct(x.irr, 1)}</td>
+                    <td className={tdr}>{x.multiple.toFixed(2)}×</td><td className={tdr}>{usd(x.profit_cents)}</td>
+                    <td className={`${tdr} ${x.vs_sp_cents >= 0 ? "text-emerald-300" : "text-rose-300"}`}>{usd(x.vs_sp_cents)}</td>
+                    <td className={tdr}>{x.avg_hold_months}mo</td>
+                    <td className={`${tdr} ${x.open_units > x.sold_units ? "text-amber-300" : "text-gray-400"}`}>{u(x.sold_units)} / {u(x.open_units)}</td>
+                    <td className={td}>
+                      {!portfolio && <button onClick={() => onUseExit({
+                        exit: x.strategy.exit, hold_months: x.strategy.hold_months, all_at_months: x.strategy.all_at_months, sell_date: x.strategy.sell_date,
+                        target_mult: x.strategy.target_mult, target_basis: x.strategy.target_basis, max_hold_months: x.strategy.max_hold_months || undefined,
+                        wind_start: x.strategy.wind_start, wind_months: x.strategy.wind_months, wind_units: x.strategy.wind_units || undefined,
+                      })} className="text-indigo-300 hover:underline whitespace-nowrap">use this</button>}
+                    </td>
+                  </tr>
+                ))}</tbody>
+              </table>
+            )} />
+          </>
+        )}
+
+        {tab === "discount" && disc && (
+          <>
+            <p className="text-gray-400">
+              The same strategy if every buy were this much under the month&apos;s market price, e.g. a store fire-selling. The 0% row is the strategy as it stands;
+              the first discount that clears your bar is the price to wait for.
+            </p>
+            <table className="w-full">{head([["Bought at"], ["IRR /yr", true], ["Multiple", true], ["Put in", true], ["Profit", true], ["vs S&P", true], ["Win share", true]])}
+              <tbody>{disc.map((x, i) => (
                 <tr key={i} className="border-t border-gray-800">
-                  <td className="py-0.5 pr-3 text-gray-200">{x.exits}</td>
-                  <td className="py-0.5 pr-3 text-right tabular-nums font-semibold text-emerald-300">{pct(x.irr, 1)}</td>
-                  <td className="py-0.5 pr-3 text-right tabular-nums">{x.multiple.toFixed(2)}×</td>
-                  <td className="py-0.5 pr-3 text-right tabular-nums">{usd(x.profit_cents)}</td>
-                  <td className={`py-0.5 pr-3 text-right tabular-nums ${x.vs_sp_cents >= 0 ? "text-emerald-300" : "text-rose-300"}`}>{usd(x.vs_sp_cents)}</td>
-                  <td className="py-0.5 pr-3 text-right tabular-nums">{x.avg_hold_months}mo</td>
-                  <td className={`py-0.5 pr-3 text-right tabular-nums ${x.open_units > x.sold_units ? "text-amber-300" : "text-gray-400"}`}>{u(x.sold_units)} / {u(x.open_units)}</td>
-                  <td className="py-0.5 whitespace-nowrap">
-                    <button onClick={() => onUseExit({
-                      exit: x.strategy.exit, hold_months: x.strategy.hold_months, all_at_months: x.strategy.all_at_months, sell_date: x.strategy.sell_date,
-                      target_mult: x.strategy.target_mult, target_basis: x.strategy.target_basis, max_hold_months: x.strategy.max_hold_months || undefined,
-                      wind_start: x.strategy.wind_start, wind_months: x.strategy.wind_months, wind_units: x.strategy.wind_units || undefined,
-                    })} className="text-indigo-300 hover:underline">use this</button>
-                  </td>
+                  <td className={`${td} text-gray-200`}>{x.strategy.name}</td>
+                  <td className={`${tdr} font-semibold ${irrTone(x.irr)}`}>{pct(x.irr, 1)}</td>
+                  <td className={tdr}>{x.multiple.toFixed(2)}×</td><td className={tdr}>{usd(x.invested_cents)}</td><td className={tdr}>{usd(x.profit_cents)}</td>
+                  <td className={`${tdr} ${x.value_cents >= x.benchmark_cents ? "text-emerald-300" : "text-rose-300"}`}>{usd(x.value_cents - x.benchmark_cents)}</td>
+                  <td className={tdr}>{Math.round(x.win_share * 100)}%</td>
                 </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      )}
-    </div>
+              ))}</tbody>
+            </table>
+          </>
+        )}
+
+        {tab === "sizing" && sizing && (
+          <>
+            <p className="text-gray-400">
+              One of every set the rule buys, against the same dollars on each buy (more of the cheap sets, less of the dear ones; the dollar amount is this
+              strategy&apos;s average cost so the spend is comparable). Compare the yearly return and multiple, not the dollar totals.
+            </p>
+            <table className="w-full">{head([["Sizing"], ["IRR /yr", true], ["Multiple", true], ["Finished sales", true], ["Put in", true], ["Profit", true], ["Win share", true], ["Worst month", true]])}
+              <tbody>{sizing.map((x, i) => (
+                <tr key={i} className="border-t border-gray-800">
+                  <td className={`${td} text-gray-200`}>{x.strategy.name}</td>
+                  <td className={`${tdr} font-semibold ${irrTone(x.irr)}`}>{pct(x.irr, 1)}</td>
+                  <td className={tdr}>{x.multiple.toFixed(2)}×</td>
+                  <td className={tdr}>{x.closed_multiple != null ? `${x.closed_multiple.toFixed(2)}×` : "–"}</td>
+                  <td className={tdr}>{usd(x.invested_cents)}</td><td className={tdr}>{usd(x.profit_cents)}</td>
+                  <td className={tdr}>{Math.round(x.win_share * 100)}%</td><td className={`${tdr} text-rose-300`}>{pct(x.worst_drawdown)}</td>
+                </tr>
+              ))}</tbody>
+            </table>
+            {r.strategy.rule === "hype" && <p className="text-amber-300/80">A hype pick spends a fixed budget already, so sizing doesn&apos;t change it.</p>}
+            <button onClick={() => sizing[1] && onAdd({ name: `${r.strategy.name} (same money)`, legs: (r.strategy.rule === "portfolio" ? r.strategy.legs ?? [] : [r.strategy]).map((l) => ({ ...l, sizing: "dollars", dollars_cents: Math.max(100, r.avg_cost_cents) })) })}
+              className="text-indigo-300 hover:underline">add the same-money version to my strategies</button>
+          </>
+        )}
+      </div>
+    </Card>
   );
 }
 
+// ---- sweep ----------------------------------------------------------------------------------
+
+function Sweep({ gross, onAdd }: { gross: boolean; onAdd: (st: Strategy) => void }) {
+  const [base, setBase] = useState<SealedRule>({ rule: "schedule", kinds: ["etb"], units: 1, budget_cents: 6000 });
+  const [rows, setRows] = useState<BacktestSweepRow[] | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState("");
+  const run = async () => {
+    setBusy(true); setErr("");
+    try { setRows((await sweepSealedBacktest(base, [24, 36, 48], gross)).rows); } catch (e) { setErr(String(e)); } finally { setBusy(false); }
+  };
+  return (
+    <Card title="Every variant, ranked" right={<>
+      {MAIN_KINDS.map((k) => (
+        <label key={k} className={`px-1.5 py-0.5 rounded border cursor-pointer ${base.kinds.includes(k) ? "border-indigo-600 text-indigo-200" : "border-gray-800 text-gray-500"}`}>
+          <input type="checkbox" className="hidden" checked={base.kinds.includes(k)}
+            onChange={(e) => setBase({ ...base, kinds: e.target.checked ? [...base.kinds, k] : base.kinds.filter((x) => x !== k) })} />
+          {SEALED_KIND_LABEL[k]}
+        </label>
+      ))}
+      <label className="flex items-center gap-1 text-gray-400">sets released from <input value={base.released_from ?? ""} placeholder="YYYY-MM"
+        onChange={(e) => setBase({ ...base, released_from: e.target.value || undefined })} className={`${inp} w-20`} /></label>
+      <button onClick={run} disabled={busy || base.kinds.length === 0} className="rounded bg-indigo-600 px-3 py-1 text-white hover:bg-indigo-500 disabled:opacity-50">{busy ? "Running…" : "Run all variants"}</button>
+    </>}>
+      {err && <div className="text-sm text-rose-400 break-all">{err}</div>}
+      {!rows ? <p className="text-xs text-gray-500">About 250 variants on the chosen product types: monthly schedules (start month × how long × hold 24 / 36 / 48), hype picks, and dips (any and reprints only), best yearly return first.</p> : (
+        <More rows={rows} render={(rs) => (
+          <table className="w-full text-xs">
+            <thead className="text-gray-500 text-left"><tr>
+              <th className={th}>#</th><th className={th}>Rule</th><th className={thr}>IRR /yr</th><th className={thr}>Multiple</th><th className={thr}>Finished sales</th>
+              <th className={thr}>Win share</th><th className={thr}>Worst month</th><th className={thr}>Sets</th><th className={thr}>Sold / held</th><th className={th}></th>
+            </tr></thead>
+            <tbody>{rs.map((x, i) => (
+              <tr key={i} className="border-t border-gray-800">
+                <td className={`${td} text-gray-500`}>{i + 1}</td>
+                <td className={`${td} text-gray-200`}>{describe(x.strategy)}</td>
+                <td className={`${tdr} font-semibold ${irrTone(x.irr)}`}>{pct(x.irr, 1)}</td>
+                <td className={tdr}>{x.multiple.toFixed(2)}×</td>
+                <td className={`${tdr} text-gray-400`}>{x.closed_multiple != null ? `${x.closed_multiple.toFixed(2)}×` : "–"}</td>
+                <td className={tdr}>{Math.round(x.win_share * 100)}%</td>
+                <td className={`${tdr} text-rose-300`}>{pct(x.worst_drawdown)}</td>
+                <td className={tdr}>{x.sets}</td>
+                <td className={`${tdr} ${x.open_lots > x.closed_lots ? "text-amber-300" : "text-gray-400"}`}>{x.closed_lots} / {x.open_lots}</td>
+                <td className={td}><button onClick={() => onAdd({ name: "", legs: [{ ...x.strategy, name: "" }] })} className="text-indigo-300 hover:underline">add</button></td>
+              </tr>
+            ))}</tbody>
+          </table>
+        )} />
+      )}
+    </Card>
+  );
+}
+
+// ---- page ---------------------------------------------------------------------------------------
+
 export default function SealedBacktestPage() {
-  const [rules, setRulesState] = useState<SealedRule[]>(loadRules);
+  const [strategies, setStrategiesState] = useState<Strategy[]>(loadStrategies);
   const [res, setRes] = useState<{ results: BacktestResult[]; latest: string; costs: string; method: string } | null>(null);
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState("");
   const [gross, setGross] = useState(false);
   const [mode, setMode] = useState<"value" | "multiple">("multiple");
-  const [sweepBase, setSweepBase] = useState<SealedRule>({ rule: "schedule", kinds: ["etb"], units: 1, budget_cents: 6000 });
-  const [sweep, setSweep] = useState<{ rows: BacktestSweepRow[]; method: string } | null>(null);
-  const [sweeping, setSweeping] = useState(false);
 
-  const setRules = (r: SealedRule[]) => { setRulesState(r); saveRules(r); };
-  const run = async (rs = rules) => {
+  const setStrategies = (s: Strategy[]) => { setStrategiesState(s); saveStrategies(s); };
+  const run = async (ss = strategies) => {
+    if (ss.length === 0) { setRes(null); return; }
     setBusy(true); setErr("");
-    try { setRes(await runSealedBacktest(rs.map((r) => ({ ...r, name: r.name || describe(r) })), gross)); } catch (e) { setErr(String(e)); } finally { setBusy(false); }
+    try { setRes(await runSealedBacktest(ss.map(toRule), gross)); } catch (e) { setErr(String(e)); } finally { setBusy(false); }
   };
   useEffect(() => { run(); }, [gross]); // eslint-disable-line react-hooks/exhaustive-deps
-
-  const runSweep = async () => {
-    setSweeping(true); setErr("");
-    try { setSweep(await sweepSealedBacktest(sweepBase, [24, 36, 48], gross)); } catch (e) { setErr(String(e)); } finally { setSweeping(false); }
+  const add = (st: Strategy) => {
+    if (strategies.length >= 12) { setErr("12 strategies at most: remove one first."); return; }
+    const n = [...strategies, st];
+    setStrategies(n); run(n);
+    window.scrollTo({ top: document.getElementById("my-strategies")?.offsetTop ?? 0, behavior: "smooth" });
   };
-
-  const best = res?.results.reduce<BacktestResult | null>((b, r) => (r.irr != null && (b?.irr == null || r.irr > b.irr) ? r : b), null);
+  const best = useMemo(() => res?.results.reduce<BacktestResult | null>((b, r) => (r.irr != null && (b?.irr == null || r.irr > b.irr) ? r : b), null), [res]);
 
   return (
-    <div className="max-w-7xl mx-auto space-y-5">
-      <header className="space-y-1">
-        <h1 className="text-xl font-semibold text-white">Sealed backtests</h1>
-        <p className="text-sm text-gray-400 max-w-4xl">
-          Write a buying rule and a selling rule down as mechanics, then see what they would have made on every set&apos;s chart: what you put in, what you got back
-          after selling costs, the money-weighted yearly return (IRR), and the same cash in the S&amp;P. Compare up to 12 rules side by side,
-          or sweep every start month, length and hold to find the best schedule. Each rule&apos;s details show what it bought each month (and why),
-          what it sold and when, what&apos;s still held, and the best way to sell those same buys (all at once, at a price target, or a wind-down). The data behind it is on <Link to="/sealed/timing" className="text-indigo-300 hover:underline">Sealed timing</Link>.
-        </p>
+    <div className="w-full space-y-5">
+      <header className="flex flex-wrap items-end gap-4">
+        <div className="space-y-1">
+          <h1 className="text-xl font-semibold text-white">Sealed backtests</h1>
+          <p className="text-sm text-gray-400 max-w-5xl">
+            Buying and selling rules written down as mechanics and replayed over every set&apos;s chart: what you&apos;d have put in, what you&apos;d have kept
+            after selling costs, the yearly return (IRR) and the same money in the S&amp;P. The winning rules become the <Link to="/sealed/watchlist" className="text-indigo-300 hover:underline">sealed watchlist</Link>&apos;s buy signals.
+          </p>
+        </div>
+        <label className="ml-auto flex items-center gap-1.5 text-xs text-gray-400"><input type="checkbox" checked={gross} onChange={(e) => setGross(e.target.checked)} /> gross (before selling costs)</label>
       </header>
       {err && <div className="text-sm text-rose-400 break-all">{err}</div>}
 
-      <section className="space-y-2">
-        <div className="flex flex-wrap items-center gap-2 text-xs">
-          <h2 className="text-sm font-semibold text-gray-200 mr-2">Rules</h2>
-          <button onClick={() => run()} disabled={busy} className="rounded bg-indigo-600 px-3 py-1 text-white hover:bg-indigo-500 disabled:opacity-50">{busy ? "Running…" : "Run backtest"}</button>
-          <button onClick={() => setRules([...rules, { ...PRESETS[0], name: "" }])} disabled={rules.length >= 12} className="rounded border border-gray-700 px-2 py-1 text-gray-300 hover:text-white">+ add a rule</button>
-          <select value="" onChange={(e) => { const p = PRESETS[Number(e.target.value)]; if (p) setRules([...rules, { ...p }]); }} className={inp}>
-            <option value="">+ add a preset…</option>
-            {PRESETS.map((p, i) => <option key={i} value={i}>{p.name}</option>)}
-          </select>
-          <button onClick={() => setRules(PRESETS)} className="text-gray-500 hover:text-gray-300">reset to presets</button>
-          <label className="ml-auto flex items-center gap-1 text-gray-400"><input type="checkbox" checked={gross} onChange={(e) => setGross(e.target.checked)} /> gross (before selling costs)</label>
-        </div>
-        <div className="grid gap-2 lg:grid-cols-2">
-          {rules.map((r, i) => (
-            <RuleEditor key={i} r={r} color={LINE_COLORS[i % LINE_COLORS.length]}
-              onChange={(n) => setRules(rules.map((x, j) => (j === i ? n : x)))} onRemove={() => setRules(rules.filter((_, j) => j !== i))} />
+      <BestPerKind gross={gross} onAdd={add} />
+
+      <div id="my-strategies" />
+      <Card title="My strategies" right={<>
+        <button onClick={() => run()} disabled={busy} className="rounded bg-indigo-600 px-3 py-1 text-white hover:bg-indigo-500 disabled:opacity-50">{busy ? "Running…" : "Run"}</button>
+        <button onClick={() => add({ name: "", legs: [leg({ rule: "schedule", kinds: ["etb"] })] })} className="rounded border border-gray-700 px-2 py-1 text-gray-300 hover:text-white">+ new strategy</button>
+        <select value="" onChange={(e) => { const p = PRESETS[Number(e.target.value)]; if (p) add(JSON.parse(JSON.stringify(p))); }} className={inp}>
+          <option value="">+ preset…</option>
+          {PRESETS.map((p, i) => <option key={i} value={i}>{p.name}</option>)}
+        </select>
+        <button onClick={() => { setStrategies(PRESETS); run(PRESETS); }} className="text-gray-500 hover:text-gray-300">reset</button>
+      </>}>
+        <div className="grid gap-3 xl:grid-cols-2">
+          {strategies.map((st, i) => (
+            <StrategyEditor key={i} st={st} color={LINE_COLORS[i % LINE_COLORS.length]}
+              onChange={(n) => setStrategies(strategies.map((x, j) => (j === i ? n : x)))}
+              onRemove={() => { const n = strategies.filter((_, j) => j !== i); setStrategies(n); run(n); }} />
           ))}
         </div>
-      </section>
+        {strategies.length === 0 && <p className="text-sm text-gray-500">No strategies: add one from a preset, the best rules above, or the ranked variants below.</p>}
+      </Card>
 
-      {busy && !res ? <Spinner /> : res && (
-        <section className="space-y-3">
-          <div className="overflow-x-auto rounded-lg border border-gray-800 bg-gray-900">
-            <table className="w-full text-xs">
-              <thead className="text-gray-500 text-left">
-                <tr>
-                  <th className="px-3 py-2 font-medium">Rule</th>
-                  <th className="px-2 py-2 font-medium text-right" title="Money-weighted yearly return from the monthly cash flows">IRR /yr</th>
-                  <th className="px-2 py-2 font-medium text-right">Put in</th>
-                  <th className="px-2 py-2 font-medium text-right">Got back (net)</th>
-                  <th className="px-2 py-2 font-medium text-right">Profit</th>
-                  <th className="px-2 py-2 font-medium text-right" title="Got back ÷ put in; finished holds only under it">Multiple</th>
-                  <th className="px-2 py-2 font-medium text-right" title="The same cash flows at the S&P benchmark rate">vs S&amp;P</th>
-                  <th className="px-2 py-2 font-medium text-right" title="Lots that sold (or are worth) more than they cost, net">Win share</th>
-                  <th className="px-2 py-2 font-medium text-right" title="The worst month: what the lots still held would sell for against what they cost">Worst month</th>
-                  <th className="px-2 py-2 font-medium text-right" title="Units sold under the sell rule / still held at the end of the data (valued at today's price)">Sold / held</th>
-                </tr>
-              </thead>
-              <tbody>
-                {res.results.map((r, i) => (
-                  <tr key={i} className={`border-t border-gray-800 ${best === r ? "bg-emerald-950/30" : ""}`}>
-                    <td className="px-3 py-1.5 text-gray-200"><span style={{ color: LINE_COLORS[i % LINE_COLORS.length] }}>●</span> {r.strategy.name}</td>
-                    <td className={`px-2 py-1.5 text-right tabular-nums font-semibold ${r.irr == null ? "text-gray-500" : r.irr >= r.benchmark_irr ? "text-emerald-300" : r.irr >= 0 ? "text-amber-300" : "text-rose-300"}`}>{r.buys ? pct(r.irr, 1) : "–"}</td>
-                    <td className="px-2 py-1.5 text-right tabular-nums">{usd(r.invested_cents)}</td>
-                    <td className="px-2 py-1.5 text-right tabular-nums">{usd(r.value_cents)}</td>
-                    <td className={`px-2 py-1.5 text-right tabular-nums ${r.profit_cents >= 0 ? "text-emerald-300" : "text-rose-300"}`}>{usd(r.profit_cents)}</td>
-                    <td className="px-2 py-1.5 text-right tabular-nums">{r.multiple.toFixed(2)}×{r.closed_multiple != null && <div className="text-[10px] text-gray-500">sold {r.closed_multiple.toFixed(2)}×</div>}</td>
-                    <td className={`px-2 py-1.5 text-right tabular-nums ${r.value_cents >= r.benchmark_cents ? "text-emerald-300" : "text-rose-300"}`}>{usd(r.value_cents - r.benchmark_cents)}</td>
-                    <td className="px-2 py-1.5 text-right tabular-nums">{Math.round(r.win_share * 100)}%</td>
-                    <td className="px-2 py-1.5 text-right tabular-nums text-rose-300">{pct(r.worst_drawdown)}</td>
-                    <td className={`px-2 py-1.5 text-right tabular-nums ${r.open_units > r.sold_units ? "text-amber-300" : "text-gray-400"}`}>{u(r.sold_units)} / {u(r.open_units)}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-          <div className="rounded-lg border border-gray-800 bg-gray-900 p-3 space-y-2">
-            <div className="flex items-center gap-2 text-xs text-gray-400">
-              <span className="text-sm text-gray-200">Over time:</span>
-              {(["multiple", "value"] as const).map((m) => (
-                <button key={m} onClick={() => setMode(m)} className={`rounded px-2 py-0.5 ${mode === m ? "bg-gray-700 text-white" : "hover:text-gray-200"}`}>
-                  {m === "multiple" ? "(back + held) ÷ put in" : "profit so far ($)"}
-                </button>
-              ))}
-              <span className="text-gray-500">held lots valued at that month&apos;s price, net of selling costs</span>
-            </div>
-            <Chart results={res.results} mode={mode} />
-          </div>
-          <div className="space-y-2">
-            {res.results.map((r, i) => <Detail key={i} r={r} color={LINE_COLORS[i % LINE_COLORS.length]} gross={gross}
-              onUseExit={(ex) => { const n = rules.map((x, j) => (j === i ? { ...x, ...ex, name: "" } : x)); setRules(n); run(n); }} />)}
-          </div>
-          <p className="text-[11px] text-gray-500 max-w-5xl">{res.costs} {res.method} Data through {res.latest}.</p>
-        </section>
-      )}
-
-      <section className="rounded-lg border border-gray-800 bg-gray-900 p-3 space-y-2">
-        <div className="flex flex-wrap items-center gap-2 text-xs text-gray-300">
-          <h2 className="text-sm font-semibold text-gray-200 mr-2">Find the best rule</h2>
-          {KINDS.slice(0, 5).map((k) => (
-            <label key={k} className={`px-1.5 py-0.5 rounded border cursor-pointer ${sweepBase.kinds.includes(k) ? "border-indigo-600 text-indigo-200" : "border-gray-800 text-gray-500"}`}>
-              <input type="checkbox" className="hidden" checked={sweepBase.kinds.includes(k)}
-                onChange={(e) => setSweepBase({ ...sweepBase, kinds: e.target.checked ? [...sweepBase.kinds, k] : sweepBase.kinds.filter((x) => x !== k) })} />
-              {SEALED_KIND_LABEL[k]}
-            </label>
-          ))}
-          <label className="flex items-center gap-1">hype budget $<input value={(sweepBase.budget_cents ?? 6000) / 100}
-            onChange={(e) => setSweepBase({ ...sweepBase, budget_cents: Math.round((num(e.target.value) ?? 60) * 100) })} className={`${inp} w-14`} />/mo</label>
-          <label className="flex items-center gap-1">sets released <input value={sweepBase.released_from ?? ""} placeholder="YYYY-MM"
-            onChange={(e) => setSweepBase({ ...sweepBase, released_from: e.target.value || undefined })} className={`${inp} w-20`} /></label>
-          <button onClick={runSweep} disabled={sweeping || sweepBase.kinds.length === 0} className="rounded bg-indigo-600 px-3 py-1 text-white hover:bg-indigo-500 disabled:opacity-50">{sweeping ? "Sweeping…" : "Sweep"}</button>
-          <span className="text-gray-500">about 200 variants: monthly schedules (start × length × hold 24/36/48), hype picks and dip buys</span>
-        </div>
-        {sweep && (
-          <>
-            <div className="overflow-x-auto max-h-[60vh] overflow-y-auto">
-              <table className="w-full text-xs">
-                <thead className="text-gray-500 text-left sticky top-0 bg-gray-900">
-                  <tr>
-                    <th className="py-1 pr-3 font-medium">#</th><th className="py-1 pr-3 font-medium">Rule</th>
-                    <th className="py-1 pr-3 font-medium text-right">IRR /yr</th><th className="py-1 pr-3 font-medium text-right">Multiple</th>
-                    <th className="py-1 pr-3 font-medium text-right">Sold multiple</th><th className="py-1 pr-3 font-medium text-right">Win share</th>
-                    <th className="py-1 pr-3 font-medium text-right">Worst month</th><th className="py-1 pr-3 font-medium text-right">Sets</th>
-                    <th className="py-1 pr-3 font-medium text-right">Sold / open</th><th />
-                  </tr>
-                </thead>
+      {busy && !res ? <Spinner /> : res && res.results.length > 0 && (
+        <>
+          <Card title="Results" right={<span className="text-gray-500">data through {res.latest}</span>}>
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead className="text-xs text-gray-500 text-left"><tr>
+                  <th className={th}>Strategy</th>
+                  <th className={thr} title="Money-weighted yearly return from the monthly cash flows">IRR /yr</th>
+                  <th className={thr}>Put in</th><th className={thr}>Got back (net)</th><th className={thr}>Profit</th>
+                  <th className={thr} title="Got back ÷ put in; finished sales only under it">Multiple</th>
+                  <th className={thr} title="Against the same cash flows at the S&P benchmark rate">vs S&amp;P</th>
+                  <th className={thr}>Win share</th><th className={thr} title="The worst month for the lots held then: value vs cost">Worst month</th>
+                  <th className={thr} title="Units sold under the sell rule / still held at the end of the data (valued at today's price)">Sold / held</th>
+                </tr></thead>
                 <tbody>
-                  {sweep.rows.slice(0, 60).map((x, i) => (
-                    <tr key={i} className="border-t border-gray-800">
-                      <td className="py-0.5 pr-3 text-gray-500">{i + 1}</td>
-                      <td className="py-0.5 pr-3 text-gray-200">{describe(x.strategy)}</td>
-                      <td className="py-0.5 pr-3 text-right tabular-nums font-semibold text-emerald-300">{pct(x.irr, 1)}</td>
-                      <td className="py-0.5 pr-3 text-right tabular-nums">{x.multiple.toFixed(2)}×</td>
-                      <td className="py-0.5 pr-3 text-right tabular-nums text-gray-400">{x.closed_multiple != null ? `${x.closed_multiple.toFixed(2)}×` : "–"}</td>
-                      <td className="py-0.5 pr-3 text-right tabular-nums">{Math.round(x.win_share * 100)}%</td>
-                      <td className="py-0.5 pr-3 text-right tabular-nums text-rose-300">{pct(x.worst_drawdown)}</td>
-                      <td className="py-0.5 pr-3 text-right tabular-nums">{x.sets}</td>
-                      <td className={`py-0.5 pr-3 text-right tabular-nums ${x.open_lots > x.closed_lots ? "text-amber-300" : "text-gray-400"}`}>{x.closed_lots} / {x.open_lots}</td>
-                      <td className="py-0.5 whitespace-nowrap">
-                        <button disabled={rules.length >= 12} onClick={() => { const n = [...rules, { ...x.strategy, name: "" }]; setRules(n); run(n); }}
-                          className="text-indigo-300 hover:underline disabled:opacity-40">compare</button>
-                      </td>
+                  {res.results.map((r, i) => (
+                    <tr key={i} className={`border-t border-gray-800 ${best === r ? "bg-emerald-950/30" : ""}`}>
+                      <td className={`${td} text-gray-100`}><span style={{ color: LINE_COLORS[i % LINE_COLORS.length] }}>●</span> {r.strategy.name}</td>
+                      <td className={`${tdr} font-semibold ${irrTone(r.irr, r.benchmark_irr)}`}>{r.buys ? pct(r.irr, 1) : "–"}</td>
+                      <td className={tdr}>{usd(r.invested_cents)}</td><td className={tdr}>{usd(r.value_cents)}</td>
+                      <td className={`${tdr} ${r.profit_cents >= 0 ? "text-emerald-300" : "text-rose-300"}`}>{usd(r.profit_cents)}</td>
+                      <td className={tdr}>{r.multiple.toFixed(2)}×{r.closed_multiple != null && <div className="text-[10px] text-gray-500">sold {r.closed_multiple.toFixed(2)}×</div>}</td>
+                      <td className={`${tdr} ${r.value_cents >= r.benchmark_cents ? "text-emerald-300" : "text-rose-300"}`}>{usd(r.value_cents - r.benchmark_cents)}</td>
+                      <td className={tdr}>{Math.round(r.win_share * 100)}%</td>
+                      <td className={`${tdr} text-rose-300`}>{pct(r.worst_drawdown)}</td>
+                      <td className={`${tdr} ${r.open_units > r.sold_units ? "text-amber-300" : "text-gray-400"}`}>{u(r.sold_units)} / {u(r.open_units)}</td>
                     </tr>
                   ))}
                 </tbody>
               </table>
             </div>
-            <p className="text-[11px] text-gray-500">{sweep.method}</p>
-          </>
-        )}
-      </section>
+          </Card>
+          <Card title="Over time" right={<>
+            {(["multiple", "value"] as const).map((m) => (
+              <button key={m} onClick={() => setMode(m)} className={`rounded px-2 py-0.5 ${mode === m ? "bg-gray-700 text-white" : "text-gray-400 hover:text-gray-200"}`}>
+                {m === "multiple" ? "(back + held) ÷ put in" : "profit so far"}
+              </button>
+            ))}
+          </>}>
+            <Chart results={res.results} mode={mode} />
+            <div className="flex flex-wrap gap-x-4 gap-y-1 pt-2 text-[11px] text-gray-400">
+              {res.results.map((r, i) => <span key={i}><span style={{ color: LINE_COLORS[i % LINE_COLORS.length] }}>●</span> {r.strategy.name}</span>)}
+            </div>
+          </Card>
+          {res.results.map((r, i) => (
+            <Detail key={i} r={r} color={LINE_COLORS[i % LINE_COLORS.length]} gross={gross} onAdd={add}
+              onUseExit={(ex) => { const n = strategies.map((x, j) => (j === i ? { ...x, legs: x.legs.map((l) => ({ ...l, ...ex })) } : x)); setStrategies(n); run(n); }} />
+          ))}
+        </>
+      )}
+
+      <Sweep gross={gross} onAdd={add} />
+
+      {res && (
+        <details className="rounded-lg border border-gray-800 bg-gray-900 px-4 py-3 text-xs text-gray-400">
+          <summary className="cursor-pointer text-gray-300">How the backtest works</summary>
+          <p className="mt-2 max-w-5xl leading-relaxed">{res.costs} {res.method}</p>
+        </details>
+      )}
     </div>
   );
 }

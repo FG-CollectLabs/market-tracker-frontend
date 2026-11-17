@@ -3943,10 +3943,15 @@ export function addShop(name: string, domain: string, games: string[]): Promise<
 
 // ---- Sealed backtests ------------------------------------------------------------
 
-export type SealedRuleKind = "schedule" | "hype" | "dip";
+export type SealedRuleKind = "schedule" | "hype" | "dip" | "portfolio";
 export interface SealedRule {
   name?: string;
   rule: SealedRuleKind;
+  legs?: SealedRule[]; // portfolio: rules run side by side as one book
+  buy_discount?: number; // every buy this much under market (0.2 = 20% off)
+  sizing?: "units" | "dollars"; // same count of each, or the same money on each buy
+  dollars_cents?: number;
+  dip_own?: boolean; // dips: only the product's own drops (reprints / waves)
   kinds: SealedKind[];
   released_from?: string; // YYYY-MM
   released_to?: string;
@@ -3978,7 +3983,7 @@ export interface SealedRule {
 export interface BacktestSale { month: string; units: number; price_cents: number; net_cents: number; why?: string }
 export interface BacktestLot {
   product_id: number; set: string; set_name: string; kind: SealedKind; month: string; units: number; cost_cents: number;
-  sales?: BacktestSale[]; open_units: number; open_net_cents: number; why?: string;
+  sales?: BacktestSale[]; open_units: number; open_net_cents: number; why?: string; leg?: string;
 }
 export interface BacktestResult {
   strategy: SealedRule;
@@ -4014,4 +4019,16 @@ export function sweepSealedExits(strategy: SealedRule, gross = false): Promise<{
 }
 export function sweepSealedBacktest(base: SealedRule, holds: number[], gross = false): Promise<{ rows: BacktestSweepRow[]; latest: string; costs: string; method: string }> {
   return postPublic(`/v1/sealed/backtest/sweep${gross ? "?gross=1" : ""}`, { base, holds });
+}
+
+export interface BacktestFamilyBest {
+  family: string; label: string; rationale: string; thin: boolean; variants: number; exits: string;
+  best: BacktestSweepRow;
+}
+export interface BacktestKindBest {
+  kind: SealedKind; sets: number; full_history: number; families: BacktestFamilyBest[];
+  missing_early: { set: string; set_name: string; release: string; first_month: string; missing_months: number }[];
+}
+export function fetchSealedBacktestBest(gross = false): Promise<{ kinds: BacktestKindBest[]; latest: string; costs: string; method: string }> {
+  return get(`/v1/sealed/backtest/best${gross ? "?gross=1" : ""}`);
 }
