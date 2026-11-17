@@ -56,7 +56,7 @@ function Calculator({ game }: { game: string }) {
               <tr key={g.grade} className="border-t border-gray-800">
                 <td className="px-2 py-1 text-gray-300">{g.label}</td>
                 <td className="px-2 py-1 text-right tabular-nums text-gray-100">{usd(g.cents)}</td>
-                <td className="px-2 py-1 text-gray-400">{g.basis === "own_sales" ? "its own PCG sales" : g.basis === "psa10_ratio" ? `PSA 10 × ${pct(g.vs_psa_10)}` : g.basis === "raw_ratio" ? "raw × ratio" : "no data"}
+                <td className="px-2 py-1 text-gray-400">{g.basis === "own_sales" ? "its own PCG sales" : g.basis === "psa10_ratio" ? `PSA 10 × ${pct(g.vs_psa_10)}` : g.basis === "raw_ratio" ? "raw × ratio" : g.basis === "raw_psa10_fit" ? "fit on raw + PSA 10" : g.basis === "raw" ? "≈ raw" : "no data"}
                   <span className={`ml-1 ${CONF[g.confidence as PcgRatio["confidence"]] ?? "text-gray-500"}`}>({g.confidence})</span></td>
                 <td className="px-2 py-1 text-right tabular-nums text-gray-300">{g.p != null ? pct(g.p) : "—"}</td>
               </tr>
@@ -89,6 +89,28 @@ export default function PcgResearch({ game }: { game: "pokemon" | "riftbound" })
           <div className="text-xs text-gray-300">Each cell is what a PCG grade sells for as a share of the same card&apos;s PSA 10, by the card&apos;s PSA 10 price.
             Thin bands lean on the grade&apos;s overall ratio. Colour = evidence: <span className={CONF.high}>high</span> 20+ sales, <span className={CONF.medium}>medium</span> 5–19, <span className={CONF.low}>low</span> under 5, <span className={CONF.none}>none</span>.</div></div>
       </section>
+
+      {(m.fits?.length ?? 0) > 0 && (
+        <section className="rounded-lg border border-indigo-900/60 bg-gray-900 p-4 space-y-2">
+          <div className="text-sm font-medium text-indigo-200">How PCG slabs are priced: off raw, off PSA 10, or between</div>
+          <p className="text-xs text-gray-400">Per grade, price = k × raw<sup>w</sup> × PSA 10<sup>1−w</sup>, fitted on every PCG sale with both prices. w near 1: PCG prices follow the raw card;
+            near 0: they follow PSA 10. Quotes use this; the grid below is the PSA 10-only view.</p>
+          <table className="text-xs">
+            <thead className="text-gray-500"><tr><th className="px-2 py-1 text-left font-medium">PCG grade</th><th className="px-2 py-1 text-right font-medium">Sales</th>
+              <th className="px-2 py-1 text-right font-medium">Weight on raw</th><th className="px-2 py-1 text-right font-medium" title="median |actual ÷ fitted − 1|">Typical miss</th>
+              <th className="px-2 py-1 text-right font-medium">PSA 10 ratio alone misses</th></tr></thead>
+            <tbody>{m.fits!.map((f) => (
+              <tr key={f.grade} className="border-t border-gray-800">
+                <td className="px-2 py-1 text-gray-200">{f.label}</td>
+                <td className={`px-2 py-1 text-right tabular-nums ${CONF[f.n >= 20 ? "high" : f.n >= 5 ? "medium" : "low"]}`}>{f.n}</td>
+                <td className="px-2 py-1 text-right tabular-nums text-gray-100">{Math.round(f.w_raw * 100)}%{f.borrowed_w && <span className="text-gray-500" title="under 15 sales: Gem Mint 10's weight"> *</span>}</td>
+                <td className="px-2 py-1 text-right tabular-nums text-gray-200">±{Math.round(f.median_error * 100)}%</td>
+                <td className="px-2 py-1 text-right tabular-nums text-gray-500">±{Math.round(f.ratio_error * 100)}%</td>
+              </tr>
+            ))}</tbody>
+          </table>
+        </section>
+      )}
 
       <section className="rounded-lg border border-gray-800 bg-gray-900 p-4 space-y-2">
         <div className="text-sm font-medium text-gray-200">PCG price ÷ PSA 10 (fitted)</div>
