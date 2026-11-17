@@ -5,7 +5,7 @@ import {
   SEALED_KIND_LABEL, type ReprintEvent, type SealedKind, type SealedReprints, type SealedSetChart,
 } from "../lib/api";
 import { Spinner } from "../components/Spinner";
-import { SEALED_COLORS, pct, usd } from "./SealedTimingPage";
+import { SEALED_COLORS, YearStrip, pct, usd } from "./SealedTimingPage";
 
 // Sealed reprints, set by set: every significant drop in each product's
 // chart (a reprint or a fresh wave of product), to confirm or reject. The
@@ -117,6 +117,7 @@ export default function SealedReprintsPage() {
                     <span className="text-xs text-gray-500">released {charts.release_date ?? "?"}</span>
                   </div>
                   <Chart points={p.points} events={evs} />
+                  <YearStrip points={p.points} />
                   {evs.length > 0 && (
                     <table className="w-full text-xs">
                       <tbody>

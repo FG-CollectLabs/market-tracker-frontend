@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import {
   fetchSealedEarly, fetchSealedPriority, fetchSealedSets, fetchSealedTiming, fetchSealedWatch, watchSealed,
-  type SealedEarly, type SealedKind, type SealedKindTiming, type SealedPriorityItem, type SealedRet, type SealedSetChart,
+  type SealedEarly, type SealedKind, type SealedKindTiming, type SealedPriorityItem, type SealedRet, type SealedSetChart, type SealedYearRow,
 } from "../lib/api";
 import { Spinner } from "../components/Spinner";
 
@@ -65,6 +65,97 @@ function Curves({ kinds, on }: { kinds: SealedKindTiming[]; on: Set<SealedKind> 
             points={k.curve.filter((p) => p.month <= maxM).map((p) => `${x(p.month)},${y(p.change)}`).join(" ")} />
         ))}
       </svg>
+    </div>
+  );
+}
+
+// Year by year after release: does growth fade (a best time to sell) or
+// keep compounding at the same rate?
+export type YearMetric = "ret" | "excess" | "from_release";
+export const YEAR_METRICS: { key: YearMetric; label: string; tip: string }[] = [
+  { key: "ret", label: "that year's return", tip: "Each product's own return over that year after release (month 12(Y-1) to 12Y), median across products" },
+  { key: "excess", label: "vs the market", tip: "That year's return net of the product type's whole market over the same calendar months: is it the age, or did everything rise then?" },
+  { key: "from_release", label: "release → then, per year", tip: "Holding from release to the end of that year, annualized" },
+];
+const yv = (r: SealedYearRow, m: YearMetric) => (m === "from_release" ? r.from_release.annualized : r[m].median) ?? null;
+
+function YearChart({ kinds, on, metric }: { kinds: SealedKindTiming[]; on: Set<SealedKind>; metric: YearMetric }) {
+  const shown = kinds.filter((k) => on.has(k.kind) && (k.years ?? []).filter((r) => yv(r, metric) != null).length > 1);
+  if (!shown.length) return <div className="text-sm text-gray-500">Not enough products with charts a year apart yet.</div>;
+  const maxY = Math.max(3, ...shown.flatMap((k) => (k.years ?? []).map((r) => r.year)));
+  const vals = shown.flatMap((k) => (k.years ?? []).map((r) => yv(r, metric)).filter((v): v is number => v != null));
+  const lo = Math.min(-0.1, ...vals), hi = Math.max(0.3, ...vals);
+  const W = 720, H = 220, L = 48, B = 22;
+  const x = (yr: number) => L + 12 + ((yr - 1) / Math.max(1, maxY - 1)) * (W - L - 32);
+  const y = (v: number) => 8 + (1 - (v - lo) / (hi - lo)) * (H - B - 8);
+  return (
+    <div className="overflow-x-auto">
+      <svg viewBox={`0 0 ${W} ${H}`} className="w-full min-w-[520px] max-w-3xl">
+        {[lo, 0, hi / 2, hi].map((t) => (
+          <g key={t}>
+            <line x1={L} x2={W - 8} y1={y(t)} y2={y(t)} stroke={t === 0 ? "#6b7280" : "#1f2937"} strokeDasharray={t === 0 ? "" : "3 3"} />
+            <text x={L - 6} y={y(t) + 4} textAnchor="end" className="fill-gray-500 text-[10px]">{pct(t)}</text>
+          </g>
+        ))}
+        {Array.from({ length: maxY }, (_, i) => i + 1).map((yr) => (
+          <text key={yr} x={x(yr)} y={H - 6} textAnchor="middle" className="fill-gray-500 text-[10px]">year {yr}</text>
+        ))}
+        {shown.map((k) => {
+          const pts = (k.years ?? []).filter((r) => yv(r, metric) != null);
+          return (
+            <g key={k.kind}>
+              <polyline fill="none" stroke={SEALED_COLORS[k.kind]} strokeWidth={2} points={pts.map((r) => `${x(r.year)},${y(yv(r, metric)!)}`).join(" ")} />
+              {pts.map((r) => {
+                const st = metric === "from_release" ? r.from_release : r[metric];
+                return (
+                  <circle key={r.year} cx={x(r.year)} cy={y(yv(r, metric)!)} r={3} fill={SEALED_COLORS[k.kind]}>
+                    <title>{`${k.label}, year ${r.year}: ${metric === "from_release" ? `${pct(st.annualized, 1)} a year from release (${pct(st.median)} total)` : `median ${pct(st.median, 1)}`}, middle half ${pct(st.p25)} to ${pct(st.p75)}, ${share(st.up_share)}, ${st.n} products released ${r.released_from}-${r.released_to}`}</title>
+                  </circle>
+                );
+              })}
+            </g>
+          );
+        })}
+      </svg>
+    </div>
+  );
+}
+
+function YearTable({ k }: { k: SealedKindTiming }) {
+  const rows = k.years ?? [];
+  if (!rows.length) return <div className="text-sm text-gray-500">Not enough products with charts a year apart yet.</div>;
+  const cell = (r: SealedRet, v: number | null | undefined) => (
+    <td className="px-2 py-1 text-right tabular-nums whitespace-nowrap" title={r.n ? `${r.n} products · middle half ${pct(r.p25)} to ${pct(r.p75)} · ${share(r.up_share)}` : ""}>
+      <span className={tone(v)}>{pct(v, 1)}</span>
+      {r.n > 0 && <span className="ml-1 text-[10px] text-gray-500">{pct(r.p25)}…{pct(r.p75)}</span>}
+    </td>
+  );
+  return (
+    <div className="overflow-x-auto">
+      <table className="text-xs">
+        <thead className="text-gray-500">
+          <tr>
+            <th className="px-2 py-1 text-left font-medium">Year after release</th>
+            {YEAR_METRICS.map((m) => <th key={m.key} className="px-2 py-1 text-right font-medium" title={m.tip}>{m.label[0].toUpperCase() + m.label.slice(1)}</th>)}
+            <th className="px-2 py-1 text-right font-medium">Went up</th>
+            <th className="px-2 py-1 text-right font-medium">Products</th>
+            <th className="px-2 py-1 text-left font-medium" title="Release years of the products behind the row: late years are only older sets">Sets released</th>
+          </tr>
+        </thead>
+        <tbody>
+          {rows.map((r) => (
+            <tr key={r.year} className="border-t border-gray-800">
+              <td className="px-2 py-1 text-gray-300">Year {r.year} <span className="text-gray-600">({12 * (r.year - 1)}→{12 * r.year}mo)</span></td>
+              {cell(r.ret, r.ret.median)}
+              {cell(r.excess, r.excess.median)}
+              {cell(r.from_release, r.from_release.annualized)}
+              <td className="px-2 py-1 text-right tabular-nums text-gray-400">{share(r.ret.up_share)}</td>
+              <td className="px-2 py-1 text-right tabular-nums text-gray-400">{r.ret.n}</td>
+              <td className="px-2 py-1 text-gray-500">{r.released_from === r.released_to ? r.released_from : `${r.released_from}–${r.released_to}`}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
     </div>
   );
 }
@@ -211,11 +302,79 @@ function Spark({ points, w = 140, h = 28 }: { points: { m: number; cents: number
 const COLS = [0, 6, 12, 18, 24, 36, 48];
 const at = (pts: { m: number; cents: number }[], m: number) => pts.find((p) => p.m === m)?.cents ?? pts.find((p) => p.m === m + 1)?.cents ?? pts.find((p) => p.m === m - 1)?.cents;
 
+const YEARS = [1, 2, 3, 4, 5, 6, 7, 8];
+// a product's return over year Y after release, from its chart
+const yearRet = (pts: { m: number; cents: number }[], yr: number) => {
+  const a = at(pts, 12 * (yr - 1)), b = at(pts, 12 * yr);
+  return a && b ? b / a - 1 : null;
+};
+
+// One product's return each year after release, as a strip of chips.
+export function YearStrip({ points }: { points: { m: number; cents: number }[] }) {
+  const ys = Array.from({ length: 12 }, (_, i) => ({ yr: i + 1, v: yearRet(points, i + 1) })).filter((y) => y.v != null);
+  if (!ys.length) return null;
+  return (
+    <div className="flex flex-wrap items-center gap-1 text-[11px]">
+      <span className="text-gray-500 mr-1" title="Each year's own return after release (month 12(Y-1) to 12Y)">Year by year:</span>
+      {ys.map((y) => (
+        <span key={y.yr} className="rounded bg-gray-950/70 border border-gray-800 px-1.5 py-0.5 tabular-nums">
+          <span className="text-gray-500">Y{y.yr}</span> <span className={tone(y.v)}>{pct(y.v)}</span>
+        </span>
+      ))}
+    </div>
+  );
+}
+
 function BySet({ kind, era }: { kind: SealedKind; era: string }) {
   const [sets, setSets] = useState<SealedSetChart[] | null>(null);
+  const [view, setView] = useState<"prices" | "years">("prices");
   useEffect(() => { setSets(null); fetchSealedSets(kind, era).then((r) => setSets(r.sets)).catch(() => setSets([])); }, [kind, era]);
   if (!sets) return <Spinner />;
+  const toggle = (
+    <span className="flex gap-1 text-xs">
+      <button onClick={() => setView("prices")} className={`rounded px-2 py-0.5 ${view === "prices" ? "bg-gray-700 text-white" : "text-gray-400 hover:text-gray-200"}`}>prices</button>
+      <button onClick={() => setView("years")} className={`rounded px-2 py-0.5 ${view === "years" ? "bg-gray-700 text-white" : "text-gray-400 hover:text-gray-200"}`}
+        title="Each year's own return after release: does it fade, or keep compounding?">return year by year</button>
+    </span>
+  );
+  if (view === "years") return (
+    <div className="space-y-2">
+      {toggle}
+      <div className="overflow-x-auto max-h-[560px]">
+        <table className="w-full text-xs">
+          <thead className="text-gray-500 text-left sticky top-0 bg-gray-900">
+            <tr>
+              <th className="px-2 py-1 font-medium">Set · product</th>
+              <th className="px-2 py-1 font-medium">Chart</th>
+              {YEARS.map((yr) => <th key={yr} className="px-2 py-1 font-medium text-right" title={`Month ${12 * (yr - 1)} to ${12 * yr} after release`}>Year {yr}</th>)}
+              <th className="px-2 py-1 font-medium text-right" title="Release (or first chart month) to now, per year">Per year to now</th>
+            </tr>
+          </thead>
+          <tbody>
+            {sets.flatMap((s) => s.products.map((p) => {
+              const last = p.points[p.points.length - 1], first = p.points[0];
+              const yrs = first && last ? (last.m - first.m) / 12 : 0;
+              const cagr = yrs >= 1 ? Math.pow(last.cents / first.cents, 1 / yrs) - 1 : null;
+              return (
+                <tr key={p.id} className="border-t border-gray-800">
+                  <td className="px-2 py-1 whitespace-nowrap">
+                    <span className="text-gray-300">{s.set_name}</span> <span className="text-gray-500">{p.variant ?? ""}</span>
+                    <div className="text-[10px] text-gray-600">{s.release_date ?? "no date"} · chart from {first?.month ?? "–"}</div>
+                  </td>
+                  <td className="px-2 py-1"><Spark points={p.points} /></td>
+                  {YEARS.map((yr) => { const v = yearRet(p.points, yr); return <td key={yr} className={`px-2 py-1 text-right tabular-nums ${tone(v)}`}>{pct(v)}</td>; })}
+                  <td className={`px-2 py-1 text-right tabular-nums ${tone(cagr)}`} title={first ? `from ${first.month}` : ""}>{pct(cagr, 1)}</td>
+                </tr>
+              );
+            }))}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
   return (
+    <div className="space-y-2">
+    {toggle}
     <div className="overflow-x-auto max-h-[560px]">
       <table className="w-full text-xs">
         <thead className="text-gray-500 text-left sticky top-0 bg-gray-900">
@@ -246,6 +405,7 @@ function BySet({ kind, era }: { kind: SealedKind; era: string }) {
           }))}
         </tbody>
       </table>
+    </div>
     </div>
   );
 }
@@ -316,6 +476,7 @@ export default function SealedTimingPage() {
   const [on, setOn] = useState<Set<SealedKind>>(new Set(["etb", "pc_etb", "booster_box", "booster_bundle", "upc", "premium_collection"]));
   const [kind, setKind] = useState<SealedKind>("etb");
   const [hold, setHold] = useState("24");
+  const [yearMetric, setYearMetric] = useState<YearMetric>("ret");
   const [era, setEra] = useState("all");
   const [eras, setEras] = useState<{ key: string; label: string }[]>([]);
   const [gross, setGross] = useState(false);
@@ -377,6 +538,20 @@ export default function SealedTimingPage() {
               ))}
             </div>
             <Curves kinds={kinds} on={on} />
+            <div className="flex flex-wrap items-center gap-3 pt-2 text-xs">
+              <span className="text-gray-300 font-medium">Return year by year after release</span>
+              <span className="flex gap-1">
+                {YEAR_METRICS.map((m) => (
+                  <button key={m.key} onClick={() => setYearMetric(m.key)} title={m.tip}
+                    className={`rounded px-2 py-0.5 ${yearMetric === m.key ? "bg-gray-700 text-white" : "text-gray-400 hover:text-gray-200"}`}>{m.label}</button>
+                ))}
+              </span>
+            </div>
+            <YearChart kinds={kinds} on={on} metric={yearMetric} />
+            <p className="text-[11px] text-gray-500 max-w-4xl">
+              A falling line means growth fades with age, so there&apos;s a best time to sell; a flat line means it keeps compounding.
+              Late years are only older sets (charts start in 2021), so compare against &quot;vs the market&quot;, which takes out what the whole product type did in those same months.
+            </p>
             <p className="text-[11px] text-gray-500 max-w-4xl">{method}</p>
           </section>
 
@@ -402,6 +577,12 @@ export default function SealedTimingPage() {
                 </div>
                 <Window k={cur} hold={hold} />
                 <p className="text-[11px] text-gray-500">Each point: buy that many months after release, sell {hold} months later. Line = median, shaded = middle half, dashed = best month. Hover a point for the numbers.</p>
+              </section>
+
+              <section className="rounded-lg border border-gray-800 bg-gray-900 p-4 space-y-2">
+                <span className="text-sm text-gray-200 font-medium">{cur.label}: return year by year after release</span>
+                <YearTable k={cur} />
+                <p className="text-[11px] text-gray-500">Median across products, middle half in grey; hover for counts. Per set on &quot;by set&quot; below (return year by year).</p>
               </section>
 
               <section className="rounded-lg border border-gray-800 bg-gray-900 p-4 space-y-2">
