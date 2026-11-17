@@ -4082,3 +4082,28 @@ export function fetchInjectAnalytics(weeks = 104): Promise<InjectAnalytics> {
 export function fetchInjectCandidates(): Promise<{ window: InjectWindow; triggers: InjTrigger[]; candidates: InjectCandidate[]; count: number }> {
   return adminFetch(`/v1/admin/fanatics/inject/candidates`);
 }
+
+// ---- PCG pricing model (research) and copy values ----
+export interface PcgRatio {
+  grade: string; label: string; band: string; n: number;
+  vs_psa_10: number | null; raw_vs_psa_10: number | null; vs_raw: number | null; p25: number | null; p75: number | null;
+  confidence: "none" | "low" | "medium" | "high";
+}
+export interface PcgGate { grade: string; front_worst: number; front_best?: number; back_worst: number }
+export interface PcgModel {
+  game: string; sales: number; cards: number; first_sale?: string; ratios: PcgRatio[]; centering_gates: PcgGate[]; notes: string[]; method: string;
+}
+export function fetchPcgModel(game = "pokemon"): Promise<PcgModel> {
+  return get(`/v1/analysis/pcg/model?game=${game}`);
+}
+export interface PcgGradePrice { grade: string; label: string; cents?: number; basis: string; confidence: string; vs_psa_10?: number; p?: number }
+export interface PcgCap { max_grade: string; max_label: string; ten_possible: boolean; front_worst: number; back_worst: number; why: string }
+export interface PcgValue {
+  item_id?: string; display_key: string; name: string; psa_10_cents?: number; raw_cents?: number;
+  grades: PcgGradePrice[]; centering_cap?: PcgCap; odds_source: string; odds_n: number;
+  pcg_10_vs_raw?: number; psa_10_vs_raw?: number; fee_cents: number; fee_tier: string;
+  ev_cents?: number; gain_vs_raw_cents?: number; best_case_cents?: number; notes: string[];
+}
+export function pcgValue(game: string, items: { display_key: string; front_lr?: number; front_tb?: number; back_lr?: number; back_tb?: number }[]): Promise<{ items: PcgValue[] }> {
+  return adminFetch(`/v1/pricing/pcg-value`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ game, items }) });
+}

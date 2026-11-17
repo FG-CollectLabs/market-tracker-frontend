@@ -3,6 +3,7 @@ import { Link } from "react-router-dom";
 import { fetchPcgAnalysis, fetchSettings, type PcgAnalysis, type PcgSale, type PcgSummary, type RatioStat } from "../lib/api";
 import type { GraderCfg } from "../lib/gradeEv";
 import { Spinner } from "../components/Spinner";
+import PcgResearch from "./PcgResearch";
 
 // PCG (Premier Card Grading) analytics: how PCG grades (its population
 // report) and how PCG slabs sell next to the same card in PSA / CGC, to put
@@ -33,6 +34,7 @@ export default function PcgPage({ game }: { game: "pokemon" | "riftbound" }) {
   const [err, setErr] = useState("");
   const [view, setView] = useState<"sales" | "asks">("sales");
   const [bands, setBands] = useState(false);
+  const [tab, setTab] = useState<"overview" | "pricing">("overview");
 
   useEffect(() => {
     setA(null);
@@ -62,8 +64,13 @@ export default function PcgPage({ game }: { game: "pokemon" | "riftbound" }) {
           Ratios compare each PCG sale with that card's PSA 10 / PSA 9 / CGC 10 at the time.
         </p>
       </header>
+      <div className="flex gap-1 text-sm border-b border-gray-800">
+        {([["overview", "Overview"], ["pricing", "Pricing model (research)"]] as const).map(([k, l]) => (
+          <button key={k} onClick={() => setTab(k)} className={`px-3 py-1.5 -mb-px border-b-2 ${tab === k ? "border-indigo-400 text-white" : "border-transparent text-gray-400 hover:text-gray-200"}`}>{l}</button>
+        ))}
+      </div>
       {err && <div className="text-sm text-rose-400">{err}</div>}
-      {!a ? <Spinner /> : (
+      {tab === "pricing" ? <PcgResearch game={game} /> : !a ? <Spinner /> : (
         <>
           <Findings a={a} totals={totals} graders={graders} game={game} />
 
