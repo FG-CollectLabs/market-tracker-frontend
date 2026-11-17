@@ -31,6 +31,7 @@ import SealedTodoPage from "./pages/SealedTodoPage";
 import SealedTimingPage from "./pages/SealedTimingPage";
 import SealedReprintsPage from "./pages/SealedReprintsPage";
 import SealedBacktestPage from "./pages/SealedBacktestPage";
+import AuctionTimingPage from "./pages/AuctionTimingPage";
 import SealedWatchlistPage from "./pages/SealedWatchlistPage";
 import ShopsPage from "./pages/ShopsPage";
 import { SignIn } from "./components/SignIn";
@@ -139,6 +140,7 @@ const NAV: NavEntry[] = [
       { to: "/sealed/backtest", label: "Sealed backtests", hint: "Mechanical buying rules replayed over every set's chart" },
       { to: "/rankings", label: "Rankings", hint: "Cards ranked by play" },
       { to: "/channels", label: "Sell channels", hint: "What cards sell for by platform and consigner" },
+      { to: "/auction-timing", label: "Auction timing", hint: "When to put graded copies into the Fanatics weekly auction: crowding, surges, our copies scored" },
       { to: "/promos", label: "Promos", hint: "Card classes: promos, exotics" },
       { to: "/pcg", label: "PCG grading", hint: "PCG grade odds and PCG vs PSA prices: when PCG pays" },
     ],
@@ -257,6 +259,7 @@ export default function App() {
             <Route path="/sealed/timing" element={<SealedTimingPage />} />
             <Route path="/sealed/reprints" element={<SealedReprintsPage />} />
             <Route path="/sealed/backtest" element={<SealedBacktestPage />} />
+            <Route path="/auction-timing" element={<AuctionTimingPage />} />
             <Route path="/sealed/watchlist" element={<SealedWatchlistPage />} />
             <Route path="/shops" element={<ShopsPage />} />
             <Route path="/roadmap" element={<RoadmapPage />} />
