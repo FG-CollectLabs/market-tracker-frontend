@@ -4057,6 +4057,8 @@ export interface InjectWindow {
 export interface InjStat {
   key: string; label: string; weeks: number; copies: number;
   median: number | null; p25: number | null; p75: number | null; thin?: boolean;
+  // each close / its card + grade's usual close vs eBay: the timing effect with the card taken out
+  within_weeks: number; within_median: number | null; within_p25: number | null; within_p75: number | null; within_thin?: boolean;
 }
 export interface InjBreakdown { key: string; label: string; why: string; rows: InjStat[] }
 export interface InjTrigger { key: string; rule: string; value: number; basis: string }
