@@ -3964,16 +3964,29 @@ export interface SealedRule {
   rotation_months?: number;
   hype_by?: "momentum" | "premium" | "newest" | "rising12";
   pick_n?: number;
-  exit?: "hold" | "mark";
+  exit?: "hold" | "mark" | "all_at" | "target" | "winddown";
   hold_months?: number;
+  all_at_months?: number;
+  sell_date?: string;
+  target_mult?: number;
+  target_basis?: "cost" | "msrp";
+  max_hold_months?: number;
+  wind_start?: number;
+  wind_months?: number;
+  wind_units?: number;
 }
-export interface BacktestLot { product_id: number; set: string; kind: SealedKind; month: string; units: number; cost_cents: number; sold?: string; exit_cents: number; open: boolean; age_months: number }
+export interface BacktestSale { month: string; units: number; price_cents: number; net_cents: number; why?: string }
+export interface BacktestLot {
+  product_id: number; set: string; set_name: string; kind: SealedKind; month: string; units: number; cost_cents: number;
+  sales?: BacktestSale[]; open_units: number; open_net_cents: number; why?: string;
+}
 export interface BacktestResult {
   strategy: SealedRule;
   invested_cents: number; value_cents: number; profit_cents: number; multiple: number; irr: number | null;
   benchmark_cents: number; benchmark_irr: number;
   units: number; buys: number; sets: number; open_lots: number; closed_lots: number; closed_multiple?: number;
   win_share: number; worst_drawdown: number; avg_cost_cents: number; first_buy?: string; last_buy?: string;
+  sold_units: number; open_units: number; avg_hold_months: number; exits: string;
   by_set: { set: string; set_name: string; release?: string; units: number; invested_cents: number; value_cents: number; multiple: number }[];
   timeline: { month: string; invested_cents: number; returned_cents: number; held_cents: number; benchmark_cents: number }[];
   lots?: BacktestLot[];
@@ -3990,6 +4003,14 @@ async function postPublic<T>(path: string, body: unknown): Promise<T> {
 }
 export function runSealedBacktest(strategies: SealedRule[], gross = false, lots = false): Promise<{ results: BacktestResult[]; latest: string; costs: string; method: string }> {
   return postPublic(`/v1/sealed/backtest${gross ? "?gross=1" : ""}`, { strategies, lots });
+}
+export interface BacktestExitRow {
+  strategy: SealedRule; exits: string; invested_cents: number; value_cents: number; profit_cents: number; multiple: number;
+  closed_multiple?: number; irr: number | null; vs_sp_cents: number; sold_units: number; open_units: number; avg_hold_months: number;
+  win_share: number; worst_drawdown: number;
+}
+export function sweepSealedExits(strategy: SealedRule, gross = false): Promise<{ rows: BacktestExitRow[]; latest: string; costs: string; method: string }> {
+  return postPublic(`/v1/sealed/backtest/exits${gross ? "?gross=1" : ""}`, { strategy });
 }
 export function sweepSealedBacktest(base: SealedRule, holds: number[], gross = false): Promise<{ rows: BacktestSweepRow[]; latest: string; costs: string; method: string }> {
   return postPublic(`/v1/sealed/backtest/sweep${gross ? "?gross=1" : ""}`, { base, holds });
