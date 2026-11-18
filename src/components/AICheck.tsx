@@ -7,14 +7,15 @@ import { fetchAIStatus, requestAICheck, type AIStatus } from "../lib/api";
 // were), graded listings by their feed id, anything else by copy id.
 
 const LABEL: Record<string, string> = {
-  not_checked: "not AI checked", sending: "sending photos…", queued: "AI queued", checking: "AI checking…",
+  not_checked: "not AI checked", waiting_pregrade: "AI after the pre-grade…", skipped: "AI skipped", sending: "sending photos…", queued: "AI queued", checking: "AI checking…",
   clean: "AI validated ✓", issues: "AI validated · issues", removed: "AI: removed", failed: "AI check failed", partial: "AI: partly checked",
 };
 const TONE: Record<string, string> = {
   clean: "border-emerald-800 bg-emerald-950/50 text-emerald-200", issues: "border-amber-800 bg-amber-950/40 text-amber-200",
   removed: "border-rose-900 bg-rose-950/40 text-rose-200", failed: "border-rose-900 bg-rose-950/30 text-rose-300",
   queued: "border-sky-900 bg-sky-950/40 text-sky-200", checking: "border-sky-900 bg-sky-950/40 text-sky-200",
-  sending: "border-sky-900 bg-sky-950/40 text-sky-200",
+  sending: "border-sky-900 bg-sky-950/40 text-sky-200", waiting_pregrade: "border-indigo-900 bg-indigo-950/40 text-indigo-200",
+  skipped: "border-gray-700 text-gray-500",
 };
 const busyStates = new Set(["sending", "queued", "checking"]);
 
@@ -67,7 +68,7 @@ export default function AICheck({ initial, copyId, feedId, source, listingId }: 
     ai?.checked_at ? `Checked ${new Date(ai.checked_at).toLocaleString()}` : "",
     "Full AI check: slab label (graded), outline, corners and edges",
   ].filter(Boolean).join("\n");
-  const showButton = !busyStates.has(state);
+  const showButton = !busyStates.has(state) && state !== "waiting_pregrade";
   return (
     <span className="inline-flex items-center gap-1 text-[11px]">
       {state !== "not_checked" && (
