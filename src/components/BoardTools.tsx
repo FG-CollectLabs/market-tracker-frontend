@@ -59,7 +59,7 @@ export function CheckAll({ listingIds, source = "ebay" }: { listingIds: string[]
 // Pre-grade, then AI check: the programmatic pre-grade first, then the AI
 // check on the copies that pass, each as its pre-grade lands (server-side;
 // up to 300 copies and 50 AI checks a click).
-export function ChainCheck({ listingIds, source = "ebay" }: { listingIds: string[]; source?: "ebay" | "cc" }) {
+export function ChainCheck({ listingIds, source = "ebay", label, compact }: { listingIds: string[]; source?: "ebay" | "cc"; label?: string; compact?: boolean }) {
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState<string | null>(null);
   const [filter, setFilter] = useState<ChainFilter>("ten_possible");
@@ -87,15 +87,15 @@ export function ChainCheck({ listingIds, source = "ebay" }: { listingIds: string
             }
           }}
           className="px-2 py-1 rounded border border-fuchsia-800 text-fuchsia-200 hover:bg-fuchsia-950/60 disabled:opacity-40">
-          {busy ? "Starting…" : `Pre-grade → AI (${listingIds.length})`}
+          {busy ? "Starting…" : `${label ?? "Pre-grade → AI"} (${listingIds.length})`}
         </button>
-        <select value={filter} onChange={(e) => setFilter(e.target.value as ChainFilter)} title="Which pre-graded copies go on to the AI check"
+        {!compact && <select value={filter} onChange={(e) => setFilter(e.target.value as ChainFilter)} title="Which pre-graded copies go on to the AI check"
           className="rounded border border-gray-700 bg-gray-950 px-1 py-0.5 text-[11px] text-gray-200">
           <option value="ten_possible">if centering allows a 10</option>
           <option value="min_p">if PSA 10 odds ≥</option>
           <option value="all">all of them</option>
-        </select>
-        {filter === "min_p" && <><input value={minP} onChange={(e) => setMinP(Math.max(1, Math.min(99, Number(e.target.value) || 0)))}
+        </select>}
+        {!compact && filter === "min_p" && <><input value={minP} onChange={(e) => setMinP(Math.max(1, Math.min(99, Number(e.target.value) || 0)))}
           className="w-10 rounded border border-gray-700 bg-gray-950 px-1 py-0.5 text-[11px] text-gray-200 tabular-nums" />%</>}
       </>}
       {msg && <span className="text-gray-400">{msg}</span>}
