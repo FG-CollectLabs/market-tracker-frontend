@@ -3981,7 +3981,10 @@ export interface SealedRule {
   set_class?: "standard" | "special"; // standard = sets with a booster box; special = none printed
   in_print_only?: boolean; // hype: skip sets that look out of print
   // set reception: price / MSRP reception_at months after release (hot ≥ reception_hot, cold < reception_cold); buys only from then on
-  reception?: "hot" | "normal" | "cold" | "any"; reception_at?: number; reception_hot?: number; reception_cold?: number;
+  reception?: "hot" | "normal" | "cold" | "cheap" | "pricey" | "any"; reception_at?: number; reception_hot?: number; reception_cold?: number; reception_split?: number;
+  demand?: "loved" | "unloved"; demand_at?: number; // chase singles at month N vs the sets released before
+  max_msrp_mult?: number; // buy only at or under this many times MSRP
+  from_oop?: boolean; oop_months?: number; // schedule: start once out of print
   hype_units?: number; // hype: a fixed number of units of each pick a month (week cadence: a week)
   buy_from?: string;
   buy_to?: string;
@@ -4202,4 +4205,29 @@ export function fetchReception(kind: string, at: number, hot: number, cold: numb
   if (cls && cls !== "all") q.set("class", cls);
   if (gross) q.set("gross", "1");
   return get(`/v1/sealed/backtest/reception?${q}`);
+}
+
+// ---- set demand + entry price studies ----
+export interface DemandSet {
+  set: string; set_name: string; release: string; set_class: string; chase?: number; loved?: boolean; premium: number;
+  quadrant: string; reception: string; exit_premium_36?: number; latest_premium?: number; reprint_waves: number; printed_months?: number;
+}
+export interface WhyRow { group: string; sets: number; entry_premium?: number; exit_premium_36?: number; gain_36?: number; reprint_waves?: number; printed_months?: number; still_printing: number }
+export interface DemandStudy {
+  kind: SealedKind; at: number; split: number; latest: string; quadrants: Record<string, number>; sets: DemandSet[]; why: WhyRow[];
+  rows: { label: string; strategy: SealedRule; cells: { quadrant: string; irr: number | null; multiple: number; sets: number; buys: number; profit_cents: number }[] }[];
+  method: string;
+}
+export function fetchDemandStudy(kind: string, at: number, split: number, cls: string, gross = false): Promise<DemandStudy> {
+  const q = new URLSearchParams({ kind, at: String(at), split: String(split) });
+  if (cls && cls !== "all") q.set("class", cls);
+  if (gross) q.set("gross", "1");
+  return get(`/v1/sealed/backtest/demand?${q}`);
+}
+export interface EntryStat { bucket: string; status: "in_print" | "out_of_print" | "all"; buys: number; sets: number; median_yearly?: number; p25?: number; p75?: number; up_share?: number; median_price_cents?: number }
+export function fetchEntryStudy(kind: string, hold: number, cls: string, gross = false): Promise<{ kind: SealedKind; hold: number; latest: string; rows: EntryStat[]; method: string }> {
+  const q = new URLSearchParams({ kind, hold: String(hold) });
+  if (cls && cls !== "all") q.set("class", cls);
+  if (gross) q.set("gross", "1");
+  return get(`/v1/sealed/backtest/entry?${q}`);
 }

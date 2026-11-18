@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { Link } from "react-router-dom";
 import {
-  fetchReception, fetchSealedBacktestBest, fetchSealedPlan, runSealedBacktest, type ReceptionStudy, saveSealedPlan, sealedBuyList, type BuyList, type BuyShare, type SetClass, sweepSealedBacktest, sweepSealedExits, SEALED_KIND_LABEL,
+  fetchDemandStudy, fetchEntryStudy, fetchReception, fetchSealedBacktestBest, type DemandStudy, type EntryStat, fetchSealedPlan, runSealedBacktest, type ReceptionStudy, saveSealedPlan, sealedBuyList, type BuyList, type BuyShare, type SetClass, sweepSealedBacktest, sweepSealedExits, SEALED_KIND_LABEL,
   type BacktestExitRow, type BacktestKindBest, type BacktestLot, type BacktestResult, type BacktestSweepRow, type SealedKind, type SealedRule,
 } from "../lib/api";
 import { Spinner } from "../components/Spinner";
@@ -110,7 +110,8 @@ function describe(s: SealedRule) {
     const end = s.until_oop ? (s.end_month != null ? ` to month ${s.end_month} or out of print` : " until out of print") : s.end_month != null && s.end_month !== s.start_month ? ` to month ${s.end_month}` : " only";
     buy = `${qty} a ${s.cadence ?? "month"}, month ${s.start_month ?? 0}${end}`;
   }
-  const rec = s.reception && s.reception !== "any" ? ` · ${s.reception} sets (month ${s.reception_at ?? 3})` : "";
+  const rec = (s.reception && s.reception !== "any" ? ` · ${s.reception} sets (month ${s.reception_at ?? 3})` : "")
+    + (s.demand ? ` · ${s.demand} sets` : "") + (s.max_msrp_mult ? ` · only at ≤ ${s.max_msrp_mult}× MSRP` : "") + (s.from_oop ? ` · once out of print, ${s.oop_months ?? 12} months` : "");
   return `${buy}${off}${s.set_class ? ` (${s.set_class} sets)` : ""}${rec} · ${exitText(s)}`;
 }
 
@@ -451,6 +452,182 @@ function ReceptionCard({ gross, onAdd }: { gross: boolean; onAdd: (st: Strategy)
   );
 }
 
+// ---- set quality: demand quadrants + entry price ------------------------------------------
+
+const QUAD: Record<string, [string, string]> = {
+  all: ["All sets", "text-gray-300"],
+  loved_cheap: ["Loved, near MSRP", "text-emerald-300"],
+  loved_pricey: ["Loved, priced in", "text-amber-300"],
+  unloved_cheap: ["Unloved, near MSRP", "text-sky-300"],
+  unloved_pricey: ["Unloved, priced in", "text-rose-300"],
+  unknown: ["No reading", "text-gray-500"],
+};
+
+function DemandTab({ gross, onAdd, kind, cls }: { gross: boolean; onAdd: (st: Strategy) => void; kind: SealedKind; cls: SetClass }) {
+  const [at, setAt] = useState(3);
+  const [split, setSplit] = useState(1.25);
+  const [d, setD] = useState<DemandStudy | null>(null);
+  const [err, setErr] = useState("");
+  const [showSets, setShowSets] = useState(false);
+  useEffect(() => { setD(null); setErr(""); fetchDemandStudy(kind, at, split, cls, gross).then(setD).catch((e) => setErr(String(e))); }, [kind, at, split, cls, gross]);
+  const quads = ["all", "loved_cheap", "loved_pricey", "unloved_cheap", "unloved_pricey"];
+  const r2 = (v?: number) => (v == null ? "–" : `${v.toFixed(2)}×`);
+  return (
+    <div className="space-y-3">
+      <p className="text-xs text-gray-400 max-w-5xl">
+        <b className="text-gray-200">Demand</b> = what people pay for the set&apos;s 5 best singles at month {at}, over the ETB&apos;s MSRP; <span className="text-emerald-300">loved</span> when
+        that beats the median of the sets released in the 36 months before (so a set is never judged against later ones). <b className="text-gray-200">Price</b> = the
+        product&apos;s price over MSRP at month {at}: near MSRP under {split}×, priced in at or above. A loved set held near MSRP is usually being printed hard.
+      </p>
+      <div className="flex flex-wrap items-center gap-3 text-xs text-gray-400">
+        <label className="flex items-center gap-1">read at month
+          <select value={at} onChange={(e) => setAt(Number(e.target.value))} className={inp}>{[1, 2, 3, 6].map((m) => <option key={m} value={m}>{m}</option>)}</select></label>
+        <label className="flex items-center gap-1">priced in at ≥ <input value={split} onChange={(e) => setSplit(Number(e.target.value) || 1.25)} className={`${inp} w-12`} />× MSRP</label>
+        {d && <span>{quads.slice(1).map((q) => <span key={q} className={`mr-2 ${QUAD[q][1]}`}>{d.quadrants[q] ?? 0} {QUAD[q][0].toLowerCase()}</span>)}
+          <button onClick={() => setShowSets(!showSets)} className="text-indigo-300 hover:underline">{showSets ? "hide sets" : "which sets"}</button></span>}
+      </div>
+      {err && <div className="text-xs text-rose-400 break-all">{err}</div>}
+      {!d ? (!err && <Spinner />) : (
+        <>
+          {showSets && (
+            <div className="overflow-x-auto max-h-[420px]">
+              <table className="w-full text-[11px]">
+                <thead className="text-gray-500 text-left sticky top-0 bg-gray-900"><tr>
+                  <th className={th}>Set</th><th className={thr}>Chase (×MSRP)</th><th className={th}>Demand</th><th className={thr}>Price at month {d.at}</th>
+                  <th className={thr}>36 months later</th><th className={thr}>Now</th><th className={thr} title="Set-specific 15%+ drops after the reading">Reprint waves</th>
+                  <th className={thr} title="Months after release until the price looked out of print">Printed for</th>
+                </tr></thead>
+                <tbody>{d.sets.map((x) => (
+                  <tr key={x.set} className="border-t border-gray-800">
+                    <td className={`${td} text-gray-200`}>{x.set_name} <span className="text-gray-600">{x.release}</span></td>
+                    <td className={tdr}>{x.chase != null ? `${x.chase.toFixed(1)}×` : "–"}</td>
+                    <td className={`${td} ${QUAD[x.quadrant]?.[1] ?? ""}`}>{QUAD[x.quadrant]?.[0] ?? x.quadrant}</td>
+                    <td className={tdr}>{r2(x.premium)}</td><td className={tdr}>{r2(x.exit_premium_36)}</td><td className={tdr}>{r2(x.latest_premium)}</td>
+                    <td className={tdr}>{x.reprint_waves}</td>
+                    <td className={tdr}>{x.printed_months != null ? `${x.printed_months}mo` : <span className="text-gray-500">still</span>}</td>
+                  </tr>
+                ))}</tbody>
+              </table>
+            </div>
+          )}
+          <div className="overflow-x-auto">
+            <div className="text-xs text-gray-300 mb-1">Why the groups differ</div>
+            <table className="w-full text-xs">
+              <thead className="text-gray-500 text-left"><tr>
+                <th className={th}>Group</th><th className={thr}>Sets</th><th className={thr}>Price at month {d.at}</th><th className={thr}>36 months later</th>
+                <th className={thr} title="Median of later / entry premium: the gain from that entry">Gain</th>
+                <th className={thr} title="Mean set-specific 15%+ drops after the reading (reprint waves)">Reprint waves</th>
+                <th className={thr} title="Median months until the price looked out of print, for the sets that got there">Printed for</th><th className={thr}>Still printing</th>
+              </tr></thead>
+              <tbody>{d.why.map((w) => (
+                <tr key={w.group} className="border-t border-gray-800">
+                  <td className={`${td} text-gray-200`}>{w.group}</td><td className={tdr}>{w.sets}</td>
+                  <td className={tdr}>{r2(w.entry_premium)}</td><td className={tdr}>{r2(w.exit_premium_36)}</td>
+                  <td className={`${tdr} font-semibold`}>{r2(w.gain_36)}</td>
+                  <td className={tdr}>{w.reprint_waves ?? "–"}</td><td className={tdr}>{w.printed_months != null ? `${w.printed_months}mo` : "–"}</td><td className={tdr}>{w.still_printing}</td>
+                </tr>
+              ))}</tbody>
+            </table>
+          </div>
+          <div className="overflow-x-auto">
+            <table className="w-full text-xs">
+              <thead className="text-gray-500 text-left"><tr>
+                <th className={th}>Rule (buys from month {d.at})</th>
+                {quads.map((q) => <th key={q} className={`${thr} ${QUAD[q][1]}`}>{QUAD[q][0]}</th>)}
+              </tr></thead>
+              <tbody>{d.rows.map((r) => (
+                <tr key={r.label} className="border-t border-gray-800 align-top">
+                  <td className={`${td} text-gray-200`}>{r.label}</td>
+                  {quads.map((q) => {
+                    const c = r.cells.find((x) => x.quadrant === q);
+                    return (
+                      <td key={q} className={tdr} title={c ? `${c.buys} buys · profit ${usd(c.profit_cents)}` : ""}>
+                        {c && c.sets > 0 ? <>
+                          <span className={`font-semibold ${irrTone(c.irr)}`}>{pct(c.irr, 0)}</span>
+                          <div className="text-[10px] text-gray-500">{c.multiple.toFixed(2)}× · {c.sets} sets</div>
+                          {q !== "all" && <button onClick={() => onAdd({ name: `${SEALED_KIND_LABEL[kind]} ${QUAD[q][0].toLowerCase()}: ${r.label}`,
+                            legs: [{ ...r.strategy, demand: q.startsWith("loved") ? "loved" : "unloved", demand_at: d.at,
+                              reception: q.endsWith("cheap") ? "cheap" : "pricey", reception_at: d.at, reception_split: d.split, name: "" }] })}
+                            className="text-[10px] text-indigo-300 hover:underline">add</button>}
+                        </> : <span className="text-gray-700">–</span>}
+                      </td>
+                    );
+                  })}
+                </tr>
+              ))}</tbody>
+            </table>
+          </div>
+          <p className="text-[11px] text-gray-500">{d.method}</p>
+        </>
+      )}
+    </div>
+  );
+}
+
+function EntryTab({ gross, kind, cls }: { gross: boolean; kind: SealedKind; cls: SetClass }) {
+  const [hold, setHold] = useState(24);
+  const [d, setD] = useState<{ rows: EntryStat[]; method: string } | null>(null);
+  const [err, setErr] = useState("");
+  useEffect(() => { setD(null); setErr(""); fetchEntryStudy(kind, hold, cls, gross).then(setD).catch((e) => setErr(String(e))); }, [kind, hold, cls, gross]);
+  const buckets = [...new Set((d?.rows ?? []).map((r) => r.bucket))];
+  const cell = (b: string, st: EntryStat["status"]) => d?.rows.find((r) => r.bucket === b && r.status === st);
+  const show = (r?: EntryStat) => r ? <>
+    <span className={`font-semibold ${irrTone(r.median_yearly)}`}>{pct(r.median_yearly, 0)}</span>
+    <div className="text-[10px] text-gray-500">{pct(r.p25, 0)}…{pct(r.p75, 0)} · {r.sets} sets · {r.buys} buys</div>
+  </> : <span className="text-gray-700">–</span>;
+  return (
+    <div className="space-y-3">
+      <p className="text-xs text-gray-400 max-w-5xl">
+        Every month of every set&apos;s chart treated as a buy, sold {hold} months later (after selling costs), by how far over MSRP it was bought and whether
+        the set had already gone out of print. Answers: do out-of-print buys still pay, and at what multiple of MSRP do the gains stop being worth it?
+      </p>
+      <div className="flex gap-1 text-xs">{[12, 24, 36].map((h) => (
+        <button key={h} onClick={() => setHold(h)} className={`rounded px-2 py-0.5 ${hold === h ? "bg-gray-700 text-white" : "text-gray-400 hover:text-gray-200"}`}>hold {h} months</button>
+      ))}</div>
+      {err && <div className="text-xs text-rose-400 break-all">{err}</div>}
+      {!d ? (!err && <Spinner />) : (
+        <div className="overflow-x-auto">
+          <table className="w-full text-xs">
+            <thead className="text-gray-500 text-left"><tr>
+              <th className={th}>Bought at</th><th className={thr}>Median price</th><th className={thr}>Still in print</th><th className={thr}>Out of print</th><th className={thr}>All</th>
+            </tr></thead>
+            <tbody>{buckets.map((b) => (
+              <tr key={b} className="border-t border-gray-800 align-top">
+                <td className={`${td} text-gray-200`}>{b} MSRP</td>
+                <td className={tdr}>{usd(cell(b, "all")?.median_price_cents)}</td>
+                <td className={tdr}>{show(cell(b, "in_print"))}</td><td className={tdr}>{show(cell(b, "out_of_print"))}</td><td className={tdr}>{show(cell(b, "all"))}</td>
+              </tr>
+            ))}</tbody>
+          </table>
+          <p className="text-[11px] text-gray-500 mt-1">Yearly return (median, middle half). {d.method}</p>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function SetQualityCard({ gross, onAdd }: { gross: boolean; onAdd: (st: Strategy) => void }) {
+  const [tab, setTab] = useState<"demand" | "entry">("demand");
+  const [kind, setKind] = useState<SealedKind>("etb");
+  const [cls, setCls] = useState<SetClass>("all");
+  return (
+    <Card title={<span className="flex items-center gap-2">Set quality
+      {([["demand", "Demand × price"], ["entry", "Entry price & out of print"]] as const).map(([k, l]) => (
+        <button key={k} onClick={() => setTab(k)} className={`rounded px-2.5 py-0.5 text-xs ${tab === k ? "bg-indigo-700 text-white" : "text-gray-400 hover:text-gray-200"}`}>{l}</button>
+      ))}</span>}
+      right={<div className="flex flex-wrap items-center gap-1">
+        {(["etb", "pc_etb", "booster_box", "booster_bundle"] as SealedKind[]).map((x) => (
+          <button key={x} onClick={() => setKind(x)} className={`rounded px-2.5 py-1 ${kind === x ? "bg-gray-700 text-white" : "text-gray-400 hover:text-gray-200"}`}>{SEALED_KIND_LABEL[x]}</button>
+        ))}
+        <span className="ml-2 flex gap-1">{([["all", "All"], ["standard", "Standard"], ["special", "Special"]] as [SetClass, string][]).map(([c, l]) => (
+          <button key={c} onClick={() => setCls(c)} className={`rounded px-2 py-0.5 ${cls === c ? "bg-gray-700 text-white" : "text-gray-400 hover:text-gray-200"}`}>{l}</button>
+        ))}</span>
+      </div>}>
+      {tab === "demand" ? <DemandTab gross={gross} onAdd={onAdd} kind={kind} cls={cls} /> : <EntryTab gross={gross} kind={kind} cls={cls} />}
+    </Card>
+  );
+}
+
 // ---- strategy editor ----------------------------------------------------------------
 
 const SET_TYPES: [SealedRule["set_class"] | undefined, string, string][] = [
@@ -480,8 +657,15 @@ function LegEditor({ r, onChange, onRemove, canRemove, onSplit }: { r: SealedRul
         <span className="ml-3 text-gray-500" title="Only sets received this way: the product's price / MSRP at the reading month (hot ≥ 1.5×, cold < 1.1× by default). The leg then buys only from that month on.">Reception</span>
         <select value={r.reception ?? ""} onChange={(e) => set(e.target.value ? { reception: e.target.value as SealedRule["reception"], reception_at: r.reception_at ?? 3 } : { reception: undefined })} className={inp}>
           <option value="">any</option><option value="hot">hot sets</option><option value="normal">normal sets</option><option value="cold">cold sets</option>
+          <option value="cheap">near MSRP (cheap)</option><option value="pricey">priced in</option>
         </select>
         {r.reception && <label className="flex items-center gap-1 text-gray-500">read at month <input value={r.reception_at ?? 3} onChange={(e) => set({ reception_at: num(e.target.value) || 3 })} className={`${inp} w-10`} /></label>}
+        <span className="ml-3 text-gray-500" title="Loved: the set's 5 best singles at the reading month beat the median of the sets released in the 36 months before">Demand</span>
+        <select value={r.demand ?? ""} onChange={(e) => set(e.target.value ? { demand: e.target.value as SealedRule["demand"], demand_at: r.demand_at ?? 3 } : { demand: undefined })} className={inp}>
+          <option value="">any</option><option value="loved">loved sets</option><option value="unloved">unloved sets</option>
+        </select>
+        <label className="ml-3 flex items-center gap-1 text-gray-500" title="Buy only while the price is at most this many times MSRP (1 = at or under MSRP). Pair with another leg to double up when a set is cheap.">
+          only at ≤ <input value={r.max_msrp_mult ?? ""} placeholder="–" onChange={(e) => set({ max_msrp_mult: num(e.target.value) || undefined })} className={`${inp} w-12`} />× MSRP</label>
         {onSplit && !r.set_class && (
           <button onClick={onSplit} className="ml-2 text-indigo-300 hover:underline"
             title="Turn this leg into two: one for standard sets, one for special sets, each starting from these settings, so you can set different timing for each">
@@ -531,6 +715,8 @@ function LegEditor({ r, onChange, onRemove, canRemove, onSplit }: { r: SealedRul
           <label className={lbl}>from month <input value={r.start_month ?? 0} onChange={(e) => set({ start_month: num(e.target.value) ?? 0 })} className={`${inp} w-12`} /></label>
           <label className={lbl}>to month <input value={r.end_month ?? ""} placeholder="–" onChange={(e) => set({ end_month: num(e.target.value) ?? null })} className={`${inp} w-12`} /></label>
           <label className={lbl}><input type="checkbox" checked={!!r.until_oop} onChange={(e) => set({ until_oop: e.target.checked })} /> stop once out of print</label>
+          <label className={lbl} title="Ignore the month window: start buying the month the product looks out of print, for N months"><input type="checkbox" checked={!!r.from_oop} onChange={(e) => set({ from_oop: e.target.checked || undefined, oop_months: r.oop_months ?? 12 })} /> start once out of print</label>
+          {r.from_oop && <label className={lbl}>for <input value={r.oop_months ?? 12} onChange={(e) => set({ oop_months: num(e.target.value) || 12 })} className={`${inp} w-10`} /> months</label>}
           {r.until_oop && <label className={lbl} title="Out of print = the price this far above its low since buying started">
             at +<input value={Math.round((r.oop_runup ?? 0.3) * 100)} onChange={(e) => set({ oop_runup: (num(e.target.value) ?? 30) / 100 })} className={`${inp} w-10`} />% off the low</label>}
         </div>
@@ -1169,6 +1355,8 @@ export default function SealedBacktestPage() {
       <BestPerKind gross={gross} onAdd={add} />
 
       <ReceptionCard gross={gross} onAdd={add} />
+
+      <SetQualityCard gross={gross} onAdd={add} />
 
       <div id="my-strategies" />
       <Card title="My strategies" right={<>
