@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import { fetchBids, saveBidResult, type BidRow, type BidStage, type BidStats } from "../lib/api";
 import { Spinner, ErrorMsg } from "./Spinner";
+import BidAccuracy from "./BidAccuracy";
 
 // Every bid and what came of it: report won / lost, check the copy in hand,
 // record its grade and its sale. The totals compare what happened with what
@@ -65,6 +66,8 @@ export default function BidsResults() {
         <Tile label="Realized profit" value={usd(s.profit_cents)} sub={`${s.sold} sold · ${usd(s.invested_sold_cents)} in`} tone={s.sold ? (s.profit_cents >= 0 ? "good" : "bad") : undefined} />
         <Tile label="ROI (sold)" value={pc(s.roi)} sub="profit ÷ paid + grading" />
       </div>
+
+      <BidAccuracy />
 
       <div className="flex flex-wrap items-end gap-1 border-b border-gray-800">
         {TABS.map(([k, l, st]) => (

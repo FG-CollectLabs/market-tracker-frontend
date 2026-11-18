@@ -4045,6 +4045,20 @@ export function sweepSealedBacktest(base: SealedRule, holds: number[], gross = f
   return postPublic(`/v1/sealed/backtest/sweep${gross ? "?gross=1" : ""}`, { base, holds });
 }
 
+// ---- buying accuracy (acquisitions 1.1) ----
+export interface FunnelMonth {
+  month: string; bids: number; open: number; won: number; checked_in_hand: number; gradable: number; graded: number; tens: number;
+  win_rate?: number; gradable_rate?: number; ten_rate?: number; expected_ten_rate?: number;
+}
+export interface MissRow { key: string; won?: number; checked?: number; not_gradable: number; missed: number; hidden: number; unclear: number; not_gradable_rate?: number }
+export interface EVMonth { month: string; n: number; ev_at_bid_cents: number; ev_after_cents: number; drift?: number; p10_at_bid?: number; p10_after?: number; after_from_check: number }
+export interface BidAccuracy {
+  months: number; funnel: FunnelMonth[]; not_gradable: MissRow; not_gradable_by_defect: MissRow[]; not_gradable_by_seller: MissRow[]; ev: EVMonth[]; method: string;
+}
+export function fetchBidAccuracy(months = 12): Promise<BidAccuracy> {
+  return adminFetch(`/v1/acquisitions/analytics?months=${months}`);
+}
+
 export interface BacktestFamilyBest {
   family: string; label: string; rationale: string; thin: boolean; variants: number; exits: string;
   best: BacktestSweepRow;
