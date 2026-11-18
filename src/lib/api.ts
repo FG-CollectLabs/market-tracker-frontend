@@ -3980,6 +3980,8 @@ export interface SealedRule {
   released_to?: string;
   set_class?: "standard" | "special"; // standard = sets with a booster box; special = none printed
   in_print_only?: boolean; // hype: skip sets that look out of print
+  // set reception: price / MSRP reception_at months after release (hot ≥ reception_hot, cold < reception_cold); buys only from then on
+  reception?: "hot" | "normal" | "cold" | "any"; reception_at?: number; reception_hot?: number; reception_cold?: number;
   hype_units?: number; // hype: a fixed number of units of each pick a month (week cadence: a week)
   buy_from?: string;
   buy_to?: string;
@@ -4026,6 +4028,7 @@ export interface BacktestResult {
 export interface BacktestSweepRow {
   strategy: SealedRule; invested_cents: number; profit_cents: number; multiple: number; closed_multiple?: number; irr: number | null;
   sets: number; buys: number; open_lots: number; closed_lots: number; win_share: number; worst_drawdown: number;
+  units?: number;
 }
 async function postPublic<T>(path: string, body: unknown): Promise<T> {
   const res = await fetch(`${BASE}${path}`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
@@ -4087,15 +4090,18 @@ export interface BacktestFamilyBest {
   family: string; label: string; rationale: string; thin: boolean; variants: number; exits: string;
   best: BacktestSweepRow;
   discounts?: { discount: number; irr: number | null; multiple: number }[]; // the best rule with every buy that much under market
+  contenders?: BacktestSweepRow[]; // within tol of the best yearly return, most dollars first
 }
 export interface BacktestKindBest {
   kind: SealedKind; sets: number; full_history: number; families: BacktestFamilyBest[];
   missing_early: { set: string; set_name: string; release: string; first_month: string; missing_months: number }[];
+  capacity?: BacktestSweepRow[]; best_irr?: number; tol?: number; // every family's near-best rules, most dollars first
 }
-export function fetchSealedBacktestBest(gross = false, cls: SetClass = "all"): Promise<{ kinds: BacktestKindBest[]; latest: string; costs: string; method: string }> {
+export function fetchSealedBacktestBest(gross = false, cls: SetClass = "all", tol = 0.05): Promise<{ kinds: BacktestKindBest[]; latest: string; costs: string; method: string }> {
   const q = new URLSearchParams();
   if (gross) q.set("gross", "1");
   if (cls !== "all") q.set("class", cls);
+  if (tol !== 0.05) q.set("tol", String(tol));
   return get(`/v1/sealed/backtest/best${q.size ? `?${q}` : ""}`);
 }
 
@@ -4181,4 +4187,19 @@ export function saveSealedPlan(strategies: SealedRule[]): Promise<{ strategies: 
 }
 export function sealedBuyList(strategies?: SealedRule[]): Promise<BuyList> {
   return adminFetch(`/v1/admin/sealed/plan/buylist`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ strategies: strategies ?? [] }) });
+}
+
+// ---- set reception study ----
+export interface ReceptionCell { tier: "all" | "hot" | "normal" | "cold"; irr: number | null; multiple: number; sets: number; buys: number; profit_cents: number; invested_cents: number; closed_lots: number }
+export interface ReceptionStudy {
+  kind: SealedKind; class: string; at: number; hot: number; cold: number; latest: string; costs: string;
+  tiers: Record<string, number>; unknown: number;
+  sets: { set: string; set_name: string; release: string; set_class: string; premium: number; tier: string; now_vs_reading?: number }[];
+  rows: { label: string; strategy: SealedRule; cells: ReceptionCell[] }[]; method: string;
+}
+export function fetchReception(kind: string, at: number, hot: number, cold: number, cls: string, gross = false): Promise<ReceptionStudy> {
+  const q = new URLSearchParams({ kind, at: String(at), hot: String(hot), cold: String(cold) });
+  if (cls && cls !== "all") q.set("class", cls);
+  if (gross) q.set("gross", "1");
+  return get(`/v1/sealed/backtest/reception?${q}`);
 }

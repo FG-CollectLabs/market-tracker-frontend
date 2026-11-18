@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { Link } from "react-router-dom";
 import {
-  fetchSealedBacktestBest, fetchSealedPlan, runSealedBacktest, saveSealedPlan, sealedBuyList, type BuyList, type BuyShare, type SetClass, sweepSealedBacktest, sweepSealedExits, SEALED_KIND_LABEL,
+  fetchReception, fetchSealedBacktestBest, fetchSealedPlan, runSealedBacktest, type ReceptionStudy, saveSealedPlan, sealedBuyList, type BuyList, type BuyShare, type SetClass, sweepSealedBacktest, sweepSealedExits, SEALED_KIND_LABEL,
   type BacktestExitRow, type BacktestKindBest, type BacktestLot, type BacktestResult, type BacktestSweepRow, type SealedKind, type SealedRule,
 } from "../lib/api";
 import { Spinner } from "../components/Spinner";
@@ -110,7 +110,8 @@ function describe(s: SealedRule) {
     const end = s.until_oop ? (s.end_month != null ? ` to month ${s.end_month} or out of print` : " until out of print") : s.end_month != null && s.end_month !== s.start_month ? ` to month ${s.end_month}` : " only";
     buy = `${qty} a ${s.cadence ?? "month"}, month ${s.start_month ?? 0}${end}`;
   }
-  return `${buy}${off}${s.set_class ? ` (${s.set_class} sets)` : ""} · ${exitText(s)}`;
+  const rec = s.reception && s.reception !== "any" ? ` · ${s.reception} sets (month ${s.reception_at ?? 3})` : "";
+  return `${buy}${off}${s.set_class ? ` (${s.set_class} sets)` : ""}${rec} · ${exitText(s)}`;
 }
 
 // what goes to the API: one leg = that rule; several = a portfolio
@@ -164,6 +165,38 @@ const tdr = `${td} text-right tabular-nums whitespace-nowrap`;
 // Standard sets (a booster box printed) against special sets (none: Hidden
 // Fates, Crown Zenith, 151, Prismatic, ...): each family's best rule side by
 // side, so the rules that differ by set type are plain.
+// Near-ties: rules within a few points of the best yearly return, most
+// dollars first: the ones that put more money to work at about the same rate.
+function CapacityList({ rows, best, onAdd, label, compact }: { rows: BacktestSweepRow[]; best?: number | null; onAdd: (st: Strategy) => void; label: string; compact?: boolean }) {
+  if (!rows.length) return <div className="text-[11px] text-gray-600">No rules with enough evidence.</div>;
+  return (
+    <div className="overflow-x-auto">
+      <table className="w-full text-[11px]">
+        <thead className="text-gray-500 text-left"><tr>
+          <th className="px-1.5 py-1 font-medium">Rule</th>
+          <th className="px-1.5 py-1 font-medium text-right">Per year</th>
+          <th className="px-1.5 py-1 font-medium text-right" title="Profit over the history at 1 unit a buy">Profit</th>
+          {!compact && <th className="px-1.5 py-1 font-medium text-right">Put in</th>}
+          <th className="px-1.5 py-1 font-medium text-right" title="Buys (units) over the history">Buys</th>
+          {!compact && <th className="px-1.5 py-1 font-medium text-right">Sets</th>}
+          <th />
+        </tr></thead>
+        <tbody>{rows.map((r, i) => (
+          <tr key={i} className="border-t border-gray-800 align-top">
+            <td className="px-1.5 py-1 text-gray-200">{describe({ ...r.strategy, set_class: undefined })}</td>
+            <td className={`px-1.5 py-1 text-right tabular-nums ${irrTone(r.irr)}`}>{pct(r.irr, 1)}{best != null && r.irr != null && r.irr < best && <div className="text-[10px] text-gray-500">{((r.irr - best) * 100).toFixed(1)} pts</div>}</td>
+            <td className="px-1.5 py-1 text-right tabular-nums text-emerald-300">{usd(r.profit_cents)}</td>
+            {!compact && <td className="px-1.5 py-1 text-right tabular-nums text-gray-400">{usd(r.invested_cents)}</td>}
+            <td className="px-1.5 py-1 text-right tabular-nums text-gray-300">{r.buys}{r.units != null && r.units !== r.buys ? <span className="text-gray-500"> ({r.units})</span> : null}</td>
+            {!compact && <td className="px-1.5 py-1 text-right tabular-nums text-gray-400">{r.sets}</td>}
+            <td className="px-1.5 py-1 text-right"><button onClick={() => onAdd({ name: `${label}: ${describe(r.strategy)}`, legs: [{ ...r.strategy, name: "" }] })} className="text-indigo-300 hover:underline">add</button></td>
+          </tr>
+        ))}</tbody>
+      </table>
+    </div>
+  );
+}
+
 function CompareClasses({ kind, pair, onAdd }: { kind: SealedKind; pair: { standard: BacktestKindBest[]; special: BacktestKindBest[] }; onAdd: (st: Strategy) => void }) {
   const st = pair.standard.find((x) => x.kind === kind), sp = pair.special.find((x) => x.kind === kind);
   if (!st && !sp) return <div className="text-sm text-gray-500">No {SEALED_KIND_LABEL[kind]} products charted.</div>;
@@ -209,6 +242,15 @@ function CompareClasses({ kind, pair, onAdd }: { kind: SealedKind; pair: { stand
           </tbody>
         </table>
       </div>
+      <div className="grid gap-4 lg:grid-cols-2 pt-2">
+        {([["standard", st], ["special", sp]] as const).map(([c, kb]) => (
+          <div key={c} className="space-y-1">
+            <div className="text-xs text-gray-300">Most dollars at near-best return: <span className={c === "standard" ? "text-sky-300" : "text-fuchsia-300"}>{c} sets</span>
+              <span className="text-gray-500"> (within {Math.round((kb?.tol ?? 0.05) * 100)} pts of {pct(kb?.best_irr, 1)})</span></div>
+            <CapacityList rows={kb?.capacity ?? []} best={kb?.best_irr} onAdd={onAdd} label={`${SEALED_KIND_LABEL[kind]} (${c} sets)`} compact />
+          </div>
+        ))}
+      </div>
     </div>
   );
 }
@@ -220,13 +262,15 @@ function BestPerKind({ gross, onAdd }: { gross: boolean; onAdd: (st: Strategy) =
   const [showGaps, setShowGaps] = useState(false);
   const [cls, setCls] = useState<SetClass | "compare">("compare");
   const [pair, setPair] = useState<{ standard: BacktestKindBest[]; special: BacktestKindBest[] } | null>(null);
+  const [tol, setTol] = useState(0.05);
+  const [openFam, setOpenFam] = useState("");
   useEffect(() => {
     setData(null); setPair(null);
     if (cls === "compare") {
-      Promise.all([fetchSealedBacktestBest(gross, "standard"), fetchSealedBacktestBest(gross, "special")])
+      Promise.all([fetchSealedBacktestBest(gross, "standard", tol), fetchSealedBacktestBest(gross, "special", tol)])
         .then(([a, b]) => { setPair({ standard: a.kinds, special: b.kinds }); setData(a); }).catch((e) => setErr(String(e)));
-    } else fetchSealedBacktestBest(gross, cls).then(setData).catch((e) => setErr(String(e)));
-  }, [gross, cls]);
+    } else fetchSealedBacktestBest(gross, cls, tol).then(setData).catch((e) => setErr(String(e)));
+  }, [gross, cls, tol]);
   const k = data?.kinds.find((x) => x.kind === kind);
   return (
     <Card title="Best rule per product type"
@@ -238,6 +282,10 @@ function BestPerKind({ gross, onAdd }: { gross: boolean; onAdd: (st: Strategy) =
         <span className="text-gray-500 mr-1" title="Special sets print no booster box (Hidden Fates, Crown Zenith, 151, Prismatic Evolutions, ...): their ETBs, PC ETBs and bundles are the main way to open them">Sets:</span>
         {([["compare", "Standard vs special"], ["all", "All pooled"], ["standard", "Standard (booster box)"], ["special", "Special (no booster box)"]] as [SetClass | "compare", string][]).map(([c, l]) => (
           <button key={c} onClick={() => setCls(c)} className={`rounded px-2.5 py-1 ${cls === c ? "bg-fuchsia-700 text-white" : "bg-gray-900 border border-gray-800 text-gray-400 hover:text-gray-200"}`}>{l}</button>
+        ))}
+        <span className="ml-4 text-gray-500" title="A contender is a rule within this many points of the best yearly return; contenders are ranked by dollars">Contenders within</span>
+        {[0.03, 0.05, 0.08].map((t) => (
+          <button key={t} onClick={() => setTol(t)} className={`rounded px-2 py-1 ${tol === t ? "bg-gray-700 text-white" : "text-gray-400 hover:text-gray-200"}`}>{Math.round(t * 100)} pts</button>
         ))}
       </div>
       {cls === "compare" ? (!pair ? <Spinner /> : <CompareClasses kind={kind} pair={pair} onAdd={onAdd} />) :
@@ -276,6 +324,14 @@ function BestPerKind({ gross, onAdd }: { gross: boolean; onAdd: (st: Strategy) =
                       </div>
                     </div>
                   )}
+                  {(f.contenders?.length ?? 0) > 1 && (
+                    <div className="text-[11px]">
+                      <button onClick={() => setOpenFam(openFam === f.family ? "" : f.family)} className="text-indigo-300 hover:underline">
+                        {openFam === f.family ? "hide" : "show"} {f.contenders!.length} contenders (most dollars within {Math.round(tol * 100)} pts)
+                      </button>
+                      {openFam === f.family && <div className="mt-1"><CapacityList rows={f.contenders!} best={b.irr} onAdd={onAdd} label={`${SEALED_KIND_LABEL[kind]}: ${f.label.toLowerCase()}`} compact /></div>}
+                    </div>
+                  )}
                   <div className="flex items-center justify-between text-[11px]">
                     <span className="text-gray-500">{f.variants} variants · worst month {pct(b.worst_drawdown)}</span>
                     <button onClick={() => onAdd({ name: `${SEALED_KIND_LABEL[kind]}${cls !== "all" ? ` (${cls} sets)` : ""}: best ${f.label.toLowerCase()}`, legs: [{ ...b.strategy, name: "" }] })}
@@ -284,6 +340,10 @@ function BestPerKind({ gross, onAdd }: { gross: boolean; onAdd: (st: Strategy) =
                 </div>
               );
             })}
+          </div>
+          <div className="space-y-1">
+            <div className="text-xs text-gray-300">Most dollars at near-best return <span className="text-gray-500">(every family, within {Math.round(tol * 100)} pts of the best {pct(k.best_irr, 1)}; scale any of them up with weekly cadence or more units, the yearly return stays the same)</span></div>
+            <CapacityList rows={k.capacity ?? []} best={k.best_irr} onAdd={onAdd} label={SEALED_KIND_LABEL[kind]} />
           </div>
           <div className="text-xs text-gray-400">
             Data: {k.full_history} of {k.sets} sets charted from release.
@@ -302,6 +362,90 @@ function BestPerKind({ gross, onAdd }: { gross: boolean; onAdd: (st: Strategy) =
             </div>
           )}
         </div>
+      )}
+    </Card>
+  );
+}
+
+// ---- set reception -------------------------------------------------------------------
+
+const TIER_TONE: Record<string, string> = { hot: "text-rose-300", normal: "text-gray-200", cold: "text-sky-300", all: "text-gray-300" };
+
+// Does how a set is received early on change how to buy it? Each set is
+// tiered by its product's price / MSRP N months after release, then the
+// same rules run on each tier, buying only from month N on.
+function ReceptionCard({ gross, onAdd }: { gross: boolean; onAdd: (st: Strategy) => void }) {
+  const [kind, setKind] = useState<SealedKind>("etb");
+  const [at, setAt] = useState(3);
+  const [hot, setHot] = useState(1.5);
+  const [cold, setCold] = useState(1.1);
+  const [cls, setCls] = useState<SetClass>("all");
+  const [d, setD] = useState<ReceptionStudy | null>(null);
+  const [err, setErr] = useState("");
+  const [showSets, setShowSets] = useState(false);
+  useEffect(() => { setD(null); setErr(""); fetchReception(kind, at, hot, cold, cls, gross).then(setD).catch((e) => setErr(String(e))); }, [kind, at, hot, cold, cls, gross]);
+  const tiers = ["all", "hot", "normal", "cold"] as const;
+  return (
+    <Card title="Set reception: hot vs normal vs cold sets"
+      right={<div className="flex flex-wrap items-center gap-1">{(["etb", "pc_etb", "booster_box", "booster_bundle"] as SealedKind[]).map((x) => (
+        <button key={x} onClick={() => setKind(x)} className={`rounded px-2.5 py-1 ${kind === x ? "bg-gray-700 text-white" : "text-gray-400 hover:text-gray-200"}`}>{SEALED_KIND_LABEL[x]}</button>
+      ))}</div>}>
+      <p className="text-xs text-gray-400 max-w-5xl">
+        A set&apos;s reception is read from the market: its {SEALED_KIND_LABEL[kind]}&apos;s price over MSRP at month {at}. <span className={TIER_TONE.hot}>Hot</span> at {hot}× or more,
+        <span className={TIER_TONE.cold}> cold</span> under {cold}×, normal between. Every column buys only from month {at} on, once the verdict is in, so nothing uses hindsight.
+        Reviews and opinions aren&apos;t in the price history; the price is the market&apos;s vote, and it&apos;s there for every set.
+      </p>
+      <div className="flex flex-wrap items-center gap-3 text-xs text-gray-400">
+        <label className="flex items-center gap-1">read at month
+          <select value={at} onChange={(e) => setAt(Number(e.target.value))} className={inp}>{[1, 2, 3, 4, 6].map((m) => <option key={m} value={m}>{m}</option>)}</select></label>
+        <label className="flex items-center gap-1">hot ≥ <input value={hot} onChange={(e) => setHot(Number(e.target.value) || 1.5)} className={`${inp} w-12`} />× MSRP</label>
+        <label className="flex items-center gap-1">cold &lt; <input value={cold} onChange={(e) => setCold(Number(e.target.value) || 1.1)} className={`${inp} w-12`} />×</label>
+        <span className="flex gap-1">{([["all", "All sets"], ["standard", "Standard"], ["special", "Special"]] as [SetClass, string][]).map(([c, l]) => (
+          <button key={c} onClick={() => setCls(c)} className={`rounded px-2 py-0.5 ${cls === c ? "bg-gray-700 text-white" : "text-gray-400 hover:text-gray-200"}`}>{l}</button>
+        ))}</span>
+        {d && <span>{d.tiers.hot ?? 0} hot · {d.tiers.normal ?? 0} normal · {d.tiers.cold ?? 0} cold{d.unknown ? <span className="text-gray-600"> · {d.unknown} without a month-{at} price</span> : null}
+          <button onClick={() => setShowSets(!showSets)} className="ml-2 text-indigo-300 hover:underline">{showSets ? "hide sets" : "which sets"}</button></span>}
+      </div>
+      {err && <div className="text-xs text-rose-400 break-all">{err}</div>}
+      {!d ? (!err && <Spinner />) : (
+        <>
+          {showSets && (
+            <div className="flex flex-wrap gap-1.5 text-[11px]">
+              {d.sets.map((x) => (
+                <span key={x.set} className="rounded border border-gray-800 px-1.5 py-0.5" title={`released ${x.release} · ${x.set_class}${x.now_vs_reading != null ? ` · now ${x.now_vs_reading}× its month-${d.at} price` : ""}`}>
+                  <span className="text-gray-200">{x.set_name}</span> <span className={TIER_TONE[x.tier]}>{x.premium}×</span>
+                </span>
+              ))}
+            </div>
+          )}
+          <div className="overflow-x-auto">
+            <table className="w-full text-xs">
+              <thead className="text-gray-500 text-left"><tr>
+                <th className={th}>Rule</th>
+                {tiers.map((t) => <th key={t} className={`${thr} ${TIER_TONE[t]}`}>{t === "all" ? "All sets" : `${t[0].toUpperCase()}${t.slice(1)} sets`}</th>)}
+              </tr></thead>
+              <tbody>{d.rows.map((r) => (
+                <tr key={r.label} className="border-t border-gray-800 align-top">
+                  <td className={`${td} text-gray-200`}>{r.label}</td>
+                  {tiers.map((t) => {
+                    const c = r.cells.find((x) => x.tier === t);
+                    return (
+                      <td key={t} className={tdr} title={c ? `${c.buys} buys · put in ${usd(c.invested_cents)} · profit ${usd(c.profit_cents)} · ${c.closed_lots} lots sold` : ""}>
+                        {c && c.sets > 0 ? <>
+                          <span className={`font-semibold ${irrTone(c.irr)}`}>{pct(c.irr, 0)}</span>
+                          <div className="text-[10px] text-gray-500">{c.multiple.toFixed(2)}× · {c.sets} sets</div>
+                          {t !== "all" && <button onClick={() => onAdd({ name: `${SEALED_KIND_LABEL[kind]} ${t} sets: ${r.label}`, legs: [{ ...r.strategy, reception: t, reception_at: d.at, reception_hot: d.hot, reception_cold: d.cold, name: "" }] })}
+                            className="text-[10px] text-indigo-300 hover:underline">add</button>}
+                        </> : <span className="text-gray-700">–</span>}
+                      </td>
+                    );
+                  })}
+                </tr>
+              ))}</tbody>
+            </table>
+          </div>
+          <p className="text-[11px] text-gray-500">If one tier is clearly better under a rule, give that tier its own leg: the leg editor&apos;s &quot;Reception&quot; setting. {d.method}</p>
+        </>
       )}
     </Card>
   );
@@ -333,6 +477,11 @@ function LegEditor({ r, onChange, onRemove, canRemove, onSplit }: { r: SealedRul
           <button key={l} onClick={() => set({ set_class: c })}
             className={`rounded border px-2 py-0.5 ${r.set_class === c ? `${on} bg-gray-900` : "border-gray-800 text-gray-500 hover:text-gray-300"}`}>{l}</button>
         ))}
+        <span className="ml-3 text-gray-500" title="Only sets received this way: the product's price / MSRP at the reading month (hot ≥ 1.5×, cold < 1.1× by default). The leg then buys only from that month on.">Reception</span>
+        <select value={r.reception ?? ""} onChange={(e) => set(e.target.value ? { reception: e.target.value as SealedRule["reception"], reception_at: r.reception_at ?? 3 } : { reception: undefined })} className={inp}>
+          <option value="">any</option><option value="hot">hot sets</option><option value="normal">normal sets</option><option value="cold">cold sets</option>
+        </select>
+        {r.reception && <label className="flex items-center gap-1 text-gray-500">read at month <input value={r.reception_at ?? 3} onChange={(e) => set({ reception_at: num(e.target.value) || 3 })} className={`${inp} w-10`} /></label>}
         {onSplit && !r.set_class && (
           <button onClick={onSplit} className="ml-2 text-indigo-300 hover:underline"
             title="Turn this leg into two: one for standard sets, one for special sets, each starting from these settings, so you can set different timing for each">
@@ -1018,6 +1167,8 @@ export default function SealedBacktestPage() {
       {err && <div className="text-sm text-rose-400 break-all">{err}</div>}
 
       <BestPerKind gross={gross} onAdd={add} />
+
+      <ReceptionCard gross={gross} onAdd={add} />
 
       <div id="my-strategies" />
       <Card title="My strategies" right={<>
