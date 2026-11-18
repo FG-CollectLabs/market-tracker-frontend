@@ -2,6 +2,7 @@ import { Fragment, useEffect, useState, type ReactNode } from "react";
 import { fetchSettings, saveSettings, SEALED_KIND_LABEL, type SealedKind, type AnalysisSettings, type Grader, type ServiceTier, type SnipeRules, type CCRules } from "../lib/api";
 import { useSession } from "../lib/auth";
 import { Spinner, ErrorMsg } from "../components/Spinner";
+import EbayAccountCard from "../components/EbayAccountCard";
 
 const inputCls = "bg-gray-950 border border-gray-700 rounded px-1.5 py-0.5 text-gray-200 font-mono text-right";
 
@@ -151,6 +152,11 @@ export default function SettingsPage() {
           {s.updated_at && <> Last saved {new Date(s.updated_at).toLocaleString()}{s.updated_by ? ` by ${s.updated_by}` : ""}.</>}
         </p>
       </div>
+
+      {session && <>
+        <h2 className="text-xs font-semibold uppercase tracking-wide text-gray-500">Accounts</h2>
+        <EbayAccountCard />
+      </>}
 
       <h2 className="text-xs font-semibold uppercase tracking-wide text-gray-500">Grading</h2>
       {Object.entries(s.graders).sort(([a], [b]) => (a === "psa" ? -1 : b === "psa" ? 1 : a.localeCompare(b))).map(([id, g]) => (
