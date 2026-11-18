@@ -3977,6 +3977,8 @@ export interface SealedRule {
   released_from?: string; // YYYY-MM
   released_to?: string;
   set_class?: "standard" | "special"; // standard = sets with a booster box; special = none printed
+  in_print_only?: boolean; // hype: skip sets that look out of print
+  hype_units?: number; // hype: a fixed number of units of each pick a month (week cadence: a week)
   buy_from?: string;
   buy_to?: string;
   cadence?: "week" | "month";
@@ -4116,4 +4118,29 @@ export interface PcgValue {
 }
 export function pcgValue(game: string, items: { display_key: string; front_lr?: number; front_tb?: number; back_lr?: number; back_tb?: number }[]): Promise<{ items: PcgValue[] }> {
   return adminFetch(`/v1/pricing/pcg-value`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ game, items }) });
+}
+
+// ---- Sealed plan + buy list ----
+export interface BuyLeg { strategy: string; leg: string; units_per_month: number; why?: string; hold_months: number; leg_irr?: number | null; leg_multiple?: number }
+export interface BuyLine {
+  product_id: number; set_code: string; set_name: string; set_class: string; kind: SealedKind; name: string; pricecharting_url: string;
+  age_months: number; price_cents: number; units_per_month: number; units_per_week: number; cost_per_month_cents: number; legs: BuyLeg[];
+  projection?: { hold_months: number; buy_month: number; median: number | null; p25: number | null; p75: number | null; annualized: number | null; n: number; basis: string };
+  projected_value_cents?: number; leg_irr?: number | null;
+}
+export interface BuyShare { key: string; label: string; cents: number; share: number; lines: number }
+export interface BuyList {
+  month: string; lines: BuyLine[]; spend_per_month_cents: number; units_per_month: number;
+  projected_value_cents: number; projected_multiple?: number; projected_annual?: number; projected_low_cents: number; projected_high_cents: number;
+  blended_leg_irr?: number; by_set: BuyShare[]; by_kind: BuyShare[]; by_class: BuyShare[]; top_set_share: number; effective_sets: number; effective_skus: number;
+  strategies: { name: string; spend_per_month_cents: number; irr: number | null; multiple: number; sets: number; buys: number }[]; notes: string[]; method: string;
+}
+export function fetchSealedPlan(): Promise<{ strategies: SealedRule[]; updated_by?: string }> {
+  return adminFetch(`/v1/admin/sealed/plan`);
+}
+export function saveSealedPlan(strategies: SealedRule[]): Promise<{ strategies: SealedRule[] }> {
+  return adminFetch(`/v1/admin/sealed/plan`, { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ strategies }) });
+}
+export function sealedBuyList(strategies?: SealedRule[]): Promise<BuyList> {
+  return adminFetch(`/v1/admin/sealed/plan/buylist`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ strategies: strategies ?? [] }) });
 }
