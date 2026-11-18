@@ -152,13 +152,72 @@ const tdr = `${td} text-right tabular-nums whitespace-nowrap`;
 
 // ---- best per product type --------------------------------------------------------
 
+// Standard sets (a booster box printed) against special sets (none: Hidden
+// Fates, Crown Zenith, 151, Prismatic, ...): each family's best rule side by
+// side, so the rules that differ by set type are plain.
+function CompareClasses({ kind, pair, onAdd }: { kind: SealedKind; pair: { standard: BacktestKindBest[]; special: BacktestKindBest[] }; onAdd: (st: Strategy) => void }) {
+  const st = pair.standard.find((x) => x.kind === kind), sp = pair.special.find((x) => x.kind === kind);
+  if (!st && !sp) return <div className="text-sm text-gray-500">No {SEALED_KIND_LABEL[kind]} products charted.</div>;
+  const fams = [...new Map([...(st?.families ?? []), ...(sp?.families ?? [])].map((f) => [f.family, f.label])).entries()];
+  const best = (k?: BacktestKindBest) => k?.families.filter((f) => !f.thin && f.best.irr != null).sort((a, b) => (b.best.irr ?? 0) - (a.best.irr ?? 0))[0];
+  const cell = (k: BacktestKindBest | undefined, fam: string, cls: "standard" | "special") => {
+    const f = k?.families.find((x) => x.family === fam);
+    if (!f) return <td className="px-2 py-2 text-gray-600 align-top">no rule</td>;
+    const b = f.best;
+    const top = best(k)?.family === fam;
+    return (
+      <td className={`px-2 py-2 align-top ${top ? "bg-emerald-950/30" : ""}`}>
+        <div className="flex items-baseline gap-2">
+          <span className={`text-base font-semibold tabular-nums ${irrTone(b.irr)}`}>{pct(b.irr, 1)}</span><span className="text-[10px] text-gray-500">/yr</span>
+          {f.thin && <span className="text-[10px] rounded border border-amber-800 px-1 text-amber-300">thin</span>}
+          {top && <span className="text-[10px] rounded border border-emerald-800 px-1 text-emerald-300">best</span>}
+        </div>
+        <div className="text-xs text-gray-200">{describe({ ...b.strategy, set_class: undefined })}</div>
+        <div className="text-[11px] text-gray-500">{b.multiple.toFixed(2)}× · {b.sets} sets · sold/held {b.closed_lots}/{b.open_lots}
+          <button onClick={() => onAdd({ name: `${SEALED_KIND_LABEL[kind]} (${cls} sets): best ${f.label.toLowerCase()}`, legs: [{ ...b.strategy, name: "" }] })}
+            className="ml-2 text-indigo-300 hover:underline">add</button></div>
+      </td>
+    );
+  };
+  return (
+    <div className="space-y-2">
+      <p className="text-xs text-gray-400">
+        Each family&apos;s best rule found separately on standard sets ({st?.sets ?? 0}) and special sets ({sp?.sets ?? 0}); the highlighted cell is that set
+        type&apos;s best family. Where the rules or hold periods differ, the set types want different playbooks.
+      </p>
+      <div className="overflow-x-auto">
+        <table className="w-full text-sm">
+          <thead className="text-xs text-gray-500 text-left">
+            <tr><th className="px-2 py-1 font-medium w-48">Family</th><th className="px-2 py-1 font-medium">Standard sets (booster box)</th><th className="px-2 py-1 font-medium">Special sets (no booster box)</th></tr>
+          </thead>
+          <tbody>
+            {fams.map(([fam, label]) => (
+              <tr key={fam} className="border-t border-gray-800">
+                <td className="px-2 py-2 text-xs font-semibold uppercase tracking-wide text-gray-400 align-top">{label}</td>
+                {cell(st, fam, "standard")}{cell(sp, fam, "special")}
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+}
+
 function BestPerKind({ gross, onAdd }: { gross: boolean; onAdd: (st: Strategy) => void }) {
   const [data, setData] = useState<{ kinds: BacktestKindBest[]; latest: string } | null>(null);
   const [kind, setKind] = useState<SealedKind>("etb");
   const [err, setErr] = useState("");
   const [showGaps, setShowGaps] = useState(false);
-  const [cls, setCls] = useState<SetClass>("all");
-  useEffect(() => { setData(null); fetchSealedBacktestBest(gross, cls).then(setData).catch((e) => setErr(String(e))); }, [gross, cls]);
+  const [cls, setCls] = useState<SetClass | "compare">("compare");
+  const [pair, setPair] = useState<{ standard: BacktestKindBest[]; special: BacktestKindBest[] } | null>(null);
+  useEffect(() => {
+    setData(null); setPair(null);
+    if (cls === "compare") {
+      Promise.all([fetchSealedBacktestBest(gross, "standard"), fetchSealedBacktestBest(gross, "special")])
+        .then(([a, b]) => { setPair({ standard: a.kinds, special: b.kinds }); setData(a); }).catch((e) => setErr(String(e)));
+    } else fetchSealedBacktestBest(gross, cls).then(setData).catch((e) => setErr(String(e)));
+  }, [gross, cls]);
   const k = data?.kinds.find((x) => x.kind === kind);
   return (
     <Card title="Best rule per product type"
@@ -168,11 +227,12 @@ function BestPerKind({ gross, onAdd }: { gross: boolean; onAdd: (st: Strategy) =
       {err && <div className="text-sm text-rose-400 break-all">{err}</div>}
       <div className="flex flex-wrap items-center gap-1 text-xs">
         <span className="text-gray-500 mr-1" title="Special sets print no booster box (Hidden Fates, Crown Zenith, 151, Prismatic Evolutions, ...): their ETBs, PC ETBs and bundles are the main way to open them">Sets:</span>
-        {([["all", "All"], ["standard", "Standard (booster box)"], ["special", "Special (no booster box)"]] as [SetClass, string][]).map(([c, l]) => (
+        {([["compare", "Standard vs special"], ["all", "All pooled"], ["standard", "Standard (booster box)"], ["special", "Special (no booster box)"]] as [SetClass | "compare", string][]).map(([c, l]) => (
           <button key={c} onClick={() => setCls(c)} className={`rounded px-2.5 py-1 ${cls === c ? "bg-fuchsia-700 text-white" : "bg-gray-900 border border-gray-800 text-gray-400 hover:text-gray-200"}`}>{l}</button>
         ))}
       </div>
-      {!data ? <Spinner /> : !k ? <div className="text-sm text-gray-500">No {SEALED_KIND_LABEL[kind]} products charted.</div> : (
+      {cls === "compare" ? (!pair ? <Spinner /> : <CompareClasses kind={kind} pair={pair} onAdd={onAdd} />) :
+      !data ? <Spinner /> : !k ? <div className="text-sm text-gray-500">No {SEALED_KIND_LABEL[kind]} products charted.</div> : (
         <div className="space-y-3">
           <p className="text-xs text-gray-400">
             Every variant of each family tried on all {k.sets} {SEALED_KIND_LABEL[kind]} sets (hold 24 / 36 / 48 months); the highest yearly return among
@@ -493,10 +553,18 @@ function Detail({ r, color, gross, onUseExit, onAdd }: {
         setFollow((await runSealedBacktest(FOLLOWS.map((f) => ({ ...mapLegs(r.strategy, (l) => (l.rule === "dip" ? { ...l, ...f.p, name: "" } : l)), name: f.name })), gross)).results);
       }
       if (t === "sizing" && !sizing) {
-        const avg = Math.max(100, r.avg_cost_cents);
+        // each leg at its own average cost, so the money split between legs stays the same
+        let legAvg: number[] = [Math.max(100, r.avg_cost_cents)];
+        if (portfolio) {
+          const legs = r.strategy.legs ?? [];
+          const solo = (await runSealedBacktest(legs.map((l, i) => ({ ...l, sizing: "units", name: `leg ${i + 1}` })), gross)).results;
+          legAvg = legs.map((_, i) => Math.max(100, solo[i]?.avg_cost_cents || r.avg_cost_cents));
+        }
+        let i = 0;
+        const perLeg = (l: SealedRule): SealedRule => ({ ...l, sizing: "dollars", dollars_cents: legAvg[Math.min(i++, legAvg.length - 1)] });
         setSizing((await runSealedBacktest([
           { ...mapLegs(r.strategy, (l) => ({ ...l, sizing: "units" })), name: "Same count of each (1 of every set)" },
-          { ...mapLegs(r.strategy, (l) => ({ ...l, sizing: "dollars", dollars_cents: avg })), name: `Same money on each (${usd(avg)} a buy)` },
+          { ...mapLegs(r.strategy, perLeg), name: `Same money on each buy (${legAvg.map((c) => usd(c)).join(" / ")}${portfolio ? " by leg" : ""})` },
         ], gross)).results);
       }
     } catch (e) { setErr(String(e)); } finally { setBusy(false); }
@@ -669,7 +737,7 @@ function Detail({ r, color, gross, onUseExit, onAdd }: {
           <>
             <p className="text-gray-400">
               One of every set the rule buys, against the same dollars on each buy (more of the cheap sets, less of the dear ones; the dollar amount is this
-              strategy&apos;s average cost so the spend is comparable). Compare the yearly return and multiple, not the dollar totals.
+              strategy&apos;s average cost, per leg for a portfolio, so the spend and the split between legs stay comparable; fractional boxes allowed). Compare the yearly return and multiple, not the dollar totals.
             </p>
             <table className="w-full">{head([["Sizing"], ["IRR /yr", true], ["Multiple", true], ["Finished sales", true], ["Put in", true], ["Profit", true], ["Win share", true], ["Worst month", true]])}
               <tbody>{sizing.map((x, i) => (
