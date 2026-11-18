@@ -3973,6 +3973,8 @@ export interface SealedRule {
   // dips: after a trigger keep buying (units a cadence): for N months, until back at the pre-dip high, or until out of print
   dip_follow?: "" | "months" | "recovered" | "oop";
   dip_follow_months?: number;
+  dip_recover_frac?: number; // recovered: stop this far back from the low to the pre-dip high (0.9 = 90%)
+  month_cap_cents?: number; // dips: at most this much a calendar month
   kinds: SealedKind[];
   released_from?: string; // YYYY-MM
   released_to?: string;
