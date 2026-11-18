@@ -4061,6 +4061,28 @@ export function fetchBidAccuracy(months = 12): Promise<BidAccuracy> {
   return adminFetch(`/v1/acquisitions/analytics?months=${months}`);
 }
 
+// ---- eBay buying account (purchases mark bids won) ----
+export interface EbaySyncSummary {
+  days: number; purchases: number; matched_bids: number; new_wins: number; no_bid_purchases: number;
+  cancelled_orders_skipped: number; marked_lost: number; errors?: string[];
+}
+export interface EbayAccount {
+  connected: boolean; username?: string; refresh_expires_at?: string; connected_at?: string;
+  last_sync_at?: string; last_sync_ok_at?: string; last_sync_error?: string | null; last_sync_summary?: EbaySyncSummary; config_error?: string;
+}
+export function fetchEbayAccount(): Promise<EbayAccount> {
+  return adminFetch(`/v1/admin/ebay/account`);
+}
+export function connectEbay(): Promise<{ url: string }> {
+  return adminFetch(`/v1/admin/ebay/connect`, { method: "POST" });
+}
+export function disconnectEbay(): Promise<{ connected: boolean }> {
+  return adminFetch(`/v1/admin/ebay/account`, { method: "DELETE" });
+}
+export function syncEbayPurchases(days = 60): Promise<EbaySyncSummary> {
+  return adminFetch(`/v1/admin/ebay/purchases/sync`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ days }) });
+}
+
 export interface BacktestFamilyBest {
   family: string; label: string; rationale: string; thin: boolean; variants: number; exits: string;
   best: BacktestSweepRow;
