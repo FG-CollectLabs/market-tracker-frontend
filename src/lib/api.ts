@@ -1708,7 +1708,7 @@ export interface GradeOdds {
 
 // ---- Full AI check (pre-grader) -------------------------------------------------
 
-export type AIState = "not_checked" | "sending" | "queued" | "checking" | "clean" | "issues" | "removed" | "failed" | "partial";
+export type AIState = "not_checked" | "waiting_pregrade" | "sending" | "queued" | "checking" | "clean" | "issues" | "removed" | "failed" | "partial" | "skipped";
 export interface AIStatus {
   state: AIState; copy_id?: number; feed_id?: string; kind?: "graded" | "raw"; validated: boolean; clean: boolean;
   issues?: string[]; removed?: string; ahead?: number; error?: string; review_url?: string;
@@ -1722,6 +1722,15 @@ export function requestAICheck(body: { copy_id?: number; feed_id?: string; sourc
 // copies are skipped unless force.
 export function bulkAICheck(items: { source: string; listing_id: string }[], force = false): Promise<{ sent: number; failed: number; skipped: number; over_limit: number; limit: number; results: { source: string; listing_id: string; state?: AIState; error?: string }[] }> {
   return adminFetch(`/v1/admin/ai-check/bulk`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ items, force }) });
+}
+// Pre-grade, then AI check: raw copies get the programmatic pre-grade first,
+// then the AI check as each result lands (if it passes the filter; 50 AI a run).
+export type ChainFilter = "ten_possible" | "min_p" | "all";
+export function chainAICheck(items: { source: string; listing_id: string }[], filter: ChainFilter = "ten_possible", minP?: number): Promise<{
+  chain_id: number; waiting_pregrade: number; rushed: number; skipped: number; failed: number; over_limit: number; item_limit: number; ai_limit: number;
+  results: { source: string; listing_id: string; step?: "waiting_pregrade" | "rushed" | "skipped"; error?: string }[];
+}> {
+  return adminFetch(`/v1/admin/ai-check/chain`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ items, filter, min_p: minP }) });
 }
 // Re-read odds + AI status from the pre-grader for these grade odds ids (up to 200).
 export function bulkRefreshOdds(ids: number[]): Promise<{ refreshed: number; failed: number; not_sent: number; ai_statuses: number; over_limit: number; limit: number }> {

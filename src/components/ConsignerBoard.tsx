@@ -1,4 +1,4 @@
-import { AutoMore, CheckAll } from "./BoardTools";
+import { AutoMore, CheckAll, ChainCheck } from "./BoardTools";
 import { useOddsReload } from "../lib/useOddsReload";
 import { Fragment, useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
@@ -209,6 +209,8 @@ export default function ConsignerBoard({ seller, setSeller }: { seller: string; 
             <ShowFilter show={show} setShow={setShow} counts={counts} />
             <span className="text-gray-500 tabular-nums">{rows.length} copies</span>
             <CheckAll listingIds={rows.filter((l) => !l.grade_odds && (l.image_count == null || l.image_count >= 2)).map((l) => l.listing_id)} />
+            <ChainCheck listingIds={rows.filter((l) => (l.image_count == null || l.image_count >= 2)
+              && (!l.grade_odds?.ai || ["not_checked", "failed", "skipped"].includes(l.grade_odds.ai.state))).map((l) => l.listing_id)} />
           </div>
 
           {rows.length === 0 ? <p className="text-sm text-gray-500">Nothing matches right now.</p> : (

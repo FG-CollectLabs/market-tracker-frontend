@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { bulkAICheck, bulkCheckGradeOdds, bulkRefreshOdds, GRADE_ODDS_REFRESHED, type AIState, type TargetHit } from "../lib/api";
+import { bulkAICheck, bulkCheckGradeOdds, bulkRefreshOdds, chainAICheck, GRADE_ODDS_REFRESHED, type AIState, type ChainFilter, type TargetHit } from "../lib/api";
 
 // Bulk actions on the listings a board's filters are showing: pre-grade every
 // unchecked raw copy, run the full AI check on all of them, refresh all, and
@@ -22,14 +22,16 @@ const saveRuns = (r: Run[]) => {
 
 const keyOf = (h: TargetHit) => `${h.source}|${h.listing_id}`;
 const aiOf = (h: TargetHit) => (h.grade_key === "raw" ? h.grade_odds?.ai : h.ai);
-const AI_DONE: AIState[] = ["clean", "issues", "removed", "failed", "partial"];
-const AI_BUSY: AIState[] = ["sending", "queued", "checking"];
+const AI_DONE: AIState[] = ["clean", "issues", "removed", "failed", "partial", "skipped"];
+const AI_BUSY: AIState[] = ["waiting_pregrade", "sending", "queued", "checking"];
 const oddsBusy = (h: TargetHit) => h.grade_odds != null && (h.grade_odds.status === "pending" || h.grade_odds.status === "measuring");
 const hasPhotos = (h: TargetHit) => h.image_count == null || h.image_count >= 2;
 
 export default function FilterActions({ hits, onReload, label }: { hits: TargetHit[]; onReload: () => void; label: string }) {
   const [runs, setRuns] = useState<Run[]>(loadRuns);
-  const [busy, setBusy] = useState<"" | Kind | "refresh">("");
+  const [busy, setBusy] = useState<"" | Kind | "refresh" | "chain">("");
+  const [chainFilter, setChainFilter] = useState<ChainFilter>("ten_possible");
+  const [minP, setMinP] = useState(25);
   const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
 
   const byKey = useMemo(() => new Map(hits.map((h) => [keyOf(h), h])), [hits]);
@@ -64,6 +66,7 @@ export default function FilterActions({ hits, onReload, label }: { hits: TargetH
       const s = a?.state;
       if (s && AI_DONE.includes(s)) done++;
       else if (s === "checking") checking++;
+      else if (s === "waiting_pregrade") { if (oddsBusy(h) || !h.grade_odds) sending++; else queued++; }
       else if (s === "queued") { queued++; ahead = Math.max(ahead, a?.ahead ?? 0); }
       else sending++;
     }
@@ -118,6 +121,31 @@ export default function FilterActions({ hits, onReload, label }: { hits: TargetH
     } finally { setBusy(""); }
   };
 
+  // pre-grade first, then the AI check on the ones that pass, as each lands
+  const toChain = useMemo(() => hits.filter((h) => {
+    const s = aiOf(h)?.state;
+    if (s && s !== "not_checked" && s !== "failed" && s !== "skipped") return false;
+    return h.grade_key === "raw" ? h.source === "ebay" && hasPhotos(h) : h.source === "ebay" || h.source === "fanatics";
+  }), [hits]);
+  const chain = async () => {
+    const what = chainFilter === "all" ? "every one" : chainFilter === "ten_possible" ? "the ones whose centering still allows a 10" : `the ones with PSA 10 odds of ${minP}%+`;
+    if (!window.confirm(`Pre-grade ${toChain.length} cop${toChain.length === 1 ? "y" : "ies"} shown in ${label} (centering, corners, edges), then AI-check ${what} as each result lands, best odds first, up to 50 this run?`)) return;
+    setBusy("chain"); setMsg(null);
+    try {
+      const r = await chainAICheck(toChain.map((h) => ({ source: h.source, listing_id: h.listing_id })), chainFilter, chainFilter === "min_p" ? minP / 100 : undefined);
+      addRun("ai", r.results.filter((x) => x.step === "waiting_pregrade" || x.step === "rushed").map((x) => `${x.source}|${x.listing_id}`));
+      const parts = [`${r.waiting_pregrade} pre-grading, AI next`];
+      if (r.rushed) parts.push(`${r.rushed} slabs AI-queued now`);
+      if (r.skipped) parts.push(`${r.skipped} skipped (already checked, or over the cap)`);
+      if (r.failed) parts.push(`${r.failed} couldn't be sent`);
+      if (r.over_limit) parts.push(`${r.over_limit} over the ${r.item_limit} a click`);
+      setMsg({ ok: r.failed === 0, text: `Pre-grade → AI: ${parts.join(" · ")}.` });
+      onReload();
+    } catch (e) {
+      setMsg({ ok: false, text: `Pre-grade → AI failed: ${e instanceof Error ? e.message : String(e)}` });
+    } finally { setBusy(""); }
+  };
+
   const refresh = async () => {
     setBusy("refresh"); setMsg(null);
     try {
@@ -144,6 +172,21 @@ export default function FilterActions({ hits, onReload, label }: { hits: TargetH
           title="The pre-grader's full AI check (label, outline, corners & edges) on every copy shown that hasn't had one: raw copies are pre-graded first if needed. 50 a click.">
           {busy === "ai" ? "Queuing…" : `AI check all (${toAI.length})`}
         </button>
+        <span className="inline-flex items-center gap-1">
+          <button disabled={busy !== "" || toChain.length === 0} onClick={chain} className={`${btn} border-fuchsia-800 text-fuchsia-200 hover:bg-fuchsia-950/60`}
+            title="The programmatic pre-grade first (centering, corners, edges), then the AI check on the copies that pass, each as soon as its pre-grade lands. Runs on the server: you can close the page.">
+            {busy === "chain" ? "Starting…" : `Pre-grade → AI (${toChain.length})`}
+          </button>
+          <select value={chainFilter} onChange={(e) => setChainFilter(e.target.value as ChainFilter)} title="Which pre-graded copies go on to the AI check"
+            className="rounded border border-gray-700 bg-gray-950 px-1 py-0.5 text-[11px] text-gray-200">
+            <option value="ten_possible">if centering allows a 10</option>
+            <option value="min_p">if PSA 10 odds ≥</option>
+            <option value="all">all of them</option>
+          </select>
+          {chainFilter === "min_p" && <input value={minP} onChange={(e) => setMinP(Math.max(1, Math.min(99, Number(e.target.value) || 0)))}
+            className="w-10 rounded border border-gray-700 bg-gray-950 px-1 py-0.5 text-[11px] text-gray-200 tabular-nums" />}
+          {chainFilter === "min_p" && <span>%</span>}
+        </span>
         <button disabled={busy !== "" || toRefresh.length === 0} onClick={refresh} className={`${btn} border-gray-700 text-gray-200 hover:bg-gray-800`}
           title="Re-read every shown copy's odds and AI status from the pre-grader now">
           {busy === "refresh" ? "Refreshing…" : `Refresh all (${toRefresh.length})`}

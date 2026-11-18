@@ -10,7 +10,7 @@ import GradeOddsBadge from "../components/GradeOddsBadge";
 import { ItemNumber, ebayItemNumber } from "../components/BidCells";
 import WatchButton from "../components/WatchButton";
 import { CheckCentering } from "../components/HuntListings";
-import { CheckAll } from "../components/BoardTools";
+import { CheckAll, ChainCheck } from "../components/BoardTools";
 
 // Seller page (Deals → from a raw finder hit): one eBay seller's store,
 // priced for a single combined-shipping order. Sweep the store to find every
@@ -184,6 +184,7 @@ function CheckAllBar({ p, picked }: { p: Page; picked: Set<string> | null }) {
         <option value="order">the order</option>
       </select>
       {ids.length > 0 ? <CheckAll listingIds={ids} /> : <span className="text-gray-500">all checked</span>}
+      <ChainCheck listingIds={rows.filter((x) => !x.grade_odds?.ai || ["not_checked", "failed", "skipped"].includes(x.grade_odds.ai.state)).map((x) => x.listing_id)} />
     </div>
   );
 }

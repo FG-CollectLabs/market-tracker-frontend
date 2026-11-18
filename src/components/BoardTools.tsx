@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { bulkCheckGradeOdds } from "../lib/api";
+import { bulkCheckGradeOdds, chainAICheck, type ChainFilter } from "../lib/api";
 
 // AutoMore: loads the next page when its row scrolls into view (infinite
 // scroll), with the button kept for keyboards and as a fallback.
@@ -51,6 +51,53 @@ export function CheckAll({ listingIds, source = "ebay" }: { listingIds: string[]
           {busy ? "Sending…" : `Check centering for all (${listingIds.length})`}
         </button>
       )}
+      {msg && <span className="text-gray-400">{msg}</span>}
+    </span>
+  );
+}
+
+// Pre-grade, then AI check: the programmatic pre-grade first, then the AI
+// check on the copies that pass, each as its pre-grade lands (server-side;
+// up to 300 copies and 50 AI checks a click).
+export function ChainCheck({ listingIds, source = "ebay" }: { listingIds: string[]; source?: "ebay" | "cc" }) {
+  const [busy, setBusy] = useState(false);
+  const [msg, setMsg] = useState<string | null>(null);
+  const [filter, setFilter] = useState<ChainFilter>("ten_possible");
+  const [minP, setMinP] = useState(25);
+  if (listingIds.length === 0 && !msg) return null;
+  return (
+    <span className="inline-flex flex-wrap items-center gap-1 text-xs">
+      {listingIds.length > 0 && <>
+        <button type="button" disabled={busy}
+          title="The programmatic pre-grade first (centering, corners, edges), then the AI check on the copies that pass, each as soon as its pre-grade lands. Runs on the server."
+          onClick={async () => {
+            setBusy(true); setMsg(null);
+            try {
+              const r = await chainAICheck(listingIds.map((id) => ({ source, listing_id: id })), filter, filter === "min_p" ? minP / 100 : undefined);
+              const parts = [`${r.waiting_pregrade} pre-grading, AI next`];
+              if (r.rushed) parts.push(`${r.rushed} AI-queued now`);
+              if (r.skipped) parts.push(`${r.skipped} skipped`);
+              if (r.failed) parts.push(`${r.failed} couldn't be sent`);
+              if (r.over_limit) parts.push(`${r.over_limit} over the ${r.item_limit} limit`);
+              setMsg(`${parts.join(" · ")}. Up to ${r.ai_limit} AI checks this run.`);
+            } catch (e) {
+              setMsg(`Couldn't start: ${e instanceof Error ? e.message : String(e)}`);
+            } finally {
+              setBusy(false);
+            }
+          }}
+          className="px-2 py-1 rounded border border-fuchsia-800 text-fuchsia-200 hover:bg-fuchsia-950/60 disabled:opacity-40">
+          {busy ? "Starting…" : `Pre-grade → AI (${listingIds.length})`}
+        </button>
+        <select value={filter} onChange={(e) => setFilter(e.target.value as ChainFilter)} title="Which pre-graded copies go on to the AI check"
+          className="rounded border border-gray-700 bg-gray-950 px-1 py-0.5 text-[11px] text-gray-200">
+          <option value="ten_possible">if centering allows a 10</option>
+          <option value="min_p">if PSA 10 odds ≥</option>
+          <option value="all">all of them</option>
+        </select>
+        {filter === "min_p" && <><input value={minP} onChange={(e) => setMinP(Math.max(1, Math.min(99, Number(e.target.value) || 0)))}
+          className="w-10 rounded border border-gray-700 bg-gray-950 px-1 py-0.5 text-[11px] text-gray-200 tabular-nums" />%</>}
+      </>}
       {msg && <span className="text-gray-400">{msg}</span>}
     </span>
   );
