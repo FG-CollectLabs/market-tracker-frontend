@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { Link } from "react-router-dom";
 import {
-  fetchSealedBacktestBest, runSealedBacktest, type SetClass, sweepSealedBacktest, sweepSealedExits, SEALED_KIND_LABEL,
+  fetchSealedBacktestBest, fetchSealedPlan, runSealedBacktest, saveSealedPlan, sealedBuyList, type BuyList, type BuyShare, type SetClass, sweepSealedBacktest, sweepSealedExits, SEALED_KIND_LABEL,
   type BacktestExitRow, type BacktestKindBest, type BacktestLot, type BacktestResult, type BacktestSweepRow, type SealedKind, type SealedRule,
 } from "../lib/api";
 import { Spinner } from "../components/Spinner";
@@ -16,10 +16,18 @@ const KINDS: SealedKind[] = ["etb", "pc_etb", "booster_box", "booster_bundle", "
 const MAIN_KINDS: SealedKind[] = ["etb", "pc_etb", "booster_box", "booster_bundle", "booster_pack"];
 const LINE_COLORS = ["#34d399", "#60a5fa", "#f472b6", "#fbbf24", "#a78bfa", "#f87171", "#2dd4bf", "#fb923c"];
 
-interface Strategy { name: string; legs: SealedRule[] }
+interface Strategy { name: string; legs: SealedRule[]; inPlan?: boolean }
 
 const leg = (r: SealedRule): SealedRule => ({ units: 1, cadence: "month", exit: "hold", hold_months: 36, ...r });
 const PRESETS: Strategy[] = [
+  {
+    name: "Standard ETB stack: month 3 on, doubled from month 12, tripled on the hottest in print",
+    legs: [
+      leg({ name: "Base: month 3 until out of print", rule: "schedule", kinds: ["etb"], set_class: "standard", start_month: 3, until_oop: true, hold_months: 36 }),
+      leg({ name: "Double: month 12 until out of print", rule: "schedule", kinds: ["etb"], set_class: "standard", start_month: 12, until_oop: true, hold_months: 36 }),
+      leg({ name: "Triple: the hottest standard ETB in print", rule: "hype", kinds: ["etb"], set_class: "standard", hype_by: "momentum", hype_units: 1, in_print_only: true, rotation_months: 36, pick_n: 1, hold_months: 36 }),
+    ],
+  },
   {
     name: "My ETB plan v2: weekly from month 2 + monthly from month 12 + weekly on reprint dips",
     legs: [
@@ -79,7 +87,7 @@ function describe(s: SealedRule) {
   const qty = s.sizing === "dollars" ? `$${((s.dollars_cents ?? 5000) * (s.units ?? 1) / 100).toFixed(0)} of ${k}` : `${s.units ?? 1} ${k}`;
   const off = s.buy_discount ? ` at ${Math.round(s.buy_discount * 100)}% off` : "";
   let buy: string;
-  if (s.rule === "hype") buy = `$${((s.budget_cents ?? 0) / 100).toFixed(0)}/mo on the ${s.pick_n ?? 1} most hyped ${k} (${s.hype_by}, sets ≤${s.rotation_months ?? 24}mo old)`;
+  if (s.rule === "hype") buy = `${s.hype_units ? `${s.hype_units} a ${s.cadence ?? "month"} of` : `$${((s.budget_cents ?? 0) / 100).toFixed(0)}/mo on`} the ${s.pick_n ?? 1} most hyped ${k} (${s.hype_by}, sets ≤${s.rotation_months ?? 24}mo old${s.in_print_only ? ", in print" : ""})`;
   else if (s.rule === "dip") buy = `${qty} on every ${Math.round((s.dip_pct ?? 0.15) * 100)}% dip${s.dip_own ? " of its own (reprint)" : ""}${followText(s)}${s.start_month || s.end_month != null ? `, months ${s.start_month ?? 0}–${s.end_month ?? "∞"}` : ""}`;
   else {
     const end = s.until_oop ? (s.end_month != null ? ` to month ${s.end_month} or out of print` : " until out of print") : s.end_month != null && s.end_month !== s.start_month ? ` to month ${s.end_month}` : " only";
@@ -304,7 +312,15 @@ function LegEditor({ r, onChange, onRemove, canRemove }: { r: SealedRule; onChan
       )}
       {r.rule === "hype" && (
         <div className={row}>
-          <label className={lbl}>$<input value={(r.budget_cents ?? 6000) / 100} onChange={(e) => set({ budget_cents: Math.round((num(e.target.value) ?? 0) * 100) })} className={`${inp} w-16`} /> a month</label>
+          <label className={lbl}>buy
+            <select value={r.hype_units ? "units" : "budget"} onChange={(e) => set(e.target.value === "units" ? { hype_units: 1 } : { hype_units: undefined })} className={inp}>
+              <option value="budget">a monthly budget</option><option value="units">a fixed number of units</option>
+            </select></label>
+          {r.hype_units
+            ? <label className={lbl}><input value={r.hype_units} onChange={(e) => set({ hype_units: num(e.target.value) || 1 })} className={`${inp} w-10`} /> a
+                <select value={r.cadence ?? "month"} onChange={(e) => set({ cadence: e.target.value as SealedRule["cadence"] })} className={inp}><option value="month">month</option><option value="week">week</option></select></label>
+            : <label className={lbl}>$<input value={(r.budget_cents ?? 6000) / 100} onChange={(e) => set({ budget_cents: Math.round((num(e.target.value) ?? 0) * 100) })} className={`${inp} w-16`} /> a month</label>}
+          <label className={lbl} title="Skip sets whose price is 30%+ above its low since month 3 (they look out of print)"><input type="checkbox" checked={!!r.in_print_only} onChange={(e) => set({ in_print_only: e.target.checked || undefined })} /> in print only</label>
           <label className={lbl}>on the top <input value={r.pick_n ?? 1} onChange={(e) => set({ pick_n: num(e.target.value) })} className={`${inp} w-10`} /></label>
           <label className={lbl}>by
             <select value={r.hype_by ?? "momentum"} onChange={(e) => set({ hype_by: e.target.value as SealedRule["hype_by"] })} className={inp}>
@@ -360,6 +376,8 @@ function StrategyEditor({ st, color, onChange, onRemove }: { st: Strategy; color
         <span style={{ color }} className="text-base">●</span>
         <input value={st.name} onChange={(e) => onChange({ ...st, name: e.target.value })} placeholder="Strategy name" className={`${inp} flex-1 min-w-[12rem] text-sm`} />
         <span className="text-gray-500">{st.legs.length === 1 ? "1 rule" : `${st.legs.length} legs`}</span>
+        <label className="flex items-center gap-1 text-emerald-300" title="Part of the plan the buy list (and the sealed watchlist) follows">
+          <input type="checkbox" checked={!!st.inPlan} onChange={(e) => onChange({ ...st, inPlan: e.target.checked })} /> in my plan</label>
         <button onClick={() => setOpen(!open)} className="text-indigo-300 hover:underline">{open ? "done" : "edit"}</button>
         <button onClick={onRemove} className="text-gray-500 hover:text-rose-300">remove</button>
       </div>
@@ -714,6 +732,91 @@ function Sweep({ gross, onAdd }: { gross: boolean; onAdd: (st: Strategy) => void
   );
 }
 
+// ---- buy list -----------------------------------------------------------------------------------
+
+function ShareBars({ title, xs }: { title: string; xs: BuyShare[] }) {
+  return (
+    <div className="space-y-1">
+      <div className="text-xs text-gray-500">{title}</div>
+      {xs.slice(0, 12).map((x) => (
+        <div key={x.key} className="grid grid-cols-[minmax(6rem,12rem)_1fr_7rem] items-center gap-2 text-xs">
+          <span className="truncate text-gray-300" title={x.label}>{x.label}</span>
+          <div className="h-3 rounded bg-gray-950"><div className="h-3 rounded bg-indigo-500/70" style={{ width: `${Math.max(1, x.share * 100)}%` }} /></div>
+          <span className="text-right tabular-nums text-gray-400">{Math.round(x.share * 100)}% · {usd(x.cents)}</span>
+        </div>
+      ))}
+      {xs.length > 12 && <div className="text-[11px] text-gray-600">+{xs.length - 12} more</div>}
+    </div>
+  );
+}
+
+// This month's buy list from the plan: each leg's rule on the latest chart
+// month, 1 unit of the SKU per buy, stacked per product, with projections
+// and diversification.
+function BuyListCard({ plan }: { plan: SealedRule[] }) {
+  const [b, setB] = useState<BuyList | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState("");
+  const build = async (saved: boolean) => {
+    setBusy(true); setErr("");
+    try { setB(await sealedBuyList(saved ? undefined : plan)); } catch (e) { setErr(String(e).includes("no_plan") || String(e).includes("no strategies") ? "Nothing checked in yet: tick 'in my plan' and check it in." : String(e)); } finally { setBusy(false); }
+  };
+  return (
+    <Card title="Buy list from my plan" right={<>
+      <button onClick={() => build(false)} disabled={busy || plan.length === 0} className="rounded bg-indigo-600 px-3 py-1 text-white hover:bg-indigo-500 disabled:opacity-40">{busy ? "Building…" : `Build from ticked (${plan.length})`}</button>
+      <button onClick={() => build(true)} disabled={busy} className="rounded border border-gray-700 px-2 py-1 text-gray-300 hover:text-white">from the checked-in plan</button>
+    </>}>
+      {err && <div className="text-sm text-amber-300 break-all">{err}</div>}
+      {!b ? <p className="text-xs text-gray-500">What each strategy in the plan buys this month at 1 unit of the SKU per buy, legs stacked per product (month 3 + month 12 + hottest = 3 units), with the projected return and how spread out it is.</p> : (
+        <div className="space-y-4 text-xs">
+          <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
+            <div className="rounded border border-gray-800 p-3"><div className="text-gray-500">Spend this month</div><div className="text-lg font-semibold text-gray-100 tabular-nums">{usd(b.spend_per_month_cents)}</div>
+              <div className="text-gray-500">{b.units_per_month} units · {b.lines.length} SKUs · rules on {b.month}</div></div>
+            <div className="rounded border border-gray-800 p-3"><div className="text-gray-500">Projected value at the hold</div><div className="text-lg font-semibold text-emerald-300 tabular-nums">{usd(b.projected_value_cents)}</div>
+              <div className="text-gray-500">range {usd(b.projected_low_cents)} – {usd(b.projected_high_cents)}</div></div>
+            <div className="rounded border border-gray-800 p-3"><div className="text-gray-500">Projected multiple · per year</div><div className="text-lg font-semibold text-gray-100 tabular-nums">{b.projected_multiple != null ? `${b.projected_multiple.toFixed(2)}×` : "–"} · {pct(b.projected_annual, 0)}</div>
+              <div className="text-gray-500">history of the same type, set class and age</div></div>
+            <div className="rounded border border-gray-800 p-3"><div className="text-gray-500">Backtested yearly return (legs)</div><div className={`text-lg font-semibold tabular-nums ${irrTone(b.blended_leg_irr)}`}>{pct(b.blended_leg_irr, 1)}</div>
+              <div className="text-gray-500">spend-weighted</div></div>
+            <div className="rounded border border-gray-800 p-3"><div className="text-gray-500">Diversification</div><div className="text-lg font-semibold text-gray-100 tabular-nums">{b.effective_sets} sets · {b.effective_skus} SKUs</div>
+              <div className={b.top_set_share > 0.35 ? "text-amber-300" : "text-gray-500"}>effective count · top set {Math.round(b.top_set_share * 100)}%</div></div>
+          </div>
+          {b.notes.length > 0 && <ul className="list-disc pl-5 text-amber-300/80">{b.notes.map((n) => <li key={n}>{n}</li>)}</ul>}
+          <div className="grid gap-4 lg:grid-cols-3">
+            <ShareBars title="Spend by set" xs={b.by_set} />
+            <ShareBars title="Spend by product type" xs={b.by_kind} />
+            <ShareBars title="Standard vs special sets" xs={b.by_class} />
+          </div>
+          <div className="overflow-x-auto">
+            <table className="w-full">
+              <thead className="text-gray-500 text-left"><tr>
+                <th className={th}>SKU</th><th className={thr}>Age</th><th className={thr}>Price</th><th className={thr}>Units / mo</th><th className={thr}>Spend / mo</th>
+                <th className={th}>Why (legs)</th><th className={thr} title="Median net return for this type + set class bought at this age, held as the legs hold (middle half under it)">Projected</th>
+                <th className={thr}>Value at hold</th><th className={thr} title="The legs' backtested yearly return">Legs IRR</th>
+              </tr></thead>
+              <tbody>{b.lines.map((l) => (
+                <tr key={l.product_id} className="border-t border-gray-800 align-top">
+                  <td className={td}><a href={l.pricecharting_url} target="_blank" rel="noreferrer" className="text-gray-100 hover:text-indigo-300">{l.set_name}</a>
+                    <div className="text-[10px] text-gray-500">{SEALED_KIND_LABEL[l.kind]} · {l.set_class}</div></td>
+                  <td className={tdr}>{l.age_months}mo</td>
+                  <td className={tdr}>{usd(l.price_cents)}</td>
+                  <td className={`${tdr} font-semibold ${l.units_per_month >= 3 ? "text-fuchsia-300" : l.units_per_month >= 2 ? "text-indigo-300" : "text-gray-200"}`}>{l.units_per_month}<div className="text-[10px] font-normal text-gray-500">{l.units_per_week}/wk</div></td>
+                  <td className={tdr}>{usd(l.cost_per_month_cents)}</td>
+                  <td className={`${td} text-gray-400`}>{l.legs.map((g, i) => <div key={i}><span className="text-gray-300">{g.leg}</span> ×{g.units_per_month}{g.why ? <span className="text-gray-600"> · {g.why}</span> : null}</div>)}</td>
+                  <td className={tdr} title={l.projection?.basis}>{l.projection ? <><span className={irrTone(l.projection.median)}>{pct(l.projection.median, 0)}</span><div className="text-[10px] text-gray-500">{pct(l.projection.p25, 0)}…{pct(l.projection.p75, 0)} · {l.projection.hold_months}mo</div></> : "–"}</td>
+                  <td className={tdr}>{usd(l.projected_value_cents)}</td>
+                  <td className={`${tdr} ${irrTone(l.leg_irr)}`}>{pct(l.leg_irr, 0)}</td>
+                </tr>
+              ))}</tbody>
+            </table>
+          </div>
+          <p className="text-[11px] text-gray-500">{b.method}</p>
+        </div>
+      )}
+    </Card>
+  );
+}
+
 // ---- page ---------------------------------------------------------------------------------------
 
 export default function SealedBacktestPage() {
@@ -732,11 +835,22 @@ export default function SealedBacktestPage() {
   };
   useEffect(() => { run(); }, [gross]); // eslint-disable-line react-hooks/exhaustive-deps
   const add = (st: Strategy) => {
-    if (strategies.length >= 12) { setErr("12 strategies at most: remove one first."); return; }
+    if (strategies.length >= 60) { setErr("60 strategies at most: remove one first."); return; }
     const n = [...strategies, st];
     setStrategies(n); run(n);
     window.scrollTo({ top: document.getElementById("my-strategies")?.offsetTop ?? 0, behavior: "smooth" });
   };
+  const [planMsg, setPlanMsg] = useState("");
+  const checkIn = async () => {
+    const plan = strategies.filter((s) => s.inPlan);
+    try {
+      await saveSealedPlan(plan.map(toRule));
+      setPlanMsg(`Plan checked in: ${plan.length} strateg${plan.length === 1 ? "y" : "ies"}.`);
+    } catch (e) { setPlanMsg(`Couldn't save: ${String(e).includes("401") || String(e).includes("403") ? "sign in first" : String(e)}`); }
+  };
+  useEffect(() => {
+    fetchSealedPlan().then((p) => { if (p.strategies.length) setPlanMsg(`Checked-in plan: ${p.strategies.length} strateg${p.strategies.length === 1 ? "y" : "ies"}${p.updated_by ? ` (by ${p.updated_by})` : ""}.`); }).catch(() => {});
+  }, []);
   const best = useMemo(() => res?.results.reduce<BacktestResult | null>((b, r) => (r.irr != null && (b?.irr == null || r.irr > b.irr) ? r : b), null), [res]);
 
   return (
@@ -764,6 +878,9 @@ export default function SealedBacktestPage() {
           {PRESETS.map((p, i) => <option key={i} value={i}>{p.name}</option>)}
         </select>
         <button onClick={() => { setStrategies(PRESETS); run(PRESETS); }} className="text-gray-500 hover:text-gray-300">reset</button>
+        <button onClick={checkIn} disabled={!strategies.some((s) => s.inPlan)} className="rounded bg-emerald-700 px-3 py-1 text-white hover:bg-emerald-600 disabled:opacity-40"
+          title="Save the strategies ticked 'in my plan' as the plan the buy list and watchlist follow">Check in plan ({strategies.filter((s) => s.inPlan).length})</button>
+        {planMsg && <span className="text-gray-400">{planMsg}</span>}
       </>}>
         <div className="grid gap-3 xl:grid-cols-2">
           {strategies.map((st, i) => (
@@ -774,6 +891,8 @@ export default function SealedBacktestPage() {
         </div>
         {strategies.length === 0 && <p className="text-sm text-gray-500">No strategies: add one from a preset, the best rules above, or the ranked variants below.</p>}
       </Card>
+
+      <BuyListCard plan={strategies.filter((s) => s.inPlan).map(toRule)} />
 
       {busy && !res ? <Spinner /> : res && res.results.length > 0 && (
         <>
