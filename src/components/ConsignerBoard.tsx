@@ -128,6 +128,24 @@ export default function ConsignerBoard({ seller, setSeller }: { seller: string; 
 
   const sel = "rounded border border-gray-700 bg-gray-950 px-2 py-1 text-xs text-gray-200";
   const cur = rep?.sellers.find((s) => s.username === seller);
+  // auctions ending today or tomorrow, per consigner: how many are still
+  // waiting on their pre-grade or AI check, to expedite before they close
+  const expedite = useMemo(() => {
+    const until = endsBefore("tomorrow");
+    const by = new Map<string, { seller: string; label: string; total: number; behind: HuntListing[] }>();
+    for (const l of rep?.listings ?? []) {
+      if (l.kind !== "auction" || !l.ends_at || new Date(l.ends_at).getTime() >= until || new Date(l.ends_at).getTime() < Date.now()) continue;
+      if (l.image_count != null && l.image_count < 2) continue;
+      const g = by.get(l.seller) ?? { seller: l.seller, label: l.seller_label, total: 0, behind: [] };
+      g.total++;
+      const ai = l.grade_odds?.ai?.state;
+      const oddsDone = l.grade_odds && !["pending", "measuring"].includes(l.grade_odds.status);
+      const aiDone = ai && !["not_checked", "failed"].includes(ai);
+      if (!oddsDone || !aiDone) g.behind.push(l);
+      by.set(l.seller, g);
+    }
+    return [...by.values()].sort((a, b) => b.behind.length - a.behind.length);
+  }, [rep]);
   const page = rows.slice(0, shown);
   return (
     <div className="space-y-4">
@@ -212,6 +230,24 @@ export default function ConsignerBoard({ seller, setSeller }: { seller: string; 
             <ChainCheck listingIds={rows.filter((l) => (l.image_count == null || l.image_count >= 2)
               && (!l.grade_odds?.ai || ["not_checked", "failed", "skipped"].includes(l.grade_odds.ai.state))).map((l) => l.listing_id)} />
           </div>
+
+          {expedite.length > 0 && (
+            <div className="rounded-lg border border-fuchsia-900/50 bg-gray-900 p-3 space-y-1.5">
+              <div className="text-xs text-gray-300"><span className="font-medium text-fuchsia-200">Ending today or tomorrow</span>
+                <span className="text-gray-500"> · auctions still waiting on their pre-grade or AI check, by consigner: expedite runs the pre-grade now and the AI check right after (if centering allows a 10; up to 50 AI a click)</span></div>
+              <div className="flex flex-wrap gap-x-5 gap-y-1.5 text-xs">
+                {expedite.map((g) => (
+                  <div key={g.seller} className="flex items-center gap-2">
+                    <button onClick={() => setSeller(g.seller)} className="text-gray-200 hover:text-indigo-300">{g.label}</button>
+                    <span className="text-gray-500 tabular-nums">{g.total - g.behind.length}/{g.total} done</span>
+                    {g.behind.length > 0
+                      ? <ChainCheck compact label="Expedite" listingIds={g.behind.map((l) => l.listing_id)} />
+                      : <span className="text-emerald-400">✓</span>}
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
 
           {rows.length === 0 ? <p className="text-sm text-gray-500">Nothing matches right now.</p> : (
             <div className="overflow-x-auto rounded-lg border border-gray-800 bg-gray-900">
