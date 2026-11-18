@@ -21,6 +21,15 @@ interface Strategy { name: string; legs: SealedRule[]; inPlan?: boolean }
 const leg = (r: SealedRule): SealedRule => ({ units: 1, cadence: "month", exit: "hold", hold_months: 36, ...r });
 const PRESETS: Strategy[] = [
   {
+    name: "ETBs by set type: standard from month 3 (+month 12), special from release, sold sooner",
+    legs: [
+      leg({ name: "Standard: weekly from month 3 until out of print", rule: "schedule", kinds: ["etb"], set_class: "standard", cadence: "week", start_month: 3, until_oop: true, hold_months: 36 }),
+      leg({ name: "Standard: +1 a month from month 12", rule: "schedule", kinds: ["etb"], set_class: "standard", start_month: 12, until_oop: true, hold_months: 36 }),
+      leg({ name: "Special: weekly from release to month 12", rule: "schedule", kinds: ["etb"], set_class: "special", cadence: "week", start_month: 0, end_month: 12, hold_months: 24 }),
+      leg({ name: "Special: 10% dips, monthly until out of print", rule: "dip", kinds: ["etb"], set_class: "special", dip_pct: 0.1, dip_follow: "oop", hold_months: 24 }),
+    ],
+  },
+  {
     name: "Standard ETB stack: month 3 on, doubled from month 12, tripled on the hottest in print",
     legs: [
       leg({ name: "Base: month 3 until out of print", rule: "schedule", kinds: ["etb"], set_class: "standard", start_month: 3, until_oop: true, hold_months: 36 }),
@@ -300,7 +309,14 @@ function BestPerKind({ gross, onAdd }: { gross: boolean; onAdd: (st: Strategy) =
 
 // ---- strategy editor ----------------------------------------------------------------
 
-function LegEditor({ r, onChange, onRemove, canRemove }: { r: SealedRule; onChange: (r: SealedRule) => void; onRemove: () => void; canRemove: boolean }) {
+const SET_TYPES: [SealedRule["set_class"] | undefined, string, string][] = [
+  [undefined, "All sets", "border-gray-600 text-gray-200"],
+  ["standard", "Standard sets", "border-sky-600 text-sky-200"],
+  ["special", "Special sets", "border-fuchsia-600 text-fuchsia-200"],
+];
+const setTypeChip = (c?: SealedRule["set_class"]) => c === "standard" ? "border-sky-800 text-sky-300" : c === "special" ? "border-fuchsia-800 text-fuchsia-300" : "border-gray-700 text-gray-400";
+
+function LegEditor({ r, onChange, onRemove, canRemove, onSplit }: { r: SealedRule; onChange: (r: SealedRule) => void; onRemove: () => void; canRemove: boolean; onSplit?: () => void }) {
   const set = (p: Partial<SealedRule>) => onChange({ ...r, ...p });
   const row = "flex flex-wrap items-center gap-x-4 gap-y-1.5";
   const lbl = "flex items-center gap-1";
@@ -310,6 +326,18 @@ function LegEditor({ r, onChange, onRemove, canRemove }: { r: SealedRule; onChan
         <input value={r.name ?? ""} onChange={(e) => set({ name: e.target.value })} placeholder="Leg name (optional)" className={`${inp} w-64`} />
         <span className="text-[11px] text-gray-500 truncate">{describe(r)}</span>
         {canRemove && <button onClick={onRemove} className="ml-auto text-gray-500 hover:text-rose-300">remove leg</button>}
+      </div>
+      <div className="flex flex-wrap items-center gap-1.5" title="Special sets print no booster box (Hidden Fates, Crown Zenith, 151, Prismatic, ...); standard sets have one">
+        <span className="text-gray-500 mr-1">Applies to</span>
+        {SET_TYPES.map(([c, l, on]) => (
+          <button key={l} onClick={() => set({ set_class: c })}
+            className={`rounded border px-2 py-0.5 ${r.set_class === c ? `${on} bg-gray-900` : "border-gray-800 text-gray-500 hover:text-gray-300"}`}>{l}</button>
+        ))}
+        {onSplit && !r.set_class && (
+          <button onClick={onSplit} className="ml-2 text-indigo-300 hover:underline"
+            title="Turn this leg into two: one for standard sets, one for special sets, each starting from these settings, so you can set different timing for each">
+            split into standard + special</button>
+        )}
       </div>
       <div className={row}>
         <label className={lbl}>Buy rule
@@ -429,10 +457,6 @@ function LegEditor({ r, onChange, onRemove, canRemove }: { r: SealedRule; onChan
           <label className={lbl}>sell <input value={r.wind_units ?? ""} placeholder="–" onChange={(e) => set({ wind_units: num(e.target.value) })} className={`${inp} w-12`} /> a month</label>
           <label className={lbl}>or all over <input value={r.wind_months ?? 24} onChange={(e) => set({ wind_months: num(e.target.value), wind_units: undefined })} className={`${inp} w-12`} /> months</label>
         </>}
-        <label className={lbl} title="Special sets print no booster box">
-          <select value={r.set_class ?? ""} onChange={(e) => set({ set_class: (e.target.value || undefined) as SealedRule["set_class"] })} className={inp}>
-            <option value="">all sets</option><option value="standard">standard sets only</option><option value="special">special sets only</option>
-          </select></label>
         <label className={lbl}>sets released <input value={r.released_from ?? ""} placeholder="YYYY-MM" onChange={(e) => set({ released_from: e.target.value || undefined })} className={`${inp} w-20`} />
           to <input value={r.released_to ?? ""} placeholder="YYYY-MM" onChange={(e) => set({ released_to: e.target.value || undefined })} className={`${inp} w-20`} /></label>
       </div>
@@ -455,12 +479,21 @@ function StrategyEditor({ st, color, onChange, onRemove }: { st: Strategy; color
       </div>
       {!open ? (
         <ul className="space-y-0.5 text-[11px] text-gray-400 pl-5 list-disc">
-          {st.legs.map((l, i) => <li key={i}>{l.name ? <span className="text-gray-300">{l.name}: </span> : null}{describe(l)}</li>)}
+          {st.legs.map((l, i) => (
+            <li key={i}>
+              <span className={`mr-1 rounded border px-1 text-[10px] ${setTypeChip(l.set_class)}`}>{l.set_class === "standard" ? "standard" : l.set_class === "special" ? "special" : "all sets"}</span>
+              {l.name ? <span className="text-gray-300">{l.name}: </span> : null}{describe({ ...l, set_class: undefined })}
+            </li>
+          ))}
         </ul>
       ) : (
         <div className="space-y-2">
           {st.legs.map((l, i) => (
             <LegEditor key={i} r={l} canRemove={st.legs.length > 1}
+              onSplit={() => onChange({ ...st, legs: st.legs.flatMap((x, j) => (j !== i ? [x] : [
+                { ...x, set_class: "standard" as const, name: x.name ? `${x.name} (standard)` : "Standard sets" },
+                { ...x, set_class: "special" as const, name: x.name ? `${x.name} (special)` : "Special sets" },
+              ])) })}
               onChange={(n) => onChange({ ...st, legs: st.legs.map((x, j) => (j === i ? n : x)) })}
               onRemove={() => onChange({ ...st, legs: st.legs.filter((_, j) => j !== i) })} />
           ))}
@@ -509,7 +542,7 @@ function groupBy<T>(xs: T[], key: (x: T) => string) {
   return [...m.entries()];
 }
 
-type Tab = "buys" | "sales" | "held" | "sets" | "exits" | "discount" | "sizing" | "follow";
+type Tab = "buys" | "sales" | "held" | "sets" | "exits" | "discount" | "sizing" | "follow" | "classes";
 // how long a dip keeps buying, as the experiment tries it
 const FOLLOWS: { name: string; p: Partial<SealedRule> }[] = [
   { name: "Buy once per dip", p: { dip_follow: "" } },
@@ -533,9 +566,10 @@ function Detail({ r, color, gross, onUseExit, onAdd }: {
   const [disc, setDisc] = useState<BacktestResult[] | null>(null);
   const [sizing, setSizing] = useState<BacktestResult[] | null>(null);
   const [follow, setFollow] = useState<BacktestResult[] | null>(null);
+  const [classes, setClasses] = useState<BacktestResult[] | null>(null);
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState("");
-  useEffect(() => { setLots(null); setExits(null); setDisc(null); setSizing(null); setFollow(null); }, [r]);
+  useEffect(() => { setLots(null); setExits(null); setDisc(null); setSizing(null); setFollow(null); setClasses(null); }, [r]);
   const hasDip = r.strategy.rule === "dip" || (r.strategy.legs ?? []).some((l) => l.rule === "dip");
   const portfolio = r.strategy.rule === "portfolio";
   const open = async (t: Tab) => {
@@ -548,6 +582,20 @@ function Detail({ r, color, gross, onUseExit, onAdd }: {
       if (t === "discount" && !disc) {
         const ds = [0, 0.05, 0.1, 0.15, 0.2, 0.25, 0.3];
         setDisc((await runSealedBacktest(ds.map((d) => ({ ...mapLegs(r.strategy, (l) => ({ ...l, buy_discount: d || undefined })), name: `${Math.round(d * 100)}% under market` })), gross)).results);
+      }
+      if (t === "classes" && !classes) {
+        // the strategy on each set type alone: legs for the other type drop out, "all sets" legs narrow to this one
+        const legsOf = (x: SealedRule) => (x.rule === "portfolio" ? x.legs ?? [] : [x]);
+        const only = (c: "standard" | "special"): SealedRule | null => {
+          const ls = legsOf(r.strategy).filter((l) => !l.set_class || l.set_class === c).map((l) => ({ ...l, set_class: c, name: "" }));
+          if (!ls.length) return null;
+          return ls.length === 1 ? { ...ls[0], name: `Standard sets only` } : { rule: "portfolio", kinds: ls[0].kinds, legs: ls, name: "" };
+        };
+        const runs: SealedRule[] = [{ ...r.strategy, name: "As written (both set types)" }];
+        const std = only("standard"), spc = only("special");
+        if (std) runs.push({ ...std, name: "Standard sets only" });
+        if (spc) runs.push({ ...spc, name: "Special sets only" });
+        setClasses((await runSealedBacktest(runs, gross)).results);
       }
       if (t === "follow" && !follow) {
         setFollow((await runSealedBacktest(FOLLOWS.map((f) => ({ ...mapLegs(r.strategy, (l) => (l.rule === "dip" ? { ...l, ...f.p, name: "" } : l)), name: f.name })), gross)).results);
@@ -585,7 +633,7 @@ function Detail({ r, color, gross, onUseExit, onAdd }: {
           <span className="text-gray-500 mr-1">Deep dive</span>
           {tabBtn("buys", "What it bought")}{tabBtn("sales", "What it sold")}{tabBtn("held", "Still held")}{tabBtn("sets", "By set")}
           <span className="text-gray-500 ml-4 mr-1">Experiments</span>
-          {tabBtn("exits", "Best way to sell")}{tabBtn("discount", "Buying at a discount")}{tabBtn("sizing", "Same count vs same money")}{hasDip && tabBtn("follow", "How long to buy after a dip")}
+          {tabBtn("exits", "Best way to sell")}{tabBtn("discount", "Buying at a discount")}{tabBtn("sizing", "Same count vs same money")}{hasDip && tabBtn("follow", "How long to buy after a dip")}{tabBtn("classes", "Standard vs special sets")}
           {busy && <span className="text-gray-500 ml-2">working…</span>}
         </div>
         {err && <div className="text-rose-400 break-all">{err}</div>}
@@ -705,6 +753,26 @@ function Detail({ r, color, gross, onUseExit, onAdd }: {
                   <td className={`${tdr} font-semibold ${irrTone(x.irr)}`}>{pct(x.irr, 1)}</td>
                   <td className={tdr}>{x.multiple.toFixed(2)}×</td><td className={tdr}>{usd(x.invested_cents)}</td><td className={tdr}>{usd(x.profit_cents)}</td>
                   <td className={`${tdr} ${x.value_cents >= x.benchmark_cents ? "text-emerald-300" : "text-rose-300"}`}>{usd(x.value_cents - x.benchmark_cents)}</td>
+                  <td className={tdr}>{Math.round(x.win_share * 100)}%</td>
+                </tr>
+              ))}</tbody>
+            </table>
+          </>
+        )}
+
+        {tab === "classes" && classes && (
+          <>
+            <p className="text-gray-400">
+              This strategy split by set type: legs written for one type drop out of the other&apos;s run, and legs on all sets are narrowed to each type.
+              If one type returns much less, give it its own legs (the leg editor&apos;s &quot;split into standard + special&quot;).
+            </p>
+            <table className="w-full">{head([["Run"], ["IRR /yr", true], ["Multiple", true], ["Buys", true], ["Sets", true], ["Put in", true], ["Profit", true], ["Win share", true]])}
+              <tbody>{classes.map((x, i) => (
+                <tr key={i} className="border-t border-gray-800">
+                  <td className={`${td} text-gray-200`}>{x.strategy.name}</td>
+                  <td className={`${tdr} font-semibold ${irrTone(x.irr)}`}>{pct(x.irr, 1)}</td>
+                  <td className={tdr}>{x.multiple.toFixed(2)}×</td><td className={tdr}>{x.buys}</td><td className={tdr}>{x.sets}</td>
+                  <td className={tdr}>{usd(x.invested_cents)}</td><td className={tdr}>{usd(x.profit_cents)}</td>
                   <td className={tdr}>{Math.round(x.win_share * 100)}%</td>
                 </tr>
               ))}</tbody>
