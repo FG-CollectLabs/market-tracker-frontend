@@ -2,7 +2,7 @@ import { AutoMore, CheckAll, ChainCheck } from "./BoardTools";
 import { useOddsReload } from "../lib/useOddsReload";
 import { Fragment, useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
-import { fetchConsignerBoard, type CopyTiming, type HuntListing, type HuntListingsReport, type ValueSource } from "../lib/api";
+import { fetchConsignerBoard, fetchSellerPage, startSellerSweep, type CopyTiming, type HuntListing, type HuntListingsReport, type ValueSource } from "../lib/api";
 import { Spinner, ErrorMsg } from "./Spinner";
 import GradeOddsBadge from "./GradeOddsBadge";
 import AdjEVCell, { CGCCell, OddsFlag, PSAOddsCell } from "./AdjEVCell";
@@ -84,6 +84,7 @@ export default function ConsignerBoard({ seller, setSeller }: { seller: string; 
   const reviewOf = (l: HuntListing) => (l.listing_id in rv ? rv[l.listing_id] : l.review);
   const [rep, setRep] = useState<HuntListingsReport | null>(null);
   const oddsReload = useOddsReload(); // ↻ on an odds badge: refetch so odds and EV recompute
+  const [scanned, setScanned] = useState(0); // an ending-soon scan finished: refetch
   const [err, setErr] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
 
@@ -96,7 +97,7 @@ export default function ConsignerBoard({ seller, setSeller }: { seller: string; 
       .catch((e) => live && setErr(String(e)))
       .finally(() => live && setLoading(false));
     return () => { live = false; };
-  }, [source, oddsReload]);
+  }, [source, oddsReload, scanned]);
 
   const base = useMemo(() => {
     const until = endsBefore(ending);
@@ -170,8 +171,9 @@ export default function ConsignerBoard({ seller, setSeller }: { seller: string; 
           </div>
 
           {cur && (
-            <div className="rounded-lg border border-gray-800 bg-gray-900 p-3 text-xs text-gray-400">
-              {cur.ship_rule.text}{cur.ship_rule.note ? ` · ${cur.ship_rule.note}` : ""}
+            <div className="rounded-lg border border-gray-800 bg-gray-900 p-3 text-xs text-gray-400 flex flex-wrap items-center gap-x-4 gap-y-1.5">
+              <span>{cur.ship_rule.text}{cur.ship_rule.note ? ` · ${cur.ship_rule.note}` : ""}</span>
+              <ScanEnding seller={cur.username} onDone={() => setScanned((n) => n + 1)} />
             </div>
           )}
 
@@ -240,6 +242,7 @@ export default function ConsignerBoard({ seller, setSeller }: { seller: string; 
                   <div key={g.seller} className="flex items-center gap-2">
                     <button onClick={() => setSeller(g.seller)} className="text-gray-200 hover:text-indigo-300">{g.label}</button>
                     <span className="text-gray-500 tabular-nums">{g.total - g.behind.length}/{g.total} done</span>
+                    <ScanEnding compact seller={g.seller} onDone={() => setScanned((n) => n + 1)} />
                     {g.behind.length > 0
                       ? <ChainCheck compact label="Expedite" listingIds={g.behind.map((l) => l.listing_id)} />
                       : <span className="text-emerald-400">✓</span>}
@@ -372,5 +375,47 @@ function Row({ l, bench, review, onReview }: { l: HuntListing; bench: number; re
       <td className="py-1.5 px-2 text-right"><CGCCell ev={l.adj_ev} /></td>
       <td className={`py-1.5 px-3 text-right tabular-nums whitespace-nowrap font-semibold ${y == null ? "text-gray-600" : y < 0 ? "text-red-300" : y >= bench ? "text-green-300" : "text-gray-300"}`}>{pct(y, 1)}</td>
     </tr>
+  );
+}
+
+// ScanEnding: look for the consigner's auctions ending in the next 48 hours
+// on eBay now (soonest first). The regular store scans page the whole store
+// in eBay's best-match order and stop at its 10,000-result cap, so a big
+// consign store's next-day auctions can be past it; this window always fits.
+// Runs on the worker (a few eBay calls); the board reloads when it's done.
+function ScanEnding({ seller, onDone, compact }: { seller: string; onDone: () => void; compact?: boolean }) {
+  const [state, setState] = useState<"idle" | "running" | "done" | "failed">("idle");
+  const [msg, setMsg] = useState<string>("");
+  const run = async () => {
+    setState("running"); setMsg("");
+    try {
+      const r = await startSellerSweep(seller, undefined, 48);
+      const id = r.id ?? r.sweep?.id;
+      const until = Date.now() + 5 * 60e3;
+      while (Date.now() < until) {
+        await new Promise((ok) => setTimeout(ok, 4000));
+        const s = (await fetchSellerPage(seller)).sweep;
+        if (!s || (id && s.id !== id) || s.status === "queued" || s.status === "running") continue;
+        if (s.status !== "done") { setState("failed"); setMsg(s.error ?? s.status); return; }
+        const x = s.result;
+        setState("done");
+        setMsg(x ? `eBay: ${x.total ?? x.items} auctions ending ≤48h · ${x.matched} matched a card · ${x.new ?? 0} new` : "done");
+        onDone();
+        return;
+      }
+      setState("failed"); setMsg("still queued after 5 minutes (the eBay lane is busy); it will finish on its own");
+    } catch (e) {
+      setState("failed"); setMsg(String(e));
+    }
+  };
+  return (
+    <span className="inline-flex items-center gap-2">
+      <button type="button" onClick={run} disabled={state === "running"}
+        title="Search eBay now for this consigner's auctions ending in the next 48 hours (soonest first) and add any the store scans missed. Big stores are cut off at eBay's 10,000-result cap; this window isn't."
+        className="px-2 py-0.5 rounded border border-gray-700 text-gray-300 hover:text-white disabled:opacity-50">
+        {state === "running" ? "Scanning…" : compact ? "Scan 48h" : "Scan next 2 days"}
+      </button>
+      {msg && <span className={state === "failed" ? "text-red-400" : "text-gray-500"}>{msg}</span>}
+    </span>
   );
 }
