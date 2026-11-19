@@ -3989,6 +3989,8 @@ export interface SealedRule {
   scale_ups?: { max_msrp_mult: number; units: number }[]; // +units a buy when the price is at or under that multiple of MSRP
   from_oop?: boolean; oop_months?: number; // schedule: start once out of print
   hype_units?: number; // hype: a fixed number of units of each pick a month (week cadence: a week)
+  hype_least?: boolean; // hype: pick the lowest score (least hyped)
+  hype_min_age?: number; // hype: only sets at least this many months old
   buy_from?: string;
   buy_to?: string;
   cadence?: "week" | "month";
