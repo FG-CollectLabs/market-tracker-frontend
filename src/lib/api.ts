@@ -4081,6 +4081,17 @@ export interface EbayAccount {
   connected: boolean; username?: string; refresh_expires_at?: string; connected_at?: string;
   last_sync_at?: string; last_sync_ok_at?: string; last_sync_error?: string | null; last_sync_summary?: EbaySyncSummary; config_error?: string;
 }
+// ---- eBay API usage ledger ----
+export interface EbayUsageRow { purpose: string; api: string; process?: string; calls: number; rate_limited: number; errors: number }
+export interface EbayRateLimit { api: string; resource: string; count: number; limit: number; remaining: number; reset: string; time_window_s: number }
+export interface EbayUsage {
+  last_24h: EbayUsageRow[]; by_day: { day: string; purpose: string; calls: number }[]; hourly: { hour: string; purpose: string; calls: number }[];
+  since: string | null; labels: Record<string, string>; note: string; hints: string[]; limits?: EbayRateLimit[]; limits_error?: string;
+}
+export function fetchEbayUsage(days = 7): Promise<EbayUsage> {
+  return adminFetch(`/v1/admin/ebay/usage?days=${days}`);
+}
+
 export function fetchEbayAccount(): Promise<EbayAccount> {
   return adminFetch(`/v1/admin/ebay/account`);
 }
