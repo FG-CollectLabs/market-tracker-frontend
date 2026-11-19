@@ -4121,6 +4121,21 @@ export interface EbayUsage {
 export function fetchEbayUsage(days = 7): Promise<EbayUsage> {
   return adminFetch(`/v1/admin/ebay/usage?days=${days}`);
 }
+// ---- effective hourly (work sessions) ----
+export interface WorkSession { id: number; activity: string; started_at: string; ended_at?: string; minutes: number; running: boolean; note?: string }
+export interface WorkWeek {
+  week: string; hours: number; hours_by_activity: Record<string, number>; reviewed: number; bids: number; wins: number; spent_cents: number;
+  expected_profit_cents: number; expected_known: number; sold: number; realized_profit_cents: number;
+  expected_hourly_cents: number | null; realized_hourly_cents: number | null; bids_per_hour: number | null;
+}
+export interface WorkHourly { weeks: WorkWeek[]; total: WorkWeek; recent: WorkSession[]; activities: Record<string, string>; method: string }
+const jsonPost = (body: unknown): RequestInit => ({ method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+export function fetchWorkCurrent(): Promise<{ session: WorkSession | null; activities: Record<string, string> }> { return adminFetch(`/v1/admin/work/current`); }
+export function startWork(activity: string, note = ""): Promise<{ session: WorkSession }> { return adminFetch(`/v1/admin/work/start`, jsonPost({ activity, note })); }
+export function stopWork(): Promise<{ session: null }> { return adminFetch(`/v1/admin/work/stop`, jsonPost({})); }
+export function logWork(x: { activity: string; minutes: number; day?: string; note?: string }): Promise<{ session: WorkSession }> { return adminFetch(`/v1/admin/work/log`, jsonPost(x)); }
+export function deleteWork(id: number): Promise<{ ok: boolean }> { return adminFetch(`/v1/admin/work/${id}`, { method: "DELETE" }); }
+export function fetchWorkHourly(weeks = 12): Promise<WorkHourly> { return adminFetch(`/v1/admin/work/hourly?weeks=${weeks}`); }
 
 export function fetchEbayAccount(): Promise<EbayAccount> {
   return adminFetch(`/v1/admin/ebay/account`);

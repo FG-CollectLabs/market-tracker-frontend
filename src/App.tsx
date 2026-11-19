@@ -34,6 +34,8 @@ import SealedBacktestPage from "./pages/SealedBacktestPage";
 import AuctionTimingPage from "./pages/AuctionTimingPage";
 import SealedWatchlistPage from "./pages/SealedWatchlistPage";
 import SealedPlanPage from "./pages/SealedPlanPage";
+import HourlyPage from "./pages/HourlyPage";
+import WorkTimer from "./components/WorkTimer";
 import ShopsPage from "./pages/ShopsPage";
 import { SignIn } from "./components/SignIn";
 import { Mark } from "./brand/Mark";
@@ -125,6 +127,7 @@ const NAV: NavEntry[] = [
     label: "Buying",
     items: [
       { to: "/watchlist", label: "Watchlist", hint: "Your cards, their targets and hits; by consigner; hunt list; consigner board" },
+      { to: "/hourly", label: "Effective hourly", hint: "Time logged against expected and realized profit: what an hour of bidding and grading earns" },
       { to: "/deals", label: "Deals", hint: "This week's auctions, ending soon, raw sellers" },
       { to: "/windows", label: "Buy windows", hint: "When each tier usually bottoms" },
       { to: "/prep", label: "Buying prep", hint: "Bid plans for the weekly auctions" },
@@ -224,7 +227,7 @@ function Nav() {
       {nav.map((g) => g.to
         ? <NavLink key={g.label} to={g.to} end={g.to === "/" || g.to === "/rb"} className={(a) => `${linkCls(a)} ${g.to === "/developer" ? "hidden sm:inline" : ""}`}>{g.label}</NavLink>
         : <NavGroup key={g.label} g={g} />)}
-      <div className="ml-auto"><SignIn /></div>
+      <div className="ml-auto flex items-center gap-3"><WorkTimer /><SignIn /></div>
     </nav>
   );
 }
@@ -264,6 +267,7 @@ export default function App() {
             <Route path="/auction-timing" element={<AuctionTimingPage />} />
             <Route path="/sealed/watchlist" element={<SealedWatchlistPage />} />
             <Route path="/sealed/plan" element={<SealedPlanPage />} />
+            <Route path="/hourly" element={<HourlyPage />} />
             <Route path="/shops" element={<ShopsPage />} />
             <Route path="/roadmap" element={<RoadmapPage />} />
             <Route path="/watchlist" element={<WatchlistPage />} />
