@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { Link } from "react-router-dom";
 import {
-  fetchDemandStudy, fetchEntryStudy, fetchReception, fetchSealedBacktestBest, type DemandStudy, type EntryStat, fetchSealedPlan, runSealedBacktest, type ReceptionStudy, saveSealedPlan, sealedBuyList, type BuyList, type BuyShare, type SetClass, sweepSealedBacktest, sweepSealedExits, SEALED_KIND_LABEL,
+  fetchDemandStudy, fetchEntryStudy, fetchReception, fetchSealedBacktestBest, type DemandStudy, type EntryStat, fetchSealedPlan, runSealedBacktest, type ReceptionStudy, type ReceptionBasis, saveSealedPlan, sealedBuyList, type BuyList, type BuyShare, type SetClass, sweepSealedBacktest, sweepSealedExits, SEALED_KIND_LABEL,
   type BacktestExitRow, type BacktestKindBest, type BacktestLot, type BacktestResult, type BacktestSweepRow, type SealedKind, type SealedRule,
 } from "../lib/api";
 import { Spinner } from "../components/Spinner";
@@ -119,7 +119,8 @@ function describe(s: SealedRule) {
     const end = s.until_oop ? (s.end_month != null ? ` to month ${s.end_month} or out of print` : " until out of print") : s.end_month != null && s.end_month !== s.start_month ? ` to month ${s.end_month}` : " only";
     buy = `${qty} a ${s.cadence ?? "month"}, month ${s.start_month ?? 0}${end}`;
   }
-  const rec = (s.reception && s.reception !== "any" ? ` · ${s.reception} sets (month ${s.reception_at ?? 3})` : "")
+  const relRec = s.reception === "beat" || s.reception === "met" || s.reception === "missed";
+  const rec = (s.reception && s.reception !== "any" ? (relRec ? ` · sets that ${s.reception === "met" ? "met" : s.reception} expectations (month ${s.reception_at ?? 6} vs release price${s.reception_basis === "release_raw" ? ", raw" : ", vs market"})` : ` · ${s.reception} sets (month ${s.reception_at ?? 3})`) : "")
     + (s.demand ? ` · ${s.demand} sets` : "") + (s.max_msrp_mult ? ` · only at ≤ ${s.max_msrp_mult}× MSRP` : "") + (s.from_oop ? ` · once out of print, ${s.oop_months ?? 12} months` : "")
     + (s.scale_ups?.length ? ` · ${s.scale_ups.map((x) => `+${x.units} at ≤${x.max_msrp_mult}×`).join(", ")} MSRP` : "");
   return `${buy}${off}${s.set_class ? ` (${s.set_class} sets)` : ""}${rec} · ${exitText(s)}`;
@@ -380,47 +381,80 @@ function BestPerKind({ gross, onAdd }: { gross: boolean; onAdd: (st: Strategy) =
 
 // ---- set reception -------------------------------------------------------------------
 
-const TIER_TONE: Record<string, string> = { hot: "text-rose-300", normal: "text-gray-200", cold: "text-sky-300", all: "text-gray-300" };
+const TIER_TONE: Record<string, string> = { hot: "text-rose-300", normal: "text-gray-200", cold: "text-sky-300", all: "text-gray-300",
+  beat: "text-emerald-300", met: "text-gray-200", missed: "text-amber-300" };
+const TIER_LABEL: Record<string, string> = { all: "All sets", hot: "Hot sets", normal: "Normal sets", cold: "Cold sets", beat: "Beat expectations", met: "Met", missed: "Missed expectations" };
+const BASIS_DEFAULTS: Record<ReceptionBasis, { at: number; hot: number; cold: number }> = {
+  release: { at: 6, hot: 1.1, cold: 0.9 }, release_raw: { at: 6, hot: 1.1, cold: 0.9 }, msrp: { at: 3, hot: 1.5, cold: 1.1 },
+};
 
 // Does how a set is received early on change how to buy it? Each set is
-// tiered by its product's price / MSRP N months after release, then the
-// same rules run on each tier, buying only from month N on.
+// tiered N months after release, then the same rules run on each tier,
+// buying only from month N on. Two readings: price / MSRP (hot, normal,
+// cold), or outcome vs expectations: the month-N price over the release
+// price, against the market over the same months (beat, met, missed). MSRP
+// flatters sets released into a boom; the release price already carries
+// the mood of the day, so what's left is the set's own surprise.
 function ReceptionCard({ gross, onAdd }: { gross: boolean; onAdd: (st: Strategy) => void }) {
   const [kind, setKind] = useState<SealedKind>("etb");
-  const [at, setAt] = useState(3);
-  const [hot, setHot] = useState(1.5);
-  const [cold, setCold] = useState(1.1);
+  const [basis, setBasisRaw] = useState<ReceptionBasis>("release");
+  const [at, setAt] = useState(BASIS_DEFAULTS.release.at);
+  const [hot, setHot] = useState(BASIS_DEFAULTS.release.hot);
+  const [cold, setCold] = useState(BASIS_DEFAULTS.release.cold);
   const [cls, setCls] = useState<SetClass>("all");
   const [d, setD] = useState<ReceptionStudy | null>(null);
   const [err, setErr] = useState("");
-  const [showSets, setShowSets] = useState(false);
-  useEffect(() => { setD(null); setErr(""); fetchReception(kind, at, hot, cold, cls, gross).then(setD).catch((e) => setErr(String(e))); }, [kind, at, hot, cold, cls, gross]);
-  const tiers = ["all", "hot", "normal", "cold"] as const;
+  const [showSets, setShowSets] = useState(true);
+  const setBasis = (b: ReceptionBasis) => {
+    // the lines mean different things per basis: reset them, keep the month only between the two release readings
+    if ((b === "msrp") !== (basis === "msrp")) { setAt(BASIS_DEFAULTS[b].at); setHot(BASIS_DEFAULTS[b].hot); setCold(BASIS_DEFAULTS[b].cold); }
+    setBasisRaw(b);
+  };
+  useEffect(() => { setD(null); setErr(""); fetchReception(kind, at, hot, cold, cls, gross, basis).then(setD).catch((e) => setErr(String(e))); }, [kind, at, hot, cold, cls, gross, basis]);
+  const rel = basis !== "msrp";
+  const tiers = rel ? (["all", "beat", "met", "missed"] as const) : (["all", "hot", "normal", "cold"] as const);
+  const [hiT, midT, loT] = rel ? ["beat", "met", "missed"] : ["hot", "normal", "cold"];
   return (
-    <Card title="Set reception: hot vs normal vs cold sets"
+    <Card title={rel ? "Set outcome vs expectations: beat vs met vs missed" : "Set reception: hot vs normal vs cold sets"}
       right={<div className="flex flex-wrap items-center gap-1">{(["etb", "pc_etb", "booster_box", "booster_bundle"] as SealedKind[]).map((x) => (
         <button key={x} onClick={() => setKind(x)} className={`rounded px-2.5 py-1 ${kind === x ? "bg-gray-700 text-white" : "text-gray-400 hover:text-gray-200"}`}>{SEALED_KIND_LABEL[x]}</button>
       ))}</div>}>
-      <p className="text-xs text-gray-400 max-w-5xl">
-        A set&apos;s reception is read from the market: its {SEALED_KIND_LABEL[kind]}&apos;s price over MSRP at month {at}. <span className={TIER_TONE.hot}>Hot</span> at {hot}× or more,
-        <span className={TIER_TONE.cold}> cold</span> under {cold}×, normal between. Every column buys only from month {at} on, once the verdict is in, so nothing uses hindsight.
-        Reviews and opinions aren&apos;t in the price history; the price is the market&apos;s vote, and it&apos;s there for every set.
-      </p>
+      <div className="flex flex-wrap gap-1 text-xs">
+        {([["release", "vs release price, market-adjusted"], ["release_raw", "vs release price, raw"], ["msrp", "vs MSRP"]] as [ReceptionBasis, string][]).map(([b, l]) => (
+          <button key={b} onClick={() => setBasis(b)} className={`rounded px-2.5 py-1 ${basis === b ? "bg-indigo-900/60 text-indigo-100" : "text-gray-400 hover:text-gray-200"}`}>{l}</button>
+        ))}
+      </div>
+      {rel ? (
+        <p className="text-xs text-gray-400 max-w-5xl">
+          The release-month price is what the market expected of the set, already carrying the mood of the day: a set released into a boom opens high, one released into a slump opens low.
+          The {SEALED_KIND_LABEL[kind]}&apos;s price at month {at} over that{basis === "release" ? <>, divided by how every set&apos;s {SEALED_KIND_LABEL[kind]} moved over the same months, </> : " "}
+          is the set&apos;s own surprise. <span className={TIER_TONE.beat}>Beat</span> at {hot}× or more (wanted more than expected, or short printed),
+          <span className={TIER_TONE.missed}> missed</span> under {cold}× (printed to oblivion or unloved), met between.
+          {basis === "release_raw" && <span className="text-amber-300/80"> Raw: a set released into a rising market looks better than it was.</span>}
+          {" "}Every column buys only from month {at} on, once the verdict is in, so nothing uses hindsight.
+        </p>
+      ) : (
+        <p className="text-xs text-gray-400 max-w-5xl">
+          A set&apos;s reception is read from the market: its {SEALED_KIND_LABEL[kind]}&apos;s price over MSRP at month {at}. <span className={TIER_TONE.hot}>Hot</span> at {hot}× or more,
+          <span className={TIER_TONE.cold}> cold</span> under {cold}×, normal between. Every column buys only from month {at} on, once the verdict is in, so nothing uses hindsight.
+          MSRP flatters sets released into a boom: compare with the release-price reading.
+        </p>
+      )}
       <div className="flex flex-wrap items-center gap-3 text-xs text-gray-400">
         <label className="flex items-center gap-1">read at month
-          <select value={at} onChange={(e) => setAt(Number(e.target.value))} className={inp}>{[1, 2, 3, 4, 6].map((m) => <option key={m} value={m}>{m}</option>)}</select></label>
-        <label className="flex items-center gap-1">hot ≥ <input value={hot} onChange={(e) => setHot(Number(e.target.value) || 1.5)} className={`${inp} w-12`} />× MSRP</label>
-        <label className="flex items-center gap-1">cold &lt; <input value={cold} onChange={(e) => setCold(Number(e.target.value) || 1.1)} className={`${inp} w-12`} />×</label>
+          <select value={at} onChange={(e) => setAt(Number(e.target.value))} className={inp}>{(rel ? [3, 4, 6, 9, 12] : [1, 2, 3, 4, 6]).map((m) => <option key={m} value={m}>{m}</option>)}</select></label>
+        <label className="flex items-center gap-1">{hiT} ≥ <input value={hot} onChange={(e) => setHot(Number(e.target.value) || BASIS_DEFAULTS[basis].hot)} className={`${inp} w-12`} />×{rel ? "" : " MSRP"}</label>
+        <label className="flex items-center gap-1">{loT} &lt; <input value={cold} onChange={(e) => setCold(Number(e.target.value) || BASIS_DEFAULTS[basis].cold)} className={`${inp} w-12`} />×</label>
         <span className="flex gap-1">{([["all", "All sets"], ["standard", "Standard"], ["special", "Special"]] as [SetClass, string][]).map(([c, l]) => (
           <button key={c} onClick={() => setCls(c)} className={`rounded px-2 py-0.5 ${cls === c ? "bg-gray-700 text-white" : "text-gray-400 hover:text-gray-200"}`}>{l}</button>
         ))}</span>
-        {d && <span>{d.tiers.hot ?? 0} hot · {d.tiers.normal ?? 0} normal · {d.tiers.cold ?? 0} cold{d.unknown ? <span className="text-gray-600"> · {d.unknown} without a month-{at} price</span> : null}
+        {d && <span>{d.tiers[hiT] ?? 0} {hiT} · {d.tiers[midT] ?? 0} {midT} · {d.tiers[loT] ?? 0} {loT}{d.unknown ? <span className="text-gray-600"> · {d.unknown} without the prices to read</span> : null}
           <button onClick={() => setShowSets(!showSets)} className="ml-2 text-indigo-300 hover:underline">{showSets ? "hide sets" : "which sets"}</button></span>}
       </div>
       {err && <div className="text-xs text-rose-400 break-all">{err}</div>}
       {!d ? (!err && <Spinner />) : (
         <>
-          {showSets && (
+          {showSets && (rel ? <ExpectationTable d={d} /> : (
             <div className="flex flex-wrap gap-1.5 text-[11px]">
               {d.sets.map((x) => (
                 <span key={x.set} className="rounded border border-gray-800 px-1.5 py-0.5" title={`released ${x.release} · ${x.set_class}${x.now_vs_reading != null ? ` · now ${x.now_vs_reading}× its month-${d.at} price` : ""}`}>
@@ -428,12 +462,12 @@ function ReceptionCard({ gross, onAdd }: { gross: boolean; onAdd: (st: Strategy)
                 </span>
               ))}
             </div>
-          )}
+          ))}
           <div className="overflow-x-auto">
             <table className="w-full text-xs">
               <thead className="text-gray-500 text-left"><tr>
                 <th className={th}>Rule</th>
-                {tiers.map((t) => <th key={t} className={`${thr} ${TIER_TONE[t]}`}>{t === "all" ? "All sets" : `${t[0].toUpperCase()}${t.slice(1)} sets`}</th>)}
+                {tiers.map((t) => <th key={t} className={`${thr} ${TIER_TONE[t]}`}>{TIER_LABEL[t]}</th>)}
               </tr></thead>
               <tbody>{d.rows.map((r) => (
                 <tr key={r.label} className="border-t border-gray-800 align-top">
@@ -445,7 +479,7 @@ function ReceptionCard({ gross, onAdd }: { gross: boolean; onAdd: (st: Strategy)
                         {c && c.sets > 0 ? <>
                           <span className={`font-semibold ${irrTone(c.irr)}`}>{pct(c.irr, 0)}</span>
                           <div className="text-[10px] text-gray-500">{c.multiple.toFixed(2)}× · {c.sets} sets</div>
-                          {t !== "all" && <button onClick={() => onAdd({ name: `${SEALED_KIND_LABEL[kind]} ${t} sets: ${r.label}`, legs: [{ ...r.strategy, reception: t, reception_at: d.at, reception_hot: d.hot, reception_cold: d.cold, name: "" }] })}
+                          {t !== "all" && <button onClick={() => onAdd({ name: `${SEALED_KIND_LABEL[kind]} ${t} sets: ${r.label}`, legs: [{ ...r.strategy, reception: t, reception_at: d.at, reception_hot: d.hot, reception_cold: d.cold, reception_basis: d.basis, name: "" }] })}
                             className="text-[10px] text-indigo-300 hover:underline">add</button>}
                         </> : <span className="text-gray-700">–</span>}
                       </td>
@@ -459,6 +493,60 @@ function ReceptionCard({ gross, onAdd }: { gross: boolean; onAdd: (st: Strategy)
         </>
       )}
     </Card>
+  );
+}
+
+// Every set's outcome vs expectations, sortable: release price, month-N
+// price, the raw move, the market's move, and the set's own surprise.
+function ExpectationTable({ d }: { d: ReceptionStudy }) {
+  type Key = "vs" | "raw" | "release" | "now" | "msrp";
+  const [sort, setSort] = useState<Key>("vs");
+  const val = (x: ReceptionStudy["sets"][number], k: Key) =>
+    k === "vs" ? x.expectation?.vs_market : k === "raw" ? x.expectation?.raw : k === "release" ? x.release : k === "now" ? x.now_vs_reading : x.msrp_mult;
+  const rows = [...d.sets].sort((a, b) => {
+    const va = val(a, sort), vb = val(b, sort);
+    if (va == null) return 1;
+    if (vb == null) return -1;
+    return va < vb ? 1 : va > vb ? -1 : 0;
+  });
+  const H = ({ k, children, tip }: { k: Key; children: ReactNode; tip: string }) => (
+    <th className={`${thr} cursor-pointer select-none ${sort === k ? "text-gray-200" : ""}`} title={tip} onClick={() => setSort(k)}>{children}{sort === k ? " ↓" : ""}</th>
+  );
+  const x2 = (v?: number | null) => (v == null ? "–" : `${v.toFixed(2)}×`);
+  return (
+    <div className="overflow-x-auto max-h-[28rem] overflow-y-auto rounded border border-gray-800">
+      <table className="w-full text-xs">
+        <thead className="text-gray-500 text-left sticky top-0 bg-gray-900"><tr>
+          <th className={th}>Set</th>
+          <H k="release" tip="Release month">Released</H>
+          <th className={thr} title="The release-month price: what the market expected">Release price</th>
+          <th className={thr} title={`The price at month ${d.at} (else the month or two before)`}>Month {d.at}</th>
+          <H k="raw" tip="Month-N price / release price">Raw</H>
+          <th className={thr} title="How every set's product of this type moved over the same months">Market</th>
+          <H k="vs" tip="Raw / market: the set's own surprise">vs market</H>
+          <th className={th}>Verdict</th>
+          <H k="msrp" tip="The month-N price over MSRP, the old reading, for comparison">× MSRP</H>
+          <H k="now" tip="The latest price over the month-N price: what happened after the verdict">Since</H>
+        </tr></thead>
+        <tbody>{rows.map((x) => {
+          const e = x.expectation;
+          return (
+            <tr key={x.set} className="border-t border-gray-800">
+              <td className={`${td} text-gray-200`}>{x.set_name} <span className="text-gray-600">{x.set_class === "special" ? "special" : ""}</span></td>
+              <td className={tdr}>{x.release}</td>
+              <td className={tdr}>{e ? usd(e.release_cents) : "–"} <span className="text-gray-600">{e?.release_month !== x.release ? e?.release_month : ""}</span></td>
+              <td className={tdr}>{e ? usd(e.reading_cents) : "–"}</td>
+              <td className={tdr}>{x2(e?.raw)}</td>
+              <td className={`${tdr} text-gray-500`}>{x2(e?.market)}</td>
+              <td className={`${tdr} font-semibold ${TIER_TONE[x.tier]}`}>{x2(e?.vs_market)}</td>
+              <td className={`${td} ${TIER_TONE[x.tier]}`}>{x.tier}</td>
+              <td className={`${tdr} text-gray-400`}>{x2(x.msrp_mult)}</td>
+              <td className={tdr}>{x2(x.now_vs_reading)}</td>
+            </tr>
+          );
+        })}</tbody>
+      </table>
+    </div>
   );
 }
 
@@ -718,10 +806,18 @@ function LegEditor({ r, onChange, onRemove, canRemove, onSplit }: { r: SealedRul
           <button key={l} onClick={() => set({ set_class: c })}
             className={`rounded border px-2 py-0.5 ${r.set_class === c ? `${on} bg-gray-900` : "border-gray-800 text-gray-500 hover:text-gray-300"}`}>{l}</button>
         ))}
-        <span className="ml-3 text-gray-500" title="Only sets received this way: the product's price / MSRP at the reading month (hot ≥ 1.5×, cold < 1.1× by default). The leg then buys only from that month on.">Reception</span>
-        <select value={r.reception ?? ""} onChange={(e) => set(e.target.value ? { reception: e.target.value as SealedRule["reception"], reception_at: r.reception_at ?? 3 } : { reception: undefined })} className={inp}>
-          <option value="">any</option><option value="hot">hot sets</option><option value="normal">normal sets</option><option value="cold">cold sets</option>
-          <option value="cheap">near MSRP (cheap)</option><option value="pricey">priced in</option>
+        <span className="ml-3 text-gray-500" title="Only sets received this way. Hot / normal / cold: the product's price / MSRP at the reading month (hot ≥ 1.5×, cold < 1.1× by default). Beat / met / missed: outcome vs expectations, the month-N price over the release price against the market (beat ≥ 1.1×, missed < 0.9×, read at month 6 by default). The leg then buys only from that month on.">Reception</span>
+        <select value={r.reception ?? ""} onChange={(e) => {
+          const v = e.target.value as SealedRule["reception"] | "";
+          if (!v) return set({ reception: undefined, reception_basis: undefined });
+          const relT = v === "beat" || v === "met" || v === "missed";
+          set({ reception: v, reception_basis: relT ? "release" : "msrp", reception_at: relT !== (r.reception_basis === "release" || r.reception_basis === "release_raw") || !r.reception_at ? (relT ? 6 : 3) : r.reception_at,
+            reception_hot: undefined, reception_cold: undefined });
+        }} className={inp}>
+          <option value="">any</option>
+          <optgroup label="vs release price (market-adjusted)"><option value="beat">beat expectations</option><option value="met">met expectations</option><option value="missed">missed expectations</option></optgroup>
+          <optgroup label="vs MSRP"><option value="hot">hot sets</option><option value="normal">normal sets</option><option value="cold">cold sets</option>
+            <option value="cheap">near MSRP (cheap)</option><option value="pricey">priced in</option></optgroup>
         </select>
         {r.reception && <label className="flex items-center gap-1 text-gray-500">read at month <input value={r.reception_at ?? 3} onChange={(e) => set({ reception_at: num(e.target.value) || 3 })} className={`${inp} w-10`} /></label>}
         <span className="ml-3 text-gray-500" title="Loved: the set's 5 best singles at the reading month beat the median of the sets released in the 36 months before">Demand</span>

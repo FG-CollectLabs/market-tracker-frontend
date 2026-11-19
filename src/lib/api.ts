@@ -3981,7 +3981,9 @@ export interface SealedRule {
   set_class?: "standard" | "special"; // standard = sets with a booster box; special = none printed
   in_print_only?: boolean; // hype: skip sets that look out of print
   // set reception: price / MSRP reception_at months after release (hot ≥ reception_hot, cold < reception_cold); buys only from then on
-  reception?: "hot" | "normal" | "cold" | "cheap" | "pricey" | "any"; reception_at?: number; reception_hot?: number; reception_cold?: number; reception_split?: number;
+  reception?: "hot" | "normal" | "cold" | "beat" | "met" | "missed" | "cheap" | "pricey" | "any"; reception_at?: number; reception_hot?: number; reception_cold?: number; reception_split?: number;
+  // what the reading is against: msrp (hot / normal / cold), or release: outcome vs expectations, month-N price / release price vs the market (beat / met / missed); release_raw without the market
+  reception_basis?: ReceptionBasis;
   demand?: "loved" | "unloved"; demand_at?: number; // chase singles at month N vs the sets released before
   max_msrp_mult?: number; // buy only at or under this many times MSRP
   scale_ups?: { max_msrp_mult: number; units: number }[]; // +units a buy when the price is at or under that multiple of MSRP
@@ -4194,15 +4196,17 @@ export function sealedBuyList(strategies?: SealedRule[]): Promise<BuyList> {
 }
 
 // ---- set reception study ----
-export interface ReceptionCell { tier: "all" | "hot" | "normal" | "cold"; irr: number | null; multiple: number; sets: number; buys: number; profit_cents: number; invested_cents: number; closed_lots: number }
+export type ReceptionBasis = "msrp" | "release" | "release_raw";
+export interface Expectation { release_month: string; release_cents: number; reading_month: string; reading_cents: number; raw: number; market: number; vs_market: number }
+export interface ReceptionCell { tier: string; irr: number | null; multiple: number; sets: number; buys: number; profit_cents: number; invested_cents: number; closed_lots: number }
 export interface ReceptionStudy {
-  kind: SealedKind; class: string; at: number; hot: number; cold: number; latest: string; costs: string;
+  kind: SealedKind; class: string; at: number; hot: number; cold: number; latest: string; costs: string; basis: ReceptionBasis;
   tiers: Record<string, number>; unknown: number;
-  sets: { set: string; set_name: string; release: string; set_class: string; premium: number; tier: string; now_vs_reading?: number }[];
+  sets: { set: string; set_name: string; release: string; set_class: string; premium: number; tier: string; now_vs_reading?: number; expectation?: Expectation; msrp_mult?: number }[];
   rows: { label: string; strategy: SealedRule; cells: ReceptionCell[] }[]; method: string;
 }
-export function fetchReception(kind: string, at: number, hot: number, cold: number, cls: string, gross = false): Promise<ReceptionStudy> {
-  const q = new URLSearchParams({ kind, at: String(at), hot: String(hot), cold: String(cold) });
+export function fetchReception(kind: string, at: number, hot: number, cold: number, cls: string, gross = false, basis: ReceptionBasis = "msrp"): Promise<ReceptionStudy> {
+  const q = new URLSearchParams({ kind, at: String(at), hot: String(hot), cold: String(cold), basis });
   if (cls && cls !== "all") q.set("class", cls);
   if (gross) q.set("gross", "1");
   return get(`/v1/sealed/backtest/reception?${q}`);
