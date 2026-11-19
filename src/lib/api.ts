@@ -3930,7 +3930,26 @@ export interface SealedWatchRow {
   offers: SealedOffer[]; best_offer: SealedOffer | null; below_target: boolean;
   best_fancash?: SealedOffer; fancash_wins?: boolean; fancash_saves_cents?: number;
 }
-export function fetchSealedWatch(): Promise<{ products: SealedWatchRow[]; count: number; last_refresh: string | null; sources: string }> {
+// ---- the sealed plan (recommended strategy) ----
+export interface StrategyTrigger {
+  product_id: number; set_code: string; set_name: string; kind: SealedKind; class: string; name: string; pricecharting_url: string;
+  line: string; status: "buy" | "wait"; price_cents: number; msrp_cents: number; vs_msrp: number; target_cents: number;
+  units_per_month: number; spend_per_month_cents: number; age_months: number; rotation?: string; months_to_rotation?: number; why: string; watched: boolean;
+}
+export interface StrategyAlt { label: string; note?: string; result: RotationCell; delta_irr?: number }
+export interface StrategyLine {
+  key: string; kind: SealedKind; class: "standard" | "special"; title: string; status: "buy" | "watch"; rules: string[]; legs?: SealedRule[];
+  result?: RotationCell; why: string[]; alternatives?: StrategyAlt[]; notes?: string[]; confidence: "high" | "medium" | "low"; sets_tested: number;
+}
+export interface SealedStrategy {
+  lines: StrategyLine[]; total: RotationCell; plan: SealedRule[]; triggers: StrategyTrigger[]; spend_this_month_cents: number;
+  latest: string; costs: string; summary: string[]; method: string;
+}
+export function fetchSealedStrategy(gross = false): Promise<SealedStrategy> {
+  return get(`/v1/sealed/strategy${gross ? "?gross=1" : ""}`);
+}
+
+export function fetchSealedWatch(): Promise<{ products: SealedWatchRow[]; count: number; last_refresh: string | null; sources: string; suggested?: StrategyTrigger[]; suggested_from?: string }> {
   return get(`/v1/sealed/watch`);
 }
 export function watchSealed(productId: number, targetCents: number | null = null, note = ""): Promise<{ ok: boolean }> {
