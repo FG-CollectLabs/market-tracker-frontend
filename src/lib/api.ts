@@ -2964,6 +2964,9 @@ export interface SweepResult {
   ended: number;
   complete: boolean;
   stopped_by: string;
+  total?: number; // what eBay reports for the search (caps near 10,000)
+  new?: number; // of the matched: not stored before this scan
+  ending_hours?: number; // an ending-soon scan
   unmatched_items?: SweepUnmatch[];
 }
 
@@ -2971,6 +2974,7 @@ export interface SellerSweepJob {
   id: number;
   status: "queued" | "running" | "done" | "failed" | "cancelled";
   from_listing?: string;
+  ending_hours?: number;
   created_at: string;
   finished_at?: string;
   result?: SweepResult;
@@ -3002,11 +3006,13 @@ export function fetchSellerPage(username: string, from?: string): Promise<Seller
   return get(`/v1/deals/seller/${encodeURIComponent(username)}${q}`);
 }
 
-export function startSellerSweep(username: string, from?: string): Promise<{ id?: number; sweep: SellerSweepJob; already?: boolean }> {
+// endingHours: only the seller's auctions ending that soon (a big store's
+// whole-store scan stops at eBay's 10,000-result cap)
+export function startSellerSweep(username: string, from?: string, endingHours?: number): Promise<{ id?: number; sweep: SellerSweepJob; already?: boolean }> {
   return adminFetch(`/v1/admin/deals/seller/${encodeURIComponent(username)}/sweep`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ from_listing: from ?? "" }),
+    body: JSON.stringify({ from_listing: from ?? "", ending_hours: endingHours ?? 0 }),
   });
 }
 
