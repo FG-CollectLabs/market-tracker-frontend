@@ -3984,6 +3984,7 @@ export interface SealedRule {
   reception?: "hot" | "normal" | "cold" | "cheap" | "pricey" | "any"; reception_at?: number; reception_hot?: number; reception_cold?: number; reception_split?: number;
   demand?: "loved" | "unloved"; demand_at?: number; // chase singles at month N vs the sets released before
   max_msrp_mult?: number; // buy only at or under this many times MSRP
+  scale_ups?: { max_msrp_mult: number; units: number }[]; // +units a buy when the price is at or under that multiple of MSRP
   from_oop?: boolean; oop_months?: number; // schedule: start once out of print
   hype_units?: number; // hype: a fixed number of units of each pick a month (week cadence: a week)
   buy_from?: string;

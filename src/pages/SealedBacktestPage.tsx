@@ -21,6 +21,15 @@ interface Strategy { name: string; legs: SealedRule[]; inPlan?: boolean }
 const leg = (r: SealedRule): SealedRule => ({ units: 1, cadence: "month", exit: "hold", hold_months: 36, ...r });
 const PRESETS: Strategy[] = [
   {
+    name: "ETBs in print, scaled by price: 1 a week from month 3, +1 at ≤1× MSRP, +1 more at ≤0.8×",
+    legs: [
+      leg({ name: "Weekly from month 3 until out of print, more when cheap", rule: "schedule", kinds: ["etb"], cadence: "week", start_month: 3, until_oop: true, hold_months: 36,
+        scale_ups: [{ max_msrp_mult: 1, units: 1 }, { max_msrp_mult: 0.8, units: 1 }] }),
+      leg({ name: "Dips: weekly until back at the high, more when cheap", rule: "dip", kinds: ["etb"], cadence: "week", dip_pct: 0.2, dip_follow: "recovered", hold_months: 48,
+        scale_ups: [{ max_msrp_mult: 1, units: 1 }] }),
+    ],
+  },
+  {
     name: "ETBs by set type: standard from month 3 (+month 12), special from release, sold sooner",
     legs: [
       leg({ name: "Standard: weekly from month 3 until out of print", rule: "schedule", kinds: ["etb"], set_class: "standard", cadence: "week", start_month: 3, until_oop: true, hold_months: 36 }),
@@ -111,7 +120,8 @@ function describe(s: SealedRule) {
     buy = `${qty} a ${s.cadence ?? "month"}, month ${s.start_month ?? 0}${end}`;
   }
   const rec = (s.reception && s.reception !== "any" ? ` · ${s.reception} sets (month ${s.reception_at ?? 3})` : "")
-    + (s.demand ? ` · ${s.demand} sets` : "") + (s.max_msrp_mult ? ` · only at ≤ ${s.max_msrp_mult}× MSRP` : "") + (s.from_oop ? ` · once out of print, ${s.oop_months ?? 12} months` : "");
+    + (s.demand ? ` · ${s.demand} sets` : "") + (s.max_msrp_mult ? ` · only at ≤ ${s.max_msrp_mult}× MSRP` : "") + (s.from_oop ? ` · once out of print, ${s.oop_months ?? 12} months` : "")
+    + (s.scale_ups?.length ? ` · ${s.scale_ups.map((x) => `+${x.units} at ≤${x.max_msrp_mult}×`).join(", ")} MSRP` : "");
   return `${buy}${off}${s.set_class ? ` (${s.set_class} sets)` : ""}${rec} · ${exitText(s)}`;
 }
 
@@ -452,6 +462,60 @@ function ReceptionCard({ gross, onAdd }: { gross: boolean; onAdd: (st: Strategy)
   );
 }
 
+// ---- what the history says (ETBs): the findings, live -----------------------------------------
+
+function FindingsCard({ gross }: { gross: boolean }) {
+  const [entry, setEntry] = useState<EntryStat[] | null>(null);
+  const [why, setWhy] = useState<DemandStudy["why"] | null>(null);
+  const [err, setErr] = useState("");
+  useEffect(() => {
+    setEntry(null); setWhy(null);
+    fetchEntryStudy("etb", 24, "all", gross).then((r) => setEntry(r.rows)).catch((e) => setErr(String(e)));
+    fetchDemandStudy("etb", 3, 1.25, "all", gross).then((r) => setWhy(r.why)).catch((e) => setErr(String(e)));
+  }, [gross]);
+  const e = (b: string, st: EntryStat["status"]) => entry?.find((x) => x.bucket === b && x.status === st);
+  const w = (g: string) => why?.find((x) => x.group.startsWith(g));
+  const inCheap = [e("under 0.9×", "in_print"), e("0.9–1.1×", "in_print")].filter(Boolean) as EntryStat[];
+  const inDear = [e("1.1–1.5×", "in_print"), e("1.5–2×", "in_print"), e("2–3×", "in_print")].filter(Boolean) as EntryStat[];
+  const wmean = (xs: EntryStat[]) => {
+    const n = xs.reduce((a, x) => a + x.buys, 0);
+    return n ? xs.reduce((a, x) => a + (x.median_yearly ?? 0) * x.buys, 0) / n : null;
+  };
+  const oop = (entry ?? []).filter((x) => x.status === "out_of_print" && x.median_yearly != null && x.sets >= 5);
+  const oopLo = oop.length ? Math.min(...oop.map((x) => x.median_yearly!)) : null, oopHi = oop.length ? Math.max(...oop.map((x) => x.median_yearly!)) : null;
+  const hot = w("hot"), normal = w("normal"), cold = w("cold");
+  const rx = (v?: number | null) => (v == null ? "–" : `${v.toFixed(2)}×`);
+  const Tile = ({ title, value, sub, tone }: { title: string; value: ReactNode; sub: ReactNode; tone?: string }) => (
+    <div className="rounded-lg border border-gray-800 bg-gray-950/40 p-3 space-y-1">
+      <div className="text-[11px] uppercase tracking-wide text-gray-500">{title}</div>
+      <div className={`text-lg font-semibold ${tone ?? "text-gray-100"}`}>{value}</div>
+      <div className="text-[11px] text-gray-400">{sub}</div>
+    </div>
+  );
+  return (
+    <Card title="What the history says (ETBs)" right={<span className="text-gray-500">live from the charts · details in Set quality below</span>}>
+      {err && <div className="text-xs text-rose-400 break-all">{err}</div>}
+      {!entry || !why ? (!err && <Spinner />) : (
+        <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4 text-xs">
+          <Tile title="In print: the price you pay matters"
+            value={<><span className="text-emerald-300">{pct(wmean(inCheap), 0)}</span> <span className="text-gray-500 text-sm">vs</span> <span className="text-rose-300">{pct(wmean(inDear), 0)}</span></>}
+            sub={<>a year, bought at ≤1.1× MSRP vs above it, held 24 months. Buy in print near MSRP; scale up under it.</>} />
+          <Tile title="Out of print: gains held at every price"
+            value={<span className="text-emerald-300">{pct(oopLo, 0)} – {pct(oopHi, 0)}</span>}
+            sub={<>a year across every multiple of MSRP with 5+ sets, up to 5×+. Mostly the 2021–26 run-up: re-check after a flat year.</>} />
+          <Tile title="Hyped early lost money"
+            value={<span className="text-rose-300">{rx(hot?.entry_premium)} MSRP</span>}
+            sub={<>is what hot sets cost at month 3 ({hot?.sets ?? 0} sets): the hype is priced in before you can buy. None has 36 months of history yet.</>} />
+          <Tile title="Crashed sets win on entry, not scarcity"
+            value={<><span className="text-sky-300">{rx(cold?.gain_36)}</span> <span className="text-gray-500 text-sm">vs</span> {rx(normal?.gain_36)}</>}
+            sub={<>gain over 36 months, cold vs normal sets: bought at {rx(cold?.entry_premium)} vs {rx(normal?.entry_premium)} MSRP, ending {rx(cold?.exit_premium_36)} vs {rx(normal?.exit_premium_36)}.
+              Cold sets had more reprint waves ({cold?.reprint_waves ?? "–"} vs {normal?.reprint_waves ?? "–"}).</>} />
+        </div>
+      )}
+    </Card>
+  );
+}
+
 // ---- set quality: demand quadrants + entry price ------------------------------------------
 
 const QUAD: Record<string, [string, string]> = {
@@ -671,6 +735,18 @@ function LegEditor({ r, onChange, onRemove, canRemove, onSplit }: { r: SealedRul
             title="Turn this leg into two: one for standard sets, one for special sets, each starting from these settings, so you can set different timing for each">
             split into standard + special</button>
         )}
+      </div>
+      <div className="flex flex-wrap items-center gap-1.5" title="On every buy, extra units when that month's price is at or under a multiple of MSRP. The extra units follow the cadence (weekly: per week).">
+        <span className="text-gray-500 mr-1">Scale up</span>
+        {(r.scale_ups ?? []).map((su, i) => (
+          <span key={i} className="flex items-center gap-1 rounded border border-emerald-900 px-1.5 py-0.5 text-emerald-200">
+            +<input value={su.units} onChange={(e) => set({ scale_ups: (r.scale_ups ?? []).map((x, j) => (j === i ? { ...x, units: num(e.target.value) || 1 } : x)) })} className={`${inp} w-8`} />
+            at ≤ <input value={su.max_msrp_mult} onChange={(e) => set({ scale_ups: (r.scale_ups ?? []).map((x, j) => (j === i ? { ...x, max_msrp_mult: num(e.target.value) || 1 } : x)) })} className={`${inp} w-12`} />× MSRP
+            <button onClick={() => { const n = (r.scale_ups ?? []).filter((_, j) => j !== i); set({ scale_ups: n.length ? n : undefined }); }} className="text-gray-500 hover:text-rose-300">×</button>
+          </span>
+        ))}
+        <button onClick={() => { const n = r.scale_ups?.length ?? 0; set({ scale_ups: [...(r.scale_ups ?? []), { units: 1, max_msrp_mult: n === 0 ? 1 : n === 1 ? 0.8 : 0.6 }] }); }}
+          className="text-emerald-300 hover:underline">+ add a tier</button>
       </div>
       <div className={row}>
         <label className={lbl}>Buy rule
@@ -1351,6 +1427,8 @@ export default function SealedBacktestPage() {
         <label className="ml-auto flex items-center gap-1.5 text-xs text-gray-400"><input type="checkbox" checked={gross} onChange={(e) => setGross(e.target.checked)} /> gross (before selling costs)</label>
       </header>
       {err && <div className="text-sm text-rose-400 break-all">{err}</div>}
+
+      <FindingsCard gross={gross} />
 
       <BestPerKind gross={gross} onAdd={add} />
 
