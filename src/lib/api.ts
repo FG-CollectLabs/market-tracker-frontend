@@ -1720,7 +1720,7 @@ export function requestAICheck(body: { copy_id?: number; feed_id?: string; sourc
 }
 // Full AI check on what a board shows: up to 50 a click; checked / queued
 // copies are skipped unless force.
-export function bulkAICheck(items: { source: string; listing_id: string }[], force = false): Promise<{ sent: number; failed: number; skipped: number; over_limit: number; limit: number; results: { source: string; listing_id: string; state?: AIState; error?: string }[] }> {
+export function bulkAICheck(items: { source: string; listing_id: string }[], force = false): Promise<{ sent: number; failed: number; skipped: number; over_limit: number; limit: number; prices?: PriceRefreshQueued; results: { source: string; listing_id: string; state?: AIState; error?: string }[] }> {
   return adminFetch(`/v1/admin/ai-check/bulk`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ items, force }) });
 }
 // Pre-grade, then AI check: raw copies get the programmatic pre-grade first,
@@ -1728,6 +1728,7 @@ export function bulkAICheck(items: { source: string; listing_id: string }[], for
 export type ChainFilter = "ten_possible" | "min_p" | "all";
 export function chainAICheck(items: { source: string; listing_id: string }[], filter: ChainFilter = "ten_possible", minP?: number): Promise<{
   chain_id: number; waiting_pregrade: number; rushed: number; skipped: number; failed: number; over_limit: number; item_limit: number; ai_limit: number;
+  prices?: PriceRefreshQueued;
   results: { source: string; listing_id: string; step?: "waiting_pregrade" | "rushed" | "skipped"; error?: string }[];
 }> {
   return adminFetch(`/v1/admin/ai-check/chain`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ items, filter, min_p: minP }) });
@@ -3440,7 +3441,7 @@ export function refreshGradeOdds(id: number): Promise<GradeOdds> {
 
 // "Check centering for all": never-sent listings (2+ photos) go to the
 // grading predictor in the background, up to 300 per call.
-export function bulkCheckGradeOdds(listingIds: string[], source: "ebay" | "cc" = "ebay"): Promise<{ queued: number; already_checked: number; no_photos: number; over_limit: number; limit: number }> {
+export function bulkCheckGradeOdds(listingIds: string[], source: "ebay" | "cc" = "ebay"): Promise<{ queued: number; already_checked: number; no_photos: number; over_limit: number; limit: number; prices?: PriceRefreshQueued }> {
   return adminFetch(`/v1/admin/grade-odds/listings`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ source, listing_ids: listingIds }) });
 }
 
@@ -4232,3 +4233,15 @@ export function fetchEntryStudy(kind: string, hold: number, cls: string, gross =
   if (gross) q.set("gross", "1");
   return get(`/v1/sealed/backtest/entry?${q}`);
 }
+// ---- fresh prices for the copies being expedited ----
+export interface PriceRefreshQueued { cards: number; queued: number; skipped_recent: number; job_ids?: number[]; error?: string }
+export interface PriceFreshness { display_key: string; fanatics_at?: string; ebay_at?: string; last_sale_at?: string; stale: boolean; refreshing: boolean }
+export function refreshPrices(listings: { source: string; listing_id: string }[]): Promise<PriceRefreshQueued> {
+  return adminFetch(`/v1/admin/prices/refresh`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ listings }) });
+}
+export function fetchPriceFreshness(listings: { source: string; listing_id: string }[]): Promise<{ cards: PriceFreshness[]; count: number; stale: number; refreshing: number }> {
+  return adminFetch(`/v1/admin/prices/freshness`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ listings }) });
+}
+// "prices refreshing for N cards" for an expedite's message
+export const pricesNote = (p?: PriceRefreshQueued) =>
+  !p ? "" : p.error ? ` · prices: couldn't queue a refresh` : p.queued ? ` · fresh prices for ${p.queued} card${p.queued === 1 ? "" : "s"} on the way` : p.cards ? ` · prices refreshed in the last 6h` : "";

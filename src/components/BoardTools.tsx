@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { bulkCheckGradeOdds, chainAICheck, type ChainFilter } from "../lib/api";
+import { bulkCheckGradeOdds, chainAICheck, type ChainFilter, pricesNote } from "../lib/api";
 
 // AutoMore: loads the next page when its row scrolls into view (infinite
 // scroll), with the button kept for keyboards and as a fallback.
@@ -40,7 +40,7 @@ export function CheckAll({ listingIds, source = "ebay" }: { listingIds: string[]
               if (r.already_checked) parts.push(`${r.already_checked} already checked`);
               if (r.no_photos) parts.push(`${r.no_photos} without front + back photos`);
               if (r.over_limit) parts.push(`${r.over_limit} over the ${r.limit} limit: click again later`);
-              setMsg(`${parts.join(" · ")}. Odds show in a few minutes.`);
+              setMsg(`${parts.join(" · ")}. Odds show in a few minutes${pricesNote(r.prices)}.`);
             } catch (e) {
               setMsg(`Couldn't send: ${e instanceof Error ? e.message : String(e)}`);
             } finally {
@@ -79,7 +79,7 @@ export function ChainCheck({ listingIds, source = "ebay", label, compact }: { li
               if (r.skipped) parts.push(`${r.skipped} skipped`);
               if (r.failed) parts.push(`${r.failed} couldn't be sent`);
               if (r.over_limit) parts.push(`${r.over_limit} over the ${r.item_limit} limit`);
-              setMsg(`${parts.join(" · ")}. Up to ${r.ai_limit} AI checks this run.`);
+              setMsg(`${parts.join(" · ")}. Up to ${r.ai_limit} AI checks this run${pricesNote(r.prices)}.`);
             } catch (e) {
               setMsg(`Couldn't start: ${e instanceof Error ? e.message : String(e)}`);
             } finally {

@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { bulkAICheck, bulkCheckGradeOdds, bulkRefreshOdds, chainAICheck, GRADE_ODDS_REFRESHED, type AIState, type ChainFilter, type TargetHit } from "../lib/api";
+import { bulkAICheck, bulkCheckGradeOdds, bulkRefreshOdds, chainAICheck, fetchPriceFreshness, pricesNote, refreshPrices, GRADE_ODDS_REFRESHED, type AIState, type ChainFilter, type TargetHit } from "../lib/api";
 
 // Bulk actions on the listings a board's filters are showing: pre-grade every
 // unchecked raw copy, run the full AI check on all of them, refresh all, and
@@ -31,6 +31,26 @@ export default function FilterActions({ hits, onReload, label }: { hits: TargetH
   const [runs, setRuns] = useState<Run[]>(loadRuns);
   const [busy, setBusy] = useState<"" | Kind | "refresh" | "chain">("");
   const [chainFilter, setChainFilter] = useState<ChainFilter>("ten_possible");
+  // how fresh the shown cards' prices are (the ones you'd bid on)
+  const [fresh, setFresh] = useState<{ count: number; stale: number; refreshing: number } | null>(null);
+  const [freshTick, setFreshTick] = useState(0);
+  const listingsKey = useMemo(() => hits.slice(0, 500).map(keyOf).join(","), [hits]);
+  useEffect(() => {
+    const ls = hits.slice(0, 500).map((h) => ({ source: h.source, listing_id: h.listing_id }));
+    if (!ls.length) { setFresh(null); return; }
+    const t = window.setTimeout(() => { fetchPriceFreshness(ls).then(setFresh).catch(() => setFresh(null)); }, 600);
+    return () => window.clearTimeout(t);
+  }, [listingsKey, freshTick]); // eslint-disable-line react-hooks/exhaustive-deps
+  const refreshAll = async () => {
+    setBusy("refresh"); setMsg(null);
+    try {
+      const r = await refreshPrices(hits.slice(0, 500).map((h) => ({ source: h.source, listing_id: h.listing_id })));
+      setMsg({ ok: !r.error, text: r.queued ? `Refreshing prices for ${r.queued} card${r.queued === 1 ? "" : "s"} (Fanatics, eBay Buy Nows, eBay solds): a few minutes.` : "Every card here was refreshed in the last 6 hours." });
+      setFreshTick((t) => t + 1);
+    } catch (e) {
+      setMsg({ ok: false, text: `Price refresh failed: ${e instanceof Error ? e.message : String(e)}` });
+    } finally { setBusy(""); }
+  };
   const [minP, setMinP] = useState(25);
   const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
 
@@ -96,7 +116,8 @@ export default function FilterActions({ hits, onReload, label }: { hits: TargetH
       if (r.already_checked) parts.push(`${r.already_checked} already checked`);
       if (r.no_photos) parts.push(`${r.no_photos} without front + back photos`);
       if (r.over_limit) parts.push(`${r.over_limit} over the ${r.limit} limit: click again later`);
-      setMsg({ ok: true, text: `Pre-grade: ${parts.join(" · ")}.` });
+      setMsg({ ok: true, text: `Pre-grade: ${parts.join(" · ")}${pricesNote(r.prices)}.` });
+      setFreshTick((t) => t + 1);
       onReload();
     } catch (e) {
       setMsg({ ok: false, text: `Pre-grade failed: ${e instanceof Error ? e.message : String(e)}` });
@@ -114,7 +135,8 @@ export default function FilterActions({ hits, onReload, label }: { hits: TargetH
       if (r.skipped) parts.push(`${r.skipped} already checked or queued`);
       if (r.over_limit) parts.push(`${r.over_limit} over the ${r.limit} a click: click again after these`);
       if (r.failed) parts.push(`${r.failed} couldn't be sent (${[...new Set(r.results.filter((x) => x.error).map((x) => x.error))].slice(0, 2).join("; ")})`);
-      setMsg({ ok: r.failed === 0, text: `AI check: ${parts.join(" · ")}.` });
+      setMsg({ ok: r.failed === 0, text: `AI check: ${parts.join(" · ")}${pricesNote(r.prices)}.` });
+      setFreshTick((t) => t + 1);
       onReload();
     } catch (e) {
       setMsg({ ok: false, text: `AI check failed: ${e instanceof Error ? e.message : String(e)}` });
@@ -139,7 +161,8 @@ export default function FilterActions({ hits, onReload, label }: { hits: TargetH
       if (r.skipped) parts.push(`${r.skipped} skipped (already checked, or over the cap)`);
       if (r.failed) parts.push(`${r.failed} couldn't be sent`);
       if (r.over_limit) parts.push(`${r.over_limit} over the ${r.item_limit} a click`);
-      setMsg({ ok: r.failed === 0, text: `Pre-grade → AI: ${parts.join(" · ")}.` });
+      setMsg({ ok: r.failed === 0, text: `Pre-grade → AI: ${parts.join(" · ")}${pricesNote(r.prices)}.` });
+      setFreshTick((t) => t + 1);
       onReload();
     } catch (e) {
       setMsg({ ok: false, text: `Pre-grade → AI failed: ${e instanceof Error ? e.message : String(e)}` });
@@ -193,6 +216,18 @@ export default function FilterActions({ hits, onReload, label }: { hits: TargetH
         </button>
         {msg && <span className={msg.ok ? "text-green-300" : "text-amber-300"}>{msg.text}</span>}
       </div>
+      {fresh && fresh.count > 0 && (
+        <div className="flex flex-wrap items-center gap-2 text-[11px] text-gray-400">
+          <span title="Fanatics sold history and live listings, eBay Buy Nows and sold comps, per card">Prices:</span>
+          {fresh.stale > 0
+            ? <span className="text-amber-300">{fresh.stale} of {fresh.count} cards not refreshed in 24h</span>
+            : <span className="text-emerald-300">all {fresh.count} cards refreshed in the last 24h</span>}
+          {fresh.refreshing > 0 && <span className="text-sky-300">· {fresh.refreshing} refreshing now</span>}
+          <button disabled={busy !== ""} onClick={refreshAll} className="rounded border border-gray-700 px-1.5 py-0.5 text-gray-200 hover:bg-gray-800 disabled:opacity-40"
+            title="Fanatics (sales, auctions, Buy Nows), eBay Buy Nows and eBay sold comps for every card shown, now. Cards refreshed in the last 6 hours are skipped.">
+            Refresh prices</button>
+        </div>
+      )}
       {prog.total > 0 && (active || runs.length > 0) && (
         <div className="max-w-xl space-y-0.5">
           <div className="h-2 rounded bg-gray-800 overflow-hidden flex">
