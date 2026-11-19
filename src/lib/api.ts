@@ -3967,7 +3967,8 @@ export interface SealedRule {
   rule: SealedRuleKind;
   legs?: SealedRule[]; // portfolio: rules run side by side as one book
   buy_discount?: number; // every buy this much under market (0.2 = 20% off)
-  sizing?: "units" | "dollars"; // same count of each, or the same money on each buy
+  // same count of each, the same money on each buy, or units × the product's MSRP worth on each buy (1 at MSRP, 1.25 at 0.8×)
+  sizing?: "units" | "dollars" | "msrp";
   dollars_cents?: number;
   dip_own?: boolean; // dips: only the product's own drops (reprints / waves)
   // dips: after a trigger keep buying (units a cadence): for N months, until back at the pre-dip high, or until out of print
@@ -3988,6 +3989,8 @@ export interface SealedRule {
   max_msrp_mult?: number; // buy only at or under this many times MSRP
   scale_ups?: { max_msrp_mult: number; units: number }[]; // +units a buy when the price is at or under that multiple of MSRP
   from_oop?: boolean; oop_months?: number; // schedule: start once out of print
+  // Standard rotation window: buy only rot_from..rot_to months after the set rotates (negative = before; rot_to -1 = until rotation)
+  rot_from?: number | null; rot_to?: number | null;
   hype_units?: number; // hype: a fixed number of units of each pick a month (week cadence: a week)
   hype_least?: boolean; // hype: pick the lowest score (least hyped)
   hype_min_age?: number; // hype: only sets at least this many months old
@@ -4005,7 +4008,8 @@ export interface SealedRule {
   rotation_months?: number;
   hype_by?: "momentum" | "premium" | "newest" | "rising12";
   pick_n?: number;
-  exit?: "hold" | "mark" | "all_at" | "target" | "winddown";
+  exit?: "hold" | "mark" | "all_at" | "target" | "winddown" | "rotation";
+  sell_after_rotation?: number; // exit rotation: months after the set rotates out of Standard
   hold_months?: number;
   all_at_months?: number;
   sell_date?: string;
@@ -4187,6 +4191,31 @@ export interface BuyList {
   blended_leg_irr?: number; by_set: BuyShare[]; by_kind: BuyShare[]; by_class: BuyShare[]; top_set_share: number; effective_sets: number; effective_skus: number;
   strategies: { name: string; spend_per_month_cents: number; irr: number | null; multiple: number; sets: number; buys: number }[]; notes: string[]; method: string;
 }
+// ---- Standard rotation ----
+export interface RotationSet { set_code: string; set_name: string; release?: string; set_class: string; date?: string; status?: "official" | "unverified" | "estimate" | "edited"; mark?: string; source?: string }
+export function fetchRotation(): Promise<{ sets: RotationSet[]; sources: string[]; note: string }> {
+  return get(`/v1/sealed/rotation`);
+}
+export function saveRotationEdits(edits: Record<string, { date: string; source?: string }>): Promise<{ sets: RotationSet[]; sources: string[]; note: string }> {
+  return adminFetch(`/v1/admin/sealed/rotation`, { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ edits }) });
+}
+export interface RotationCell {
+  class: "" | "standard" | "special"; window: string; sell_after_rotation: number | null;
+  irr: number | null; multiple: number; closed_multiple?: number; invested_cents: number; units: number; sets: number;
+  open_share: number; avg_hold_months: number; benchmark_cents: number; value_cents: number;
+}
+export interface RotationStudy {
+  kinds: SealedKind[]; latest: string; all: boolean; windows: { key: string; label: string }[]; sells: number[];
+  cells: RotationCell[]; cohorts: { rotation: string; products: number }[]; costs: string; method: string;
+  plan: { label: string; sell_after_rotation: number | null; msrp_sizing: boolean; result: RotationCell; rules?: string[] }[];
+}
+export function fetchRotationStudy(kind: SealedKind, gross = false, all = false): Promise<RotationStudy> {
+  const q = new URLSearchParams({ kinds: kind });
+  if (gross) q.set("gross", "1");
+  if (all) q.set("all", "1");
+  return get(`/v1/sealed/backtest/rotation?${q}`);
+}
+
 export function fetchSealedPlan(): Promise<{ strategies: SealedRule[]; updated_by?: string }> {
   return adminFetch(`/v1/admin/sealed/plan`);
 }

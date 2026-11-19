@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { Link } from "react-router-dom";
 import {
-  fetchDemandStudy, fetchEntryStudy, fetchReception, fetchSealedBacktestBest, type DemandStudy, type EntryStat, fetchSealedPlan, runSealedBacktest, type ReceptionStudy, type ReceptionBasis, saveSealedPlan, sealedBuyList, type BuyList, type BuyShare, type SetClass, sweepSealedBacktest, sweepSealedExits, SEALED_KIND_LABEL,
+  fetchDemandStudy, fetchEntryStudy, fetchRotation, fetchRotationStudy, saveRotationEdits, type RotationCell, type RotationSet, type RotationStudy, fetchReception, fetchSealedBacktestBest, type DemandStudy, type EntryStat, fetchSealedPlan, runSealedBacktest, type ReceptionStudy, type ReceptionBasis, saveSealedPlan, sealedBuyList, type BuyList, type BuyShare, type SetClass, sweepSealedBacktest, sweepSealedExits, SEALED_KIND_LABEL,
   type BacktestExitRow, type BacktestKindBest, type BacktestLot, type BacktestResult, type BacktestSweepRow, type SealedKind, type SealedRule,
 } from "../lib/api";
 import { Spinner } from "../components/Spinner";
@@ -18,7 +18,8 @@ const LINE_COLORS = ["#34d399", "#60a5fa", "#f472b6", "#fbbf24", "#a78bfa", "#f8
 
 interface Strategy { name: string; legs: SealedRule[]; inPlan?: boolean }
 
-const leg = (r: SealedRule): SealedRule => ({ units: 1, cadence: "month", exit: "hold", hold_months: 36, ...r });
+// new legs: 1 unit's MSRP worth a buy (the same money across sets, kinds and eras)
+const leg = (r: SealedRule): SealedRule => ({ units: 1, sizing: "msrp", cadence: "month", exit: "hold", hold_months: 36, ...r });
 const PRESETS: Strategy[] = [
   {
     name: "ETBs in print, scaled by price: 1 a week from month 3, +1 at ≤1× MSRP, +1 more at ≤0.8×",
@@ -94,6 +95,7 @@ function exitText(s: SealedRule) {
     case "all_at": return s.sell_date ? `sell all on ${s.sell_date}` : `sell all ${s.all_at_months ?? 48}mo after the first buy`;
     case "target": return `sell at ${s.target_mult ?? 3}× ${s.target_basis === "msrp" ? "MSRP" : "cost"}${s.max_hold_months ? `, else after ${s.max_hold_months}mo` : ""}`;
     case "winddown": return `wind down from ${s.wind_start ?? 36}mo: ${s.wind_units ? `${s.wind_units}/mo` : `over ${s.wind_months ?? 24}mo`}`;
+    case "rotation": return s.sell_after_rotation ? `sell ${s.sell_after_rotation}mo after rotation` : "sell at rotation";
   }
   return `sell after ${s.hold_months ?? 36}mo`;
 }
@@ -108,22 +110,32 @@ function followText(s: SealedRule) {
   return "";
 }
 
+function rotText(s: SealedRule) {
+  const rel = (k: number) => k === 0 ? "rotation" : k < 0 ? `${-k}mo before rotation` : `${k}mo after rotation`;
+  const f = s.rot_from, t = s.rot_to;
+  if (f == null && t == null) return "";
+  if (f == null) return t === -1 ? ", until rotation" : `, until ${rel((t ?? 0) + 1)}`;
+  if (t == null) return `, from ${rel(f)}`;
+  return `, ${rel(f)} to ${rel(t + 1)}`;
+}
+
 function describe(s: SealedRule) {
   const k = s.kinds.map((x) => SEALED_KIND_LABEL[x]).join(" + ");
-  const qty = s.sizing === "dollars" ? `$${((s.dollars_cents ?? 5000) * (s.units ?? 1) / 100).toFixed(0)} of ${k}` : `${s.units ?? 1} ${k}`;
+  const qty = s.sizing === "dollars" ? `$${((s.dollars_cents ?? 5000) * (s.units ?? 1) / 100).toFixed(0)} of ${k}` : s.sizing === "msrp" ? `${s.units ?? 1} ${k} at MSRP` : `${s.units ?? 1} ${k}`;
   const off = s.buy_discount ? ` at ${Math.round(s.buy_discount * 100)}% off` : "";
   let buy: string;
   if (s.rule === "hype") buy = `${s.hype_units ? `${s.hype_units} a ${s.cadence ?? "month"} of` : `$${((s.budget_cents ?? 0) / 100).toFixed(0)}/mo on`} the ${s.pick_n ?? 1} ${s.hype_least ? "least" : "most"} hyped ${k} (${s.hype_by}, sets ${s.hype_min_age ? `${s.hype_min_age}–` : "≤"}${s.rotation_months ?? 24}mo old${s.in_print_only ? ", in print" : ""})`;
   else if (s.rule === "dip") buy = `${qty} on every ${Math.round((s.dip_pct ?? 0.15) * 100)}% dip${s.dip_own ? " of its own (reprint)" : ""}${followText(s)}${s.start_month || s.end_month != null ? `, months ${s.start_month ?? 0}–${s.end_month ?? "∞"}` : ""}`;
   else {
-    const end = s.until_oop ? (s.end_month != null ? ` to month ${s.end_month} or out of print` : " until out of print") : s.end_month != null && s.end_month !== s.start_month ? ` to month ${s.end_month}` : " only";
+    const rotWin = s.rot_from != null || s.rot_to != null;
+    const end = s.until_oop ? (s.end_month != null ? ` to month ${s.end_month} or out of print` : " until out of print") : s.end_month != null && s.end_month !== s.start_month ? ` to month ${s.end_month}` : rotWin ? " on" : " only";
     buy = `${qty} a ${s.cadence ?? "month"}, month ${s.start_month ?? 0}${end}`;
   }
   const relRec = s.reception === "beat" || s.reception === "met" || s.reception === "missed";
   const rec = (s.reception && s.reception !== "any" ? (relRec ? ` · sets that ${s.reception === "met" ? "met" : s.reception} expectations (month ${s.reception_at ?? 6} vs release price${s.reception_basis === "release_raw" ? ", raw" : ", vs market"})` : ` · ${s.reception} sets (month ${s.reception_at ?? 3})`) : "")
     + (s.demand ? ` · ${s.demand} sets` : "") + (s.max_msrp_mult ? ` · only at ≤ ${s.max_msrp_mult}× MSRP` : "") + (s.from_oop ? ` · once out of print, ${s.oop_months ?? 12} months` : "")
     + (s.scale_ups?.length ? ` · ${s.scale_ups.map((x) => `+${x.units} at ≤${x.max_msrp_mult}×`).join(", ")} MSRP` : "");
-  return `${buy}${off}${s.set_class ? ` (${s.set_class} sets)` : ""}${rec} · ${exitText(s)}`;
+  return `${buy}${rotText(s)}${off}${s.set_class ? ` (${s.set_class} sets)` : ""}${rec} · ${exitText(s)}`;
 }
 
 // what goes to the API: one leg = that rule; several = a portfolio
@@ -865,12 +877,13 @@ function LegEditor({ r, onChange, onRemove, canRemove, onSplit }: { r: SealedRul
       {r.rule !== "hype" && (
         <div className={row}>
           <label className={lbl}>Size
-            <select value={r.sizing ?? "units"} onChange={(e) => set({ sizing: e.target.value as "units" | "dollars" })} className={inp}>
-              <option value="units">same count of each</option><option value="dollars">same money on each</option>
+            <select value={r.sizing ?? "units"} onChange={(e) => set({ sizing: e.target.value as SealedRule["sizing"] })} className={inp}>
+              <option value="msrp">1 unit at MSRP (same money, MSRP-scaled)</option><option value="units">same count of each</option><option value="dollars">same money on each ($)</option>
             </select>
           </label>
-          {(r.sizing ?? "units") === "units"
-            ? <label className={lbl}><input value={r.units ?? 1} onChange={(e) => set({ units: num(e.target.value) })} className={`${inp} w-12`} /> per buy</label>
+          {(r.sizing ?? "units") !== "dollars"
+            ? <label className={lbl} title={r.sizing === "msrp" ? "Each buy spends this many units' MSRP: at 0.8× MSRP it buys 1.25 units, at 2× it buys 0.5" : undefined}>
+                <input value={r.units ?? 1} onChange={(e) => set({ units: num(e.target.value) })} className={`${inp} w-12`} /> {r.sizing === "msrp" ? "× MSRP per buy" : "per buy"}</label>
             : <label className={lbl}>$<input value={(r.dollars_cents ?? 5000) / 100} onChange={(e) => set({ dollars_cents: Math.round((num(e.target.value) ?? 50) * 100) })} className={`${inp} w-16`} /> per buy</label>}
           <label className={lbl} title="Every buy at this much under the month's market price (a store discount or fire sale)">
             at <input value={Math.round((r.buy_discount ?? 0) * 100)} onChange={(e) => set({ buy_discount: (num(e.target.value) ?? 0) / 100 || undefined })} className={`${inp} w-10`} />% under market
@@ -944,13 +957,32 @@ function LegEditor({ r, onChange, onRemove, canRemove, onSplit }: { r: SealedRul
         </div>
       )}
       <div className={row}>
+        <label className={lbl} title="Standard rotation: the date the set's cards leave competitive play (the calendar is in Rotation timing). Sets without a date never match a rotation window.">Rotation
+          <select value={rotMode(r)}
+            onChange={(e) => {
+              const v = e.target.value;
+              set(v === "" ? { rot_from: undefined, rot_to: undefined } : v === "until" ? { rot_from: undefined, rot_to: -1 } : v === "from" ? { rot_from: 0, rot_to: undefined } : { rot_from: r.rot_from ?? -12, rot_to: r.rot_to ?? -1 });
+            }} className={inp}>
+            <option value="">any time</option><option value="until">until the set rotates</option><option value="from">once the set has rotated</option><option value="custom">months around rotation…</option>
+          </select>
+        </label>
+        {rotMode(r) === "custom" && <>
+          <label className={lbl} title="Negative = before rotation">from <input value={r.rot_from ?? ""} placeholder="–" onChange={(e) => set({ rot_from: num(e.target.value) ?? null })} className={`${inp} w-12`} /></label>
+          <label className={lbl} title="Inclusive; -1 = the month before rotation">to <input value={r.rot_to ?? ""} placeholder="–" onChange={(e) => set({ rot_to: num(e.target.value) ?? null })} className={`${inp} w-12`} /> months after rotation</label>
+        </>}
+      </div>
+      <div className={row}>
         <label className={lbl}>Sell
           <select value={r.exit ?? "hold"} onChange={(e) => set({ exit: e.target.value as SealedRule["exit"] })} className={inp}>
             <option value="hold">each lot after N months</option><option value="all_at">everything at once</option>
             <option value="target">at a price target</option><option value="winddown">wind down each product</option>
-            <option value="mark">never (value today)</option>
+            <option value="rotation">N months after the set rotates</option><option value="mark">never (value today)</option>
           </select>
         </label>
+        {r.exit === "rotation" && <>
+          <label className={lbl}><input value={r.sell_after_rotation ?? 0} onChange={(e) => set({ sell_after_rotation: num(e.target.value) ?? 0 })} className={`${inp} w-12`} /> months after rotation</label>
+          <label className={lbl} title="Lots bought after their set's sell date (and sets with no rotation date) sell this long after buying">else after <input value={r.hold_months ?? 36} onChange={(e) => set({ hold_months: num(e.target.value) })} className={`${inp} w-12`} /> months</label>
+        </>}
         {(r.exit ?? "hold") === "hold" && <label className={lbl}><input value={r.hold_months ?? 36} onChange={(e) => set({ hold_months: num(e.target.value) })} className={`${inp} w-12`} /> months</label>}
         {r.exit === "all_at" && <>
           <label className={lbl}><input value={r.all_at_months ?? 48} onChange={(e) => set({ all_at_months: num(e.target.value), sell_date: undefined })} className={`${inp} w-12`} /> months after the first buy</label>
@@ -1536,6 +1568,7 @@ export default function SealedBacktestPage() {
       <ReceptionCard gross={gross} onAdd={add} />
 
       <SetQualityCard gross={gross} onAdd={add} />
+      <RotationCard gross={gross} onAdd={add} />
 
       <div id="my-strategies" />
       <Card title="My strategies" right={<>
@@ -1621,6 +1654,175 @@ export default function SealedBacktestPage() {
           <p className="mt-2 max-w-5xl leading-relaxed">{res.costs} {res.method}</p>
         </details>
       )}
+    </div>
+  );
+}
+
+// ---- Standard rotation ---------------------------------------------------------------
+
+function rotMode(r: SealedRule): "" | "until" | "from" | "custom" {
+  if (r.rot_from == null && r.rot_to == null) return "";
+  if (r.rot_from == null && r.rot_to === -1) return "until";
+  if (r.rot_to == null && r.rot_from === 0) return "from";
+  return "custom";
+}
+
+// the study's buy windows as rule fields (same keys as the backend's rotWindows)
+const ROT_WINDOWS: Record<string, Partial<SealedRule>> = {
+  m3_rot: { start_month: 3, rot_to: -1 },
+  m6_rot: { start_month: 6, rot_to: -1 },
+  m12_rot: { start_month: 12, rot_to: -1 },
+  m6_18: { start_month: 6, end_month: 18 },
+  m6_36: { start_month: 6, end_month: 36 },
+  m12_24: { start_month: 12, end_month: 24 },
+  m24_36: { start_month: 24, end_month: 36 },
+  pre12: { start_month: 0, rot_from: -12, rot_to: -1 },
+  post0_12: { start_month: 0, rot_from: 0, rot_to: 11 },
+  post12_24: { start_month: 0, rot_from: 12, rot_to: 23 },
+  m3_oop: { start_month: 3, until_oop: true },
+};
+
+function RotCellView({ c, onClick }: { c?: RotationCell; onClick?: () => void }) {
+  if (!c) return <td className={tdr}><span className="text-gray-600">–</span></td>;
+  const marked = c.open_share > 0.5;
+  return (
+    <td className={`${tdr} ${onClick ? "cursor-pointer hover:bg-gray-800/60" : ""}`} onClick={onClick}
+      title={`${c.sets} sets · ${usd(c.invested_cents)} in · ${c.units} units · avg hold ${c.avg_hold_months}mo · ${Math.round(c.open_share * 100)}% still held (valued today)${c.closed_multiple != null ? ` · sold lots ${c.closed_multiple.toFixed(2)}×` : ""}${onClick ? " · click to add as a strategy" : ""}`}>
+      <span className={`${irrTone(c.irr)} ${marked ? "opacity-60" : ""}`}>{pct(c.irr, 0)}</span>
+      <div className="text-[10px] text-gray-500">{c.multiple.toFixed(2)}× · {Math.round(c.open_share * 100)}% held</div>
+    </td>
+  );
+}
+
+function RotationCard({ gross, onAdd }: { gross: boolean; onAdd: (st: Strategy) => void }) {
+  const [kind, setKind] = useState<SealedKind>("etb");
+  const [cls, setCls] = useState<"" | "standard" | "special">("");
+  const [all, setAll] = useState(false);
+  const [d, setD] = useState<RotationStudy | null>(null);
+  const [err, setErr] = useState<string | null>(null);
+  const [showCal, setShowCal] = useState(false);
+  useEffect(() => {
+    let live = true;
+    setD(null); setErr(null);
+    fetchRotationStudy(kind, gross, all).then((x) => live && setD(x)).catch((e) => live && setErr(String(e)));
+    return () => { live = false; };
+  }, [kind, gross, all]);
+  const cols: (number | null)[] = d ? [...d.sells, null] : [];
+  const cell = (w: string, s: number | null) => d?.cells.find((c) => c.class === cls && c.window === w && c.sell_after_rotation === s);
+  const label = (w: string) => d?.windows.find((x) => x.key === w)?.label ?? w;
+  const addCell = (w: string, s: number | null) => onAdd({
+    name: `${label(w)}, ${s == null ? "hold" : `sell ${s}mo after rotation`}${cls ? ` (${cls})` : ""}`,
+    legs: [leg({ rule: "schedule", kinds: [kind], set_class: cls || undefined, ...ROT_WINDOWS[w], ...(s == null ? { exit: "mark" } : { exit: "rotation", sell_after_rotation: s }) })],
+  });
+  return (
+    <Card title={<span className="flex items-center gap-2">Rotation timing
+      <button onClick={() => setShowCal((v) => !v)} className={`rounded px-2.5 py-0.5 text-xs ${showCal ? "bg-indigo-700 text-white" : "text-gray-400 hover:text-gray-200"}`}>Rotation calendar</button></span>}
+      right={<div className="flex flex-wrap items-center gap-1">
+        {(["etb", "pc_etb", "booster_box", "booster_bundle"] as SealedKind[]).map((x) => (
+          <button key={x} onClick={() => setKind(x)} className={`rounded px-2.5 py-1 ${kind === x ? "bg-gray-700 text-white" : "text-gray-400 hover:text-gray-200"}`}>{SEALED_KIND_LABEL[x]}</button>
+        ))}
+        <span className="ml-2 flex gap-1">{([["", "All"], ["standard", "Standard"], ["special", "Special"]] as ["" | "standard" | "special", string][]).map(([c, l]) => (
+          <button key={c || "all"} onClick={() => setCls(c)} className={`rounded px-2 py-0.5 ${cls === c ? "bg-gray-700 text-white" : "text-gray-400 hover:text-gray-200"}`}>{l}</button>
+        ))}</span>
+        <label className="ml-2 flex items-center gap-1 text-gray-400" title="Off: only sets that have rotated by the latest chart month. On: every set with a rotation date (the ones still in Standard are valued at today's price).">
+          <input type="checkbox" checked={all} onChange={(e) => setAll(e.target.checked)} /> include sets not rotated yet</label>
+      </div>}>
+      {showCal && <RotationCalendar />}
+      <p className="text-xs text-gray-400 max-w-5xl mb-2">
+        Out of print here means out of Standard rotation: a date known in advance and the same for every product of the set. Each cell buys 1 unit&apos;s MSRP worth a month
+        in the window and sells each lot N months after its set rotates. Return a year (money-weighted), multiple, and the share still held at the latest month, which is valued at today&apos;s price.
+        Faded cells are mostly still held, so they aren&apos;t proven by sales yet. Click a cell to add it as a strategy.
+      </p>
+      {err && <p className="text-xs text-rose-300">{err}</p>}
+      {!d && !err && <div className="text-xs text-gray-500 flex items-center gap-2"><Spinner /> Running the windows…</div>}
+      {d && (
+        <>
+          <div className="text-[11px] text-gray-500 mb-2">Rotations in the data: {d.cohorts.map((c) => `${c.rotation} (${c.products})`).join(" · ") || "none"} · latest month {d.latest}</div>
+          <div className="overflow-x-auto">
+            <table className="w-full text-xs">
+              <thead className="text-gray-500"><tr>
+                <th className={`${td} text-left font-medium`}>Buy window</th>
+                {cols.map((s) => <th key={String(s)} className={`${tdr} font-medium`}>{s == null ? "never (today)" : s === 0 ? "sell at rotation" : `+${s}mo`}</th>)}
+              </tr></thead>
+              <tbody>{d.windows.map((w) => (
+                <tr key={w.key} className="border-t border-gray-800">
+                  <td className={`${td} text-gray-300 whitespace-nowrap`}>{w.label}<span className="ml-1 text-[10px] text-gray-500">{cell(w.key, null)?.sets ?? 0} sets</span></td>
+                  {cols.map((s) => <RotCellView key={String(s)} c={cell(w.key, s)} onClick={cell(w.key, s) ? () => addCell(w.key, s) : undefined} />)}
+                </tr>
+              ))}</tbody>
+            </table>
+          </div>
+          {d.plan.length > 0 && (
+            <div className="mt-4">
+              <div className="text-xs text-gray-300 mb-1">My plan (as checked in) with every leg&apos;s exit moved to rotation; &quot;until out of print&quot; read as &quot;until rotation&quot;</div>
+              <div className="overflow-x-auto">
+                <table className="w-full text-xs">
+                  <thead className="text-gray-500"><tr>
+                    <th className={`${td} text-left font-medium`}>Version</th><th className={`${tdr} font-medium`}>A year</th><th className={`${tdr} font-medium`}>Multiple</th>
+                    <th className={`${tdr} font-medium`}>Sold lots</th><th className={`${tdr} font-medium`}>Still held</th><th className={`${tdr} font-medium`}>Invested</th><th className={`${tdr} font-medium`}>Sets</th>
+                  </tr></thead>
+                  <tbody>{d.plan.map((p) => (
+                    <tr key={p.label} className="border-t border-gray-800" title={p.rules?.join("\n")}>
+                      <td className={`${td} text-gray-300`}>{p.label}</td>
+                      <td className={`${tdr} ${irrTone(p.result.irr)}`}>{pct(p.result.irr, 1)}</td>
+                      <td className={tdr}>{p.result.multiple.toFixed(2)}×</td>
+                      <td className={tdr}>{p.result.closed_multiple != null ? `${p.result.closed_multiple.toFixed(2)}×` : "–"}</td>
+                      <td className={tdr}>{Math.round(p.result.open_share * 100)}%</td>
+                      <td className={tdr}>{usd(p.result.invested_cents)}</td>
+                      <td className={tdr}>{p.result.sets}</td>
+                    </tr>
+                  ))}</tbody>
+                </table>
+              </div>
+            </div>
+          )}
+          <p className="mt-2 text-[11px] text-gray-500">{d.costs} {d.method}</p>
+        </>
+      )}
+    </Card>
+  );
+}
+
+function RotationCalendar() {
+  const [rows, setRows] = useState<RotationSet[] | null>(null);
+  const [note, setNote] = useState("");
+  const [sources, setSources] = useState<string[]>([]);
+  const [draft, setDraft] = useState<Record<string, string>>({});
+  const [msg, setMsg] = useState<string | null>(null);
+  const load = (x: { sets: RotationSet[]; sources: string[]; note: string }) => { setRows(x.sets); setNote(x.note); setSources(x.sources); setDraft({}); };
+  useEffect(() => { fetchRotation().then(load).catch((e) => setMsg(String(e))); }, []);
+  const save = async () => {
+    if (!rows) return;
+    const edits: Record<string, { date: string; source?: string }> = {};
+    for (const r of rows) if (r.status === "edited" && r.date) edits[r.set_code] = { date: r.date, source: r.source };
+    for (const [k, v] of Object.entries(draft)) edits[k] = { date: v };
+    try { load(await saveRotationEdits(edits)); setMsg("Saved."); } catch (e) { setMsg(String(e)); }
+  };
+  const tone = (s?: string) => s === "official" ? "text-emerald-300" : s === "edited" ? "text-indigo-300" : s === "estimate" ? "text-amber-300" : "text-gray-400";
+  return (
+    <div className="mb-4 rounded border border-gray-800 bg-gray-950/40 p-3 text-xs">
+      <p className="text-gray-400 mb-2">{note} Sources: {sources.map((s, i) => <a key={s} href={s} target="_blank" rel="noreferrer" className="text-indigo-300 hover:underline mr-2">[{i + 1}]</a>)}</p>
+      {!rows ? <Spinner /> : (
+        <div className="overflow-x-auto max-h-96">
+          <table className="w-full">
+            <thead className="text-gray-500"><tr><th className={`${td} text-left font-medium`}>Set</th><th className={`${td} text-left font-medium`}>Released</th><th className={`${td} text-left font-medium`}>Mark</th><th className={`${td} text-left font-medium`}>Rotates out</th><th className={`${td} text-left font-medium`}>How sure</th></tr></thead>
+            <tbody>{rows.map((r) => (
+              <tr key={r.set_code} className="border-t border-gray-800">
+                <td className={`${td} text-gray-300`}>{r.set_name} <span className="text-gray-500">{r.set_code}</span>{r.set_class === "special" && <span className="ml-1 text-fuchsia-300/80">special</span>}</td>
+                <td className={td}>{r.release ?? "–"}</td>
+                <td className={td}>{r.mark ?? ""}</td>
+                <td className={td}><input type="date" value={draft[r.set_code] ?? r.date ?? ""} onChange={(e) => setDraft({ ...draft, [r.set_code]: e.target.value })} className={`${inp} w-36`} /></td>
+                <td className={`${td} ${tone(r.status)}`}>{draft[r.set_code] !== undefined ? "unsaved" : r.status ?? "none"}</td>
+              </tr>
+            ))}</tbody>
+          </table>
+        </div>
+      )}
+      <div className="mt-2 flex items-center gap-2">
+        <button onClick={save} disabled={Object.keys(draft).length === 0} className="rounded border border-gray-700 px-2 py-0.5 text-gray-300 hover:text-white disabled:opacity-40">Save dates</button>
+        <span className="text-gray-500">An empty date removes the set&apos;s rotation. Signed-in only.</span>
+        {msg && <span className="text-gray-400">{msg}</span>}
+      </div>
     </div>
   );
 }
