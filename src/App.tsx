@@ -33,6 +33,7 @@ import SealedReprintsPage from "./pages/SealedReprintsPage";
 import SealedBacktestPage from "./pages/SealedBacktestPage";
 import AuctionTimingPage from "./pages/AuctionTimingPage";
 import SealedWatchlistPage from "./pages/SealedWatchlistPage";
+import SealedPlanPage from "./pages/SealedPlanPage";
 import ShopsPage from "./pages/ShopsPage";
 import { SignIn } from "./components/SignIn";
 import { Mark } from "./brand/Mark";
@@ -127,6 +128,7 @@ const NAV: NavEntry[] = [
       { to: "/deals", label: "Deals", hint: "This week's auctions, ending soon, raw sellers" },
       { to: "/windows", label: "Buy windows", hint: "When each tier usually bottoms" },
       { to: "/prep", label: "Buying prep", hint: "Bid plans for the weekly auctions" },
+      { to: "/sealed/plan", label: "Sealed plan", hint: "The buying and selling plan by product and set type, why, and what it buys this month" },
       { to: "/sealed/watchlist", label: "Sealed watchlist", hint: "Sealed you're watching, market price and the cheapest reliable place to buy" },
       { to: "/sealed", label: "Sealed TODO", hint: "Sealed products to price or buy" },
     ],
@@ -261,6 +263,7 @@ export default function App() {
             <Route path="/sealed/backtest" element={<SealedBacktestPage />} />
             <Route path="/auction-timing" element={<AuctionTimingPage />} />
             <Route path="/sealed/watchlist" element={<SealedWatchlistPage />} />
+            <Route path="/sealed/plan" element={<SealedPlanPage />} />
             <Route path="/shops" element={<ShopsPage />} />
             <Route path="/roadmap" element={<RoadmapPage />} />
             <Route path="/watchlist" element={<WatchlistPage />} />
