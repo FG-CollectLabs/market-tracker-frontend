@@ -113,7 +113,7 @@ function describe(s: SealedRule) {
   const qty = s.sizing === "dollars" ? `$${((s.dollars_cents ?? 5000) * (s.units ?? 1) / 100).toFixed(0)} of ${k}` : `${s.units ?? 1} ${k}`;
   const off = s.buy_discount ? ` at ${Math.round(s.buy_discount * 100)}% off` : "";
   let buy: string;
-  if (s.rule === "hype") buy = `${s.hype_units ? `${s.hype_units} a ${s.cadence ?? "month"} of` : `$${((s.budget_cents ?? 0) / 100).toFixed(0)}/mo on`} the ${s.pick_n ?? 1} ${s.hype_least ? "least" : "most"} hyped ${k} (${s.hype_by}, sets ${s.hype_min_age ? `${s.hype_min_age}–` : "≤"}${s.rotation_months ?? 24}mo old${s.in_print_only ? ", in print" : ""})`;
+  if (s.rule === "hype") buy = `${s.hype_units ? `${s.hype_units} a ${s.cadence ?? "month"} of` : `$${((s.budget_cents ?? 0) / 100).toFixed(0)}/mo on`} the ${s.pick_n ?? 1} ${s.hype_least ? "least" : "most"} hyped ${k} (${s.hype_by ?? "momentum"}, sets ${s.hype_min_age ? `${s.hype_min_age}–` : "≤"}${s.rotation_months ?? 24}mo old${s.in_print_only ? ", in print" : ""})`;
   else if (s.rule === "dip") buy = `${qty} on every ${Math.round((s.dip_pct ?? 0.15) * 100)}% dip${s.dip_own ? " of its own (reprint)" : ""}${followText(s)}${s.start_month || s.end_month != null ? `, months ${s.start_month ?? 0}–${s.end_month ?? "∞"}` : ""}`;
   else {
     const end = s.until_oop ? (s.end_month != null ? ` to month ${s.end_month} or out of print` : " until out of print") : s.end_month != null && s.end_month !== s.start_month ? ` to month ${s.end_month}` : " only";
