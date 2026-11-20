@@ -2,9 +2,9 @@ import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import {
   addSealedOffer, fetchSealedPriority, fetchSealedWatch, refreshSealedWatch, removeSealedOffer, unwatchSealed, watchSealed,
-  type SealedWatchRow, type StrategyTrigger,
+  type SealedWatchRow,
 } from "../lib/api";
-import { TriggerTable, watchTrigger } from "./SealedPlanPage";
+import PlanWatchlist from "../components/PlanWatchlist";
 import { Spinner } from "../components/Spinner";
 import { SEALED_COLORS, pct, usd } from "./SealedTimingPage";
 
@@ -46,8 +46,6 @@ function AddOffer({ productId, onDone }: { productId: number; onDone: () => void
 
 export default function SealedWatchlistPage() {
   const [rows, setRows] = useState<SealedWatchRow[] | null>(null);
-  const [sugg, setSugg] = useState<{ rows: StrategyTrigger[]; from: string }>({ rows: [], from: "" });
-  const [showWaits, setShowWaits] = useState(false);
   const [meta, setMeta] = useState<{ last: string | null; sources: string }>({ last: null, sources: "" });
   const [open, setOpen] = useState<Record<number, boolean>>({});
   const [msg, setMsg] = useState("");
@@ -55,15 +53,7 @@ export default function SealedWatchlistPage() {
 
   const load = () => fetchSealedWatch().then((r) => {
     setRows(r.products); setMeta({ last: r.last_refresh, sources: r.sources });
-    setSugg({ rows: r.suggested ?? [], from: r.suggested_from ?? "" });
   }).catch((e) => setErr(String(e)));
-  const notWatched = sugg.rows.filter((t) => !t.watched);
-  const sBuy = notWatched.filter((t) => t.status === "buy"), sWait = notWatched.filter((t) => t.status === "wait");
-  const watchAll = async (ts: StrategyTrigger[]) => {
-    setErr("");
-    for (let i = 0; i < ts.length; i++) { setAdding(`watching ${i + 1} of ${ts.length}…`); await watchTrigger(ts[i]).catch((e) => setErr(String(e))); }
-    setAdding(""); load();
-  };
   useEffect(() => { load(); }, []);
 
   const refresh = async (ids: number[] = []) => {
@@ -98,7 +88,7 @@ export default function SealedWatchlistPage() {
     <div className="max-w-6xl mx-auto space-y-4">
       <header className="space-y-1">
         <h1 className="text-xl font-semibold text-white">Sealed watchlist</h1>
-        <p className="text-xs text-gray-500">Your watched products first; the plan&apos;s suggestions are below the table.</p>
+        <p className="text-xs text-gray-500">Your watched products first; the plan watchlist (what your rules say to buy, wait on or watch) is below the table.</p>
         <p className="text-sm text-gray-400 max-w-4xl">
           Sealed products you&apos;re keeping an eye on, their market price and the cheapest reliable place to buy each right now:
           TCGplayer (singles and cases per unit), the hobby shops on the <Link to="/shops" className="text-indigo-300 hover:underline">Shops</Link> page
@@ -209,23 +199,7 @@ export default function SealedWatchlistPage() {
           </table>
         </div>
       )}
-      <section className="rounded-lg border border-indigo-900/60 bg-gray-900 p-4 space-y-3">
-        <div className="flex flex-wrap items-center gap-3">
-          <h2 className="text-sm font-semibold text-white">Suggested by {sugg.from || "the plan"}</h2>
-          <span className="text-xs text-gray-500">What the <Link to="/sealed/plan" className="text-indigo-300 hover:underline">sealed plan</Link> triggers at the latest prices that you aren&apos;t watching yet. Watch adds it with the plan&apos;s price gate as the buy-below target.</span>
-        </div>
-        <div className="flex items-center gap-3 text-xs">
-          <h3 className="font-medium text-emerald-300">Buy this month ({sBuy.length})</h3>
-          {sBuy.length > 1 && <button onClick={() => watchAll(sBuy)} disabled={adding !== ""} className="rounded border border-gray-700 px-2 py-0.5 text-gray-300 hover:text-white disabled:opacity-50">Watch all {sBuy.length}</button>}
-        </div>
-        <TriggerTable rows={sBuy} onWatch={async (t) => { await watchTrigger(t); load(); }} />
-        <div className="flex items-center gap-3 text-xs">
-          <h3 className="font-medium text-amber-300">In the buy window, waiting for the price ({sWait.length})</h3>
-          <button onClick={() => setShowWaits((v) => !v)} className="text-indigo-300 hover:underline">{showWaits ? "hide" : "show"}</button>
-          {showWaits && sWait.length > 1 && <button onClick={() => watchAll(sWait)} disabled={adding !== ""} className="rounded border border-gray-700 px-2 py-0.5 text-gray-300 hover:text-white disabled:opacity-50">Watch all {sWait.length}</button>}
-        </div>
-        {showWaits && <TriggerTable rows={sWait} onWatch={async (t) => { await watchTrigger(t); load(); }} />}
-      </section>
+      <PlanWatchlist onWatched={load} />
       <p className="text-[11px] text-gray-500 max-w-4xl">{meta.sources}</p>
     </div>
   );
