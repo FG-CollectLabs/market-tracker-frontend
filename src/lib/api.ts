@@ -3949,6 +3949,22 @@ export function fetchSealedStrategy(gross = false): Promise<SealedStrategy> {
   return get(`/v1/sealed/strategy${gross ? "?gross=1" : ""}`);
 }
 
+// ---- the plan as a watchlist ----
+export interface PlanLegStatus {
+  strategy?: string; leg: string; rule: string; status: "buy" | "wait" | "watching" | "upcoming";
+  units_per_month?: number; spend_cents?: number; target_cents?: number; starts_in_months?: number; dip_trigger_cents?: number; why: string;
+}
+export interface PlanStatusRow {
+  product_id: number; set_code: string; set_name: string; kind: SealedKind; class: string; name: string; pricecharting_url: string;
+  price_cents: number; msrp_cents: number; vs_msrp: number; age_months: number; rotation?: string; months_to_rotation?: number; in_standard: boolean;
+  status: "buy" | "wait" | "watching" | "upcoming"; units_per_month: number; spend_cents: number; target_cents?: number; dip_trigger_cents?: number;
+  starts_in_months?: number; legs: PlanLegStatus[]; watched: boolean;
+}
+export interface PlanStatus { from: string; month: string; as_of: string; rows: PlanStatusRow[]; counts: Record<string, number>; spend_this_month_cents: number; method: string }
+export function fetchPlanStatus(plan: "mine" | "recommended" = "mine"): Promise<PlanStatus> {
+  return get(`/v1/sealed/plan-status?plan=${plan}`);
+}
+
 export function fetchSealedWatch(): Promise<{ products: SealedWatchRow[]; count: number; last_refresh: string | null; sources: string; suggested?: StrategyTrigger[]; suggested_from?: string }> {
   return get(`/v1/sealed/watch`);
 }
