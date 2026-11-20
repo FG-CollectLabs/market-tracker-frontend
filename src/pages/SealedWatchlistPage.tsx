@@ -194,8 +194,8 @@ export default function SealedWatchlistPage() {
                         <table className="w-full text-xs">
                           <tbody>
                             {r.offers.map((o) => (
-                              <tr key={o.id} className={o.stale || !o.in_stock ? "opacity-50" : ""}>
-                                <td className="py-0.5 pr-3 whitespace-nowrap text-gray-300">{o.retailer}{o.reference_only && <span className="text-gray-500"> (reference)</span>}{!o.in_stock && <span className="text-rose-300"> sold out</span>}</td>
+                              <tr key={o.id} className={o.stale || !o.in_stock || o.suspect ? "opacity-50" : ""}>
+                                <td className="py-0.5 pr-3 whitespace-nowrap text-gray-300">{o.retailer}{o.reference_only && <span className="text-gray-500"> (reference)</span>}{!o.in_stock && <span className="text-rose-300"> sold out</span>}{o.suspect && <span className="text-amber-300" title="Under half the market price: almost always a mismatch (a graded promo card, one pack from a box, another set's product) or a junk listing. Left out of the cheapest offer and the return."> suspect</span>}</td>
                                 <td className="py-0.5 pr-3 tabular-nums text-gray-100">{usd(o.landed_cents)}
                                   {o.landed_cents !== o.price_cents && <span className="text-gray-500"> ({usd(o.price_cents)} + {usd(o.add_ship_cents)} ship + {usd(o.tax_cents)} tax)</span>}
                                   {!o.shipping_known && <span className="text-amber-300"> no shipping set</span>}
