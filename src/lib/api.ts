@@ -3920,7 +3920,7 @@ export function fetchSealedEarly(kind: string, gross = false): Promise<SealedEar
 
 export interface SealedOffer {
   id: number; source: string; retailer: string; title?: string; url: string; price_cents: number; shipping_cents?: number;
-  seller?: string; seller_note?: string; reference_only: boolean; in_stock: boolean; note?: string; checked_at: string; stale: boolean;
+  seller?: string; seller_note?: string; reference_only: boolean; in_stock: boolean; note?: string; checked_at: string; stale: boolean; suspect?: boolean; // under half the market price: left out of the best offer and the return
   landed_cents: number; add_ship_cents: number; tax_cents: number; shipping_known: boolean;
   premium_cents?: number; // Fanatics auction: buyer's premium on the current bid (in landed)
   fancash_cents?: number; // Fanatics: paid in FanCash, valued at what it would cash out for
