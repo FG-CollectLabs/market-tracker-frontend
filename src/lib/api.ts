@@ -3929,6 +3929,13 @@ export interface SealedWatchRow {
   product: SealedProduct; target_cents: number | null; note?: string; added_at: string;
   offers: SealedOffer[]; best_offer: SealedOffer | null; below_target: boolean;
   best_fancash?: SealedOffer; fancash_wins?: boolean; fancash_saves_cents?: number;
+  returns?: WatchReturns; // a year bought at market vs at the best offer, held to the plan's exit
+}
+export interface WatchReturns {
+  sell_month: string; sell_why: string; months_held: number; sell_cents: number; sell_flat_market_cents: number;
+  net_cents: number; net_flat_market_cents: number; market_cents: number; offer_cents?: number; offer_where?: string; discount_pct?: number;
+  irr_at_market: number | null; irr_at_market_flat: number | null; irr_at_offer?: number | null; irr_at_offer_flat?: number | null;
+  irr_gain_pts?: number | null; irr_gain_pts_flat?: number | null; confidence: string; note?: string;
 }
 // ---- the sealed plan (recommended strategy) ----
 export interface StrategyTrigger {
