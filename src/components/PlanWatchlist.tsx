@@ -124,7 +124,9 @@ export default function PlanWatchlist({ onWatched }: { onWatched?: () => void })
 // the cheapest buyable offer, and whether it's at the rule's price
 function BestOffer({ r }: { r: PlanStatusRow }) {
   const b = r.best_offer;
-  if (!b) return <span className="text-gray-600" title="no in-stock offer yet: new products are checked on first sight, all of them twice a week">–</span>;
+  if (!b) return r.offers_to_check
+    ? <span className="text-[10px] text-amber-300">{r.offers_to_check} offer{r.offers_to_check > 1 ? "s" : ""} to confirm</span>
+    : <span className="text-gray-600" title="no in-stock offer yet: new products are checked on first sight, all of them twice a week">–</span>;
   const buyAt = r.target_cents || r.dip_trigger_cents || 0;
   const atPrice = buyAt > 0 && b.landed_cents <= buyAt;
   const off = r.price_cents > 0 ? 1 - b.landed_cents / r.price_cents : 0;
@@ -133,18 +135,20 @@ function BestOffer({ r }: { r: PlanStatusRow }) {
       <a href={b.url} target="_blank" rel="noreferrer" className={`hover:underline ${atPrice ? "text-emerald-300 font-medium" : "text-gray-200"}`}>{usd(b.landed_cents)} ↗</a>
       <div className="text-[10px] text-gray-500">{b.retailer}{Math.abs(off) >= 0.03 ? <span className={off > 0 ? "text-emerald-400" : "text-rose-400"}> · {off > 0 ? `${(off * 100).toFixed(0)}% under` : `${(-off * 100).toFixed(0)}% over`}</span> : ""}</div>
       {atPrice && <div className="text-[10px] text-emerald-400">at the rule's price</div>}
+      {r.market_check && <div className="text-[10px] text-amber-300" title={r.market_check}>market price to check</div>}
+      {!!r.offers_to_check && <div className="text-[10px] text-amber-300">{r.offers_to_check} cheaper offer{r.offers_to_check > 1 ? "s" : ""} to confirm</div>}
       {r.best_fancash?.fancash_cents != null && r.best_fancash.fancash_cents < b.landed_cents && <div className="text-[10px] text-sky-300">{usd(r.best_fancash.fancash_cents)} in FanCash</div>}
     </span>
   );
 }
 
 function OfferList({ r }: { r: PlanStatusRow }) {
-  const os = r.offers.filter((o) => !o.reference_only && o.in_stock && !o.stale).slice(0, 6);
+  const os = r.offers.filter((o) => !o.reference_only && o.in_stock && !o.stale).slice(0, 8);
   if (!os.length) return <p className="mt-1 text-[11px] text-gray-500">No in-stock offers found yet.</p>;
   return (
     <ul className="mt-1.5 flex flex-wrap gap-x-4 gap-y-0.5 text-[11px]">{os.map((o) => (
       <li key={o.id}><a href={o.url} target="_blank" rel="noreferrer" className={`hover:underline ${o.suspect ? "text-gray-500 line-through" : "text-gray-300"}`}>{o.retailer} {usd(o.landed_cents)}</a>
-        {o.suspect && <span className="ml-1 text-amber-400" title="under half the market price: likely a mismatch, left out">suspect</span>}
+        {(o.suspect || o.needs_check) && <span className="ml-1 text-amber-400" title={`${o.check}: confirm or reject it in the Offer audit`}>{o.suspect ? "suspect" : "check"}</span>}
         {!o.shipping_known && <span className="ml-1 text-gray-500" title="that shop's shipping isn't set on the Shops page">+ship?</span>}</li>
     ))}</ul>
   );
