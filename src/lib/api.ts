@@ -3924,12 +3924,17 @@ export interface SealedOffer {
   landed_cents: number; add_ship_cents: number; tax_cents: number; shipping_known: boolean;
   premium_cents?: number; // Fanatics auction: buyer's premium on the current bid (in landed)
   fancash_cents?: number; // Fanatics: paid in FanCash, valued at what it would cash out for
+  needs_check?: boolean; // 25-50% under market: left out of the best offer until confirmed
+  verified?: boolean; // confirmed as this product
+  check?: string; // why it's flagged
 }
 export interface SealedWatchRow {
   product: SealedProduct; target_cents: number | null; note?: string; added_at: string;
   offers: SealedOffer[]; best_offer: SealedOffer | null; below_target: boolean;
   best_fancash?: SealedOffer; fancash_wins?: boolean; fancash_saves_cents?: number;
   returns?: WatchReturns; // a year bought at market vs at the best offer, held to the plan's exit
+  market_check?: string; // PriceCharting far from TCGplayer's market: one page is likely another product
+  offers_to_check?: number;
 }
 export interface WatchReturns {
   sell_month: string; sell_why: string; months_held: number; sell_cents: number; sell_flat_market_cents: number;
@@ -3968,10 +3973,22 @@ export interface PlanStatusRow {
   starts_in_months?: number; legs: PlanLegStatus[]; watched: boolean;
   // offers: the plan's products are refreshed with the watchlist
   offers: SealedOffer[]; best_offer: SealedOffer | null; best_fancash?: SealedOffer; returns?: WatchReturns;
+  market_check?: string; offers_to_check?: number;
 }
 export interface PlanStatus { from: string; month: string; as_of: string; rows: PlanStatusRow[]; counts: Record<string, number>; spend_this_month_cents: number; method: string }
 export function fetchPlanStatus(plan: "mine" | "recommended" = "mine"): Promise<PlanStatus> {
   return get(`/v1/sealed/plan-status?plan=${plan}`);
+}
+
+// the sealed offer audit: offers far under market to confirm, markets that disagree with TCGplayer
+export interface OfferAuditOffer { product_id: number; set_name: string; kind: SealedKind; name: string; pricecharting_url: string; market_cents: number; offer: SealedOffer; on_watchlist: boolean; on_plan: boolean }
+export interface OfferAuditMarket { product_id: number; set_name: string; kind: SealedKind; name: string; pricecharting_url: string; market_cents: number; why: string; tcgplayer_url?: string }
+export interface OfferAudit { offers: OfferAuditOffer[]; markets: OfferAuditMarket[]; rejected_last_refresh: Record<string, number>; method: string }
+export function fetchOfferAudit(): Promise<OfferAudit> {
+  return get(`/v1/sealed/offer-audit`);
+}
+export function setOfferVerdict(productId: number, url: string, verdict: "ok" | "wrong" | "clear"): Promise<{ ok: boolean }> {
+  return adminFetch(`/v1/admin/sealed/offers/verdict`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ product_id: productId, url, verdict }) });
 }
 
 export function fetchSealedWatch(): Promise<{ products: SealedWatchRow[]; count: number; last_refresh: string | null; sources: string; suggested?: StrategyTrigger[]; suggested_from?: string }> {

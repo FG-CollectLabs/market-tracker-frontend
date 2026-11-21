@@ -5,6 +5,7 @@ import {
   type SealedWatchRow,
 } from "../lib/api";
 import PlanWatchlist from "../components/PlanWatchlist";
+import OfferAudit from "../components/OfferAudit";
 import ReturnCell from "../components/ReturnCell";
 import { Spinner } from "../components/Spinner";
 import { SEALED_COLORS, pct, usd } from "./SealedTimingPage";
@@ -146,6 +147,7 @@ export default function SealedWatchlistPage() {
                           {!b.shipping_known && <div className="text-[10px] text-amber-300">shipping not set for this shop</div>}
                           {b.seller_note && <div className="text-[10px] text-gray-500">{b.seller ? `${b.seller} · ` : ""}{b.seller_note}</div>}
                           {r.below_target && <div className="text-[10px] text-emerald-300">below your target</div>}
+                          {r.market_check && <div className="text-[10px] text-amber-300" title={r.market_check}>market price to check</div>}
                         </span>
                       ) : <span className="text-gray-600">no offers yet</span>}
                     </td>
@@ -174,8 +176,8 @@ export default function SealedWatchlistPage() {
                         <table className="w-full text-xs">
                           <tbody>
                             {r.offers.map((o) => (
-                              <tr key={o.id} className={o.stale || !o.in_stock || o.suspect ? "opacity-50" : ""}>
-                                <td className="py-0.5 pr-3 whitespace-nowrap text-gray-300">{o.retailer}{o.reference_only && <span className="text-gray-500"> (reference)</span>}{!o.in_stock && <span className="text-rose-300"> sold out</span>}{o.suspect && <span className="text-amber-300" title="Under half the market price: almost always a mismatch (a graded promo card, one pack from a box, another set's product) or a junk listing. Left out of the cheapest offer and the return."> suspect</span>}</td>
+                              <tr key={o.id} className={o.stale || !o.in_stock || o.suspect || o.needs_check ? "opacity-50" : ""}>
+                                <td className="py-0.5 pr-3 whitespace-nowrap text-gray-300">{o.retailer}{o.reference_only && <span className="text-gray-500"> (reference)</span>}{!o.in_stock && <span className="text-rose-300"> sold out</span>}{o.suspect && <span className="text-amber-300" title="Under half the market price: almost always a mismatch (a graded promo card, one pack from a box, another set's product) or a junk listing. Left out of the cheapest offer and the return. Confirm or reject it in the Offer audit."> suspect</span>}{o.needs_check && <span className="text-amber-300" title={`${o.check}. Left out of the cheapest offer until confirmed in the Offer audit.`}> check</span>}{o.verified && <span className="text-emerald-400" title="confirmed as this product"> ✓</span>}</td>
                                 <td className="py-0.5 pr-3 tabular-nums text-gray-100">{usd(o.landed_cents)}
                                   {o.landed_cents !== o.price_cents && <span className="text-gray-500"> ({usd(o.price_cents)} + {usd(o.add_ship_cents)} ship + {usd(o.tax_cents)} tax)</span>}
                                   {!o.shipping_known && <span className="text-amber-300"> no shipping set</span>}
@@ -202,6 +204,7 @@ export default function SealedWatchlistPage() {
           </table>
         </div>
       )}
+      <OfferAudit onChange={load} />
       <PlanWatchlist onWatched={load} />
       <p className="text-[11px] text-gray-500 max-w-4xl">{meta.sources}</p>
     </div>
