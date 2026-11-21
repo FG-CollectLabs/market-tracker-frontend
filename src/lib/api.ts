@@ -1118,6 +1118,7 @@ export interface PullOdds {
 }
 
 export interface CardAnalysis {
+  sale_drift?: Record<string, SaleDrift>; // psa / cgc: days to the sale and the 10's expected move by then
   display_key: string;
   name: string;
   set_code: string;
@@ -1779,7 +1780,11 @@ export interface GraderEV {
   source: "population_anchored" | "listing_based" | "population";
   note?: string;
   pop_note?: string;
+  sale?: SaleDrift; // slab prices taken at the sale date (nil: today's)
 }
+
+// the slab valued when it's back from the grader and sold, on the card's release curve
+export interface SaleDrift { days: number; ten_drift: number; basis: string }
 
 export interface AdjEV {
   ev_cents?: number;
@@ -1796,6 +1801,7 @@ export interface AdjEV {
   caveat: string;
   pending?: boolean;
   basis?: string; // where the predictor's levels for this card come from
+  psa_sale?: SaleDrift; // prices at the sale date (back from PSA and sold), not today's
 }
 
 export type OddsVerdict = "looks_right" | "false_positive" | "false_negative" | "bad_measurement" | "wrong_card" | "unusable_photos";
