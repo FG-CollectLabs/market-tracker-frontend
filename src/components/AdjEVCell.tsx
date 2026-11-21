@@ -24,6 +24,7 @@ export default function AdjEVCell({ ev }: { ev?: AdjEV }) {
     ev.centering_cap ? `Centering caps PSA at ${ev.centering_cap}` : "",
     ev.basis ? `Pre-grader ${ev.basis}` : "",
     ev.pop_note ? `At the public gem rate: ${ev.pop_note}` : "",
+    ev.psa_sale ? `Slabs priced at the sale, ~${ev.psa_sale.days} days out (grading + selling): ${ev.psa_sale.basis}` : "Slabs priced at today's prices (no release curve for this card, or timing is off in Settings)",
     ev.caveat || "Centering and corner roundness from listing photos only; whitening, edges and surface are assumed clean: treat measured odds as an upper bound for copies that look rough. Not a grade promise.",
   ].filter(Boolean).join("\n");
   return (
@@ -41,6 +42,11 @@ export default function AdjEVCell({ ev }: { ev?: AdjEV }) {
         <span className="text-[10px] text-gray-500 tabular-nums">{(ev.p10 * 100).toFixed(0)}%</span>
       </span>
       {ev.centering_cap && <span className="text-[10px] text-amber-300">cap PSA {ev.centering_cap}</span>}
+      {ev.psa_sale && Math.abs(ev.psa_sale.ten_drift) >= 0.03 && (
+        <span className={`text-[10px] tabular-nums ${ev.psa_sale.ten_drift < 0 ? "text-amber-300" : "text-green-400"}`} title={`PSA 10 priced at the sale in ~${ev.psa_sale.days} days: ${ev.psa_sale.basis}`}>
+          10 at sale {ev.psa_sale.ten_drift > 0 ? "+" : ""}{(ev.psa_sale.ten_drift * 100).toFixed(0)}%
+        </span>
+      )}
     </span>
   );
 }
