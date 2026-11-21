@@ -3966,6 +3966,8 @@ export interface PlanStatusRow {
   price_cents: number; msrp_cents: number; vs_msrp: number; age_months: number; rotation?: string; months_to_rotation?: number; in_standard: boolean;
   status: "buy" | "wait" | "watching" | "upcoming"; units_per_month: number; spend_cents: number; target_cents?: number; dip_trigger_cents?: number;
   starts_in_months?: number; legs: PlanLegStatus[]; watched: boolean;
+  // offers: the plan's products are refreshed with the watchlist
+  offers: SealedOffer[]; best_offer: SealedOffer | null; best_fancash?: SealedOffer; returns?: WatchReturns;
 }
 export interface PlanStatus { from: string; month: string; as_of: string; rows: PlanStatusRow[]; counts: Record<string, number>; spend_this_month_cents: number; method: string }
 export function fetchPlanStatus(plan: "mine" | "recommended" = "mine"): Promise<PlanStatus> {
