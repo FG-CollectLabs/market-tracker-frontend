@@ -18,19 +18,21 @@ const SOURCE: Record<AdjEV["ev_source"], { label: string; cls: string; hint: str
 export default function AdjEVCell({ ev }: { ev?: AdjEV }) {
   if (!ev) return <span className="text-gray-600">–</span>;
   const s = SOURCE[ev.ev_source];
+  const now = ev.now_ev_cents ?? ev.ev_cents; // this column: today's prices (the projection has its own)
   const tip = [
     ev.note,
     `PSA 10 odds used: ${(ev.p10 * 100).toFixed(0)}%${ev.population_p10 ? ` (population ${(ev.population_p10 * 100).toFixed(0)}%)` : ""}`,
     ev.centering_cap ? `Centering caps PSA at ${ev.centering_cap}` : "",
     ev.basis ? `Pre-grader ${ev.basis}` : "",
     ev.pop_note ? `At the public gem rate: ${ev.pop_note}` : "",
-    ev.psa_sale ? `Slabs priced at the sale, ~${ev.psa_sale.days} days out (grading + selling): ${ev.psa_sale.basis}` : "Slabs priced at today's prices (no release curve for this card, or timing is off in Settings)",
+    "At today's prices. The At sale column has the projection for when the slab is back and sold.",
+    ev.ev_cents != null && ev.ev_cents !== now ? `Suggested bids use ${usd(ev.ev_cents)}: today's prices less the declines the release curve expects (rises never raise a bid).` : "",
     ev.caveat || "Centering and corner roundness from listing photos only; whitening, edges and surface are assumed clean: treat measured odds as an upper bound for copies that look rough. Not a grade promise.",
   ].filter(Boolean).join("\n");
   return (
     <span className="inline-flex flex-col items-end gap-0.5" title={tip}>
-      {ev.ev_cents != null
-        ? <span className={`tabular-nums font-semibold ${ev.ev_cents >= 0 ? "text-green-300" : "text-red-300"}`} title="EV with the adjusted odds">{usd(ev.ev_cents)}</span>
+      {now != null
+        ? <span className={`tabular-nums font-semibold ${now >= 0 ? "text-green-300" : "text-red-300"}`} title="EV with the adjusted odds, at today's prices">{usd(now)}</span>
         : <span className="text-gray-500">no tier</span>}
       {ev.pop_ev_cents != null && (
         <span className="text-[10px] text-gray-500 tabular-nums" title={`At the public gem rate${ev.population_p10 ? ` (${(ev.population_p10 * 100).toFixed(0)}%)` : ""}: ${ev.pop_note ?? ""}`}>
@@ -42,11 +44,7 @@ export default function AdjEVCell({ ev }: { ev?: AdjEV }) {
         <span className="text-[10px] text-gray-500 tabular-nums">{(ev.p10 * 100).toFixed(0)}%</span>
       </span>
       {ev.centering_cap && <span className="text-[10px] text-amber-300">cap PSA {ev.centering_cap}</span>}
-      {ev.psa_sale && Math.abs(ev.psa_sale.ten_drift) >= 0.03 && (
-        <span className={`text-[10px] tabular-nums ${ev.psa_sale.ten_drift < 0 ? "text-amber-300" : "text-green-400"}`} title={`PSA 10 priced at the sale in ~${ev.psa_sale.days} days: ${ev.psa_sale.basis}`}>
-          10 at sale {ev.psa_sale.ten_drift > 0 ? "+" : ""}{(ev.psa_sale.ten_drift * 100).toFixed(0)}%
-        </span>
-      )}
+
     </span>
   );
 }
@@ -175,11 +173,36 @@ export function CGCCell({ ev }: { ev?: AdjEV }) {
           <span className="text-[10px] text-gray-500">adj </span>{CGC_GRADES.map(([k, l]) => `${l} ${pc(g.odds[k])}`).join(" · ")}
         </span>
       )}
-      {g.ev_cents != null
-        ? <span className={`font-semibold ${g.ev_cents >= 0 ? "text-green-300" : "text-red-300"}`}>{usd(g.ev_cents)}</span>
+      {(g.now_ev_cents ?? g.ev_cents) != null
+        ? <span className={`font-semibold ${(g.now_ev_cents ?? g.ev_cents)! >= 0 ? "text-green-300" : "text-red-300"}`} title="at today's prices">{usd((g.now_ev_cents ?? g.ev_cents)!)}</span>
         : <span className="text-gray-500 text-[11px]">no tier</span>}
       {g.pop_ev_cents != null && <span className="text-[10px] text-gray-500">gem rate {usd(g.pop_ev_cents)}</span>}
       {g.source === "listing_based" && <span className="text-[10px] text-amber-300">optimistic</span>}
+    </span>
+  );
+}
+
+// The projection: the PSA and CGC EVs when the slab is back from the grader
+// and sold, on the card's release curve (declines, plus the rises the
+// forecast backtest backs: IR PSA grades from month 6). Today's are in the
+// PSA EV / CGC columns; suggested bids never count a rise.
+export function AtSaleCell({ ev }: { ev?: AdjEV }) {
+  if (!ev || (ev.at_sale_ev_cents == null && ev.cgc?.at_sale_ev_cents == null)) return <span className="text-gray-600">–</span>;
+  const line = (label: string, v: number | undefined, sd: { days: number; ten_drift: number; basis: string } | undefined, now: number | undefined) => {
+    if (v == null) return null;
+    const moved = sd && Math.abs(sd.ten_drift) >= 0.03;
+    return (
+      <span className="whitespace-nowrap" title={sd ? `${label} in ~${sd.days} days (grading + selling): ${sd.basis}${now != null ? `. Today: ${usd(now)}` : ""}` : `${label}: no release curve for this card, so today's prices`}>
+        <span className="text-[10px] text-gray-500">{label} </span>
+        <span className={`tabular-nums font-semibold ${v >= 0 ? "text-green-300" : "text-red-300"}`}>{usd(v)}</span>
+        {moved && <span className={`ml-1 text-[10px] tabular-nums ${sd!.ten_drift < 0 ? "text-amber-300" : "text-sky-300"}`}>10 {sd!.ten_drift > 0 ? "+" : ""}{(sd!.ten_drift * 100).toFixed(0)}%</span>}
+      </span>
+    );
+  };
+  return (
+    <span className="inline-flex flex-col items-end gap-0.5">
+      {line("PSA", ev.at_sale_ev_cents, ev.psa_at_sale, ev.now_ev_cents)}
+      {line("CGC", ev.cgc?.at_sale_ev_cents, ev.cgc?.at_sale, ev.cgc?.now_ev_cents)}
     </span>
   );
 }

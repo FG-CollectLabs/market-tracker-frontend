@@ -4,7 +4,7 @@ import { HIT_REASONS, clearHitReview, reviewHit, type HitReason, type TargetHit,
 import { TARGET_LABEL } from "./WatchTargets";
 import GradeOddsBadge from "./GradeOddsBadge";
 import { ItemNumber, ebayItemNumber } from "./BidCells";
-import AdjEVCell, { CGCCell, OddsFlag, PSAOddsCell } from "./AdjEVCell";
+import AdjEVCell, { AtSaleCell, CGCCell, OddsFlag, PSAOddsCell } from "./AdjEVCell";
 import { BoughtButton } from "./BoughtToGrade";
 
 // The watchlist's live listings ("hits"): filters, one listing row with its
@@ -227,7 +227,7 @@ export function HitRow({ ch, displayKey, now, error, onOpen, onSetAside, onChang
             {h.source === "ebay" && h.grade_key === "raw" && (
               <BoughtButton listingId={h.listing_id} priceCents={h.all_in_cents} shown={{ adj_ev: h.adj_ev, odds: h.grade_odds }} initial={!!h.grade_odds?.bought_at} />
             )}
-            {h.adj_ev && <span className="text-[11px] text-gray-500 inline-flex items-start gap-1">PSA <PSAOddsCell ev={h.adj_ev} /> EV <AdjEVCell ev={h.adj_ev} /></span>}
+            {h.adj_ev && <span className="text-[11px] text-gray-500 inline-flex items-start gap-1">PSA <PSAOddsCell ev={h.adj_ev} /> EV <AdjEVCell ev={h.adj_ev} /> at sale <AtSaleCell ev={h.adj_ev} /></span>}
             {h.adj_ev?.cgc && <span className="text-[11px] text-gray-500 inline-flex items-start gap-1">CGC <CGCCell ev={h.adj_ev} /></span>}
           </div>
         )}

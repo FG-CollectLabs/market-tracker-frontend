@@ -1781,6 +1781,9 @@ export interface GraderEV {
   note?: string;
   pop_note?: string;
   sale?: SaleDrift; // slab prices taken at the sale date (nil: today's)
+  now_ev_cents?: number; // at today's prices
+  at_sale_ev_cents?: number; // on the projection: declines + the rises the backtest backs
+  at_sale?: SaleDrift;
 }
 
 // the slab valued when it's back from the grader and sold, on the card's release curve
@@ -1802,6 +1805,10 @@ export interface AdjEV {
   pending?: boolean;
   basis?: string; // where the predictor's levels for this card come from
   psa_sale?: SaleDrift; // prices at the sale date (back from PSA and sold), not today's
+  now_ev_cents?: number; // PSA EV at today's prices
+  at_sale_ev_cents?: number; // PSA EV on the projection (declines + the rises the backtest backs: IR from month 6)
+  at_sale_note?: string;
+  psa_at_sale?: SaleDrift;
 }
 
 export type OddsVerdict = "looks_right" | "false_positive" | "false_negative" | "bad_measurement" | "wrong_card" | "unusable_photos";

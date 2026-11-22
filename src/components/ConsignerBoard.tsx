@@ -5,7 +5,7 @@ import { Link } from "react-router-dom";
 import { fetchConsignerBoard, fetchSellerPage, startSellerSweep, type CopyTiming, type HuntListing, type HuntListingsReport, type ValueSource } from "../lib/api";
 import { Spinner, ErrorMsg } from "./Spinner";
 import GradeOddsBadge from "./GradeOddsBadge";
-import AdjEVCell, { CGCCell, OddsFlag, PSAOddsCell } from "./AdjEVCell";
+import AdjEVCell, { AtSaleCell, CGCCell, OddsFlag, PSAOddsCell } from "./AdjEVCell";
 import { BoughtButton } from "./BoughtToGrade";
 import { CheckCentering } from "./HuntListings";
 import { ItemNumber, SuggestedBid } from "./BidCells";
@@ -269,8 +269,9 @@ export default function ConsignerBoard({ seller, setSeller }: { seller: string; 
                     <th className="py-2 px-2 font-medium" title="Where the card is on its tier's raw release curve">Timing</th>
                     <th className="py-2 px-2 font-medium text-right" title="PSA 10 odds: the public gem rate, and adjusted for this copy by the pre-grader">PSA 10 odds</th>
                     <th className="py-2 px-2 font-medium">Pre-grade</th>
-                    <th className="py-2 px-2 font-medium text-right" title="PSA grading EV with the adjusted odds, and at the public gem rate. Hover for the working.">PSA EV</th>
+                    <th className="py-2 px-2 font-medium text-right" title="PSA grading EV at today's prices, with the adjusted odds and at the public gem rate. Hover for the working.">PSA EV</th>
                     <th className="py-2 px-2 font-medium text-right" title="CGC Pristine / 10 / 9: gem rates (the card's CGC population), adjusted for this copy, and the EV">CGC</th>
+                    <th className="py-2 px-2 font-medium text-right" title="Projected: the EVs when the slab is back from the grader and sold, on the card's release curve (expected declines, plus the rises the forecast backtest backs: IR PSA grades from month 6). Today's are in PSA EV / CGC; suggested bids never count a rise.">At sale</th>
                     <th className="py-2 px-3 font-medium text-right" title="Grade later (graded 6 months before selling at year 5) at this copy's cost: yearly return">Grade later</th>
                   </tr>
                 </thead>
@@ -280,7 +281,7 @@ export default function ConsignerBoard({ seller, setSeller }: { seller: string; 
                     const head = sort === "ending" && (i === 0 || dayLabel(page[i - 1].ends_at) !== day);
                     return (
                       <Fragment key={l.listing_id}>
-                        {head && <tr className="border-t border-gray-800 bg-gray-950/60"><td colSpan={15} className="py-1.5 px-3 text-[11px] font-semibold text-gray-300 uppercase tracking-wide">{day}</td></tr>}
+                        {head && <tr className="border-t border-gray-800 bg-gray-950/60"><td colSpan={16} className="py-1.5 px-3 text-[11px] font-semibold text-gray-300 uppercase tracking-wide">{day}</td></tr>}
                         <Row l={l} bench={rep.params.benchmark} review={reviewOf(l)} onReview={(r) => setRv((m) => ({ ...m, [l.listing_id]: r }))} />
                       </Fragment>
                     );
@@ -373,6 +374,7 @@ function Row({ l, bench, review, onReview }: { l: HuntListing; bench: number; re
       </td>
       <td className="py-1.5 px-2 text-right"><AdjEVCell ev={l.adj_ev} /></td>
       <td className="py-1.5 px-2 text-right"><CGCCell ev={l.adj_ev} /></td>
+      <td className="py-1.5 px-2 text-right"><AtSaleCell ev={l.adj_ev} /></td>
       <td className={`py-1.5 px-3 text-right tabular-nums whitespace-nowrap font-semibold ${y == null ? "text-gray-600" : y < 0 ? "text-red-300" : y >= bench ? "text-green-300" : "text-gray-300"}`}>{pct(y, 1)}</td>
     </tr>
   );
