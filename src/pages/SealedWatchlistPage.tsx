@@ -6,6 +6,7 @@ import {
 } from "../lib/api";
 import PlanWatchlist from "../components/PlanWatchlist";
 import OfferAudit from "../components/OfferAudit";
+import AddSealedProduct from "../components/AddSealedProduct";
 import ReturnCell from "../components/ReturnCell";
 import { Spinner } from "../components/Spinner";
 import { SEALED_COLORS, pct, usd } from "./SealedTimingPage";
@@ -64,6 +65,7 @@ export default function SealedWatchlistPage() {
   };
   // every product on Sealed timing's priority list that isn't watched yet
   const [adding, setAdding] = useState("");
+  const [confirmRm, setConfirmRm] = useState<number | null>(null);
   const addPriority = async () => {
     setErr(""); setAdding("loading the priority list…");
     try {
@@ -96,7 +98,7 @@ export default function SealedWatchlistPage() {
           TCGplayer (singles and cases per unit), the hobby shops on the <Link to="/shops" className="text-indigo-300 hover:underline">Shops</Link> page
           Fanatics Collect (Buy Now; auctions for reference) and any offer you add, ranked by landed cost (price + each shop&apos;s shipping and tax settings).
           Fanatics offers also show their FanCash cost: what that FanCash would have cashed out for after the cash seller fee.
-          Add products from <Link to="/sealed/timing" className="text-indigo-300 hover:underline">Sealed timing</Link> (Watch on the priority list or by-set table).
+          Add any product with the search below (Build &amp; Battle, collections, tins included), or from <Link to="/sealed/timing" className="text-indigo-300 hover:underline">Sealed timing</Link>.
         </p>
       </header>
       {err && <div className="text-sm text-rose-400">{err}</div>}
@@ -107,6 +109,7 @@ export default function SealedWatchlistPage() {
         <span>last refresh {ago(meta.last)} · automatic twice a week</span>
         {msg && <span className="text-emerald-300">{msg}</span>}
       </div>
+      <AddSealedProduct watched={new Set((rows ?? []).map((r) => r.product.id))} onAdded={load} />
       {!rows ? <Spinner /> : rows.length === 0 ? (
         <div className="text-sm text-gray-500">Nothing watched yet.</div>
       ) : (
@@ -167,7 +170,16 @@ export default function SealedWatchlistPage() {
                     <td className="px-2 py-2 whitespace-nowrap text-right">
                       <button onClick={() => setOpen((o) => ({ ...o, [p.id]: !o[p.id] }))} className="text-gray-400 hover:text-gray-200">{open[p.id] ? "hide" : `all ${r.offers.length}`}</button>
                       <button onClick={() => refresh([p.id])} className="ml-2 text-gray-500 hover:text-gray-300">refresh</button>
-                      <button onClick={async () => { await unwatchSealed(p.id); load(); }} className="ml-2 text-gray-600 hover:text-rose-300">remove</button>
+                      {confirmRm === p.id ? (
+                        <span className="ml-2 inline-flex items-center gap-1">
+                          <button onClick={async () => { setConfirmRm(null); await unwatchSealed(p.id).catch((e) => setErr(String(e))); load(); }}
+                            className="rounded bg-rose-700 px-2 py-0.5 text-white hover:bg-rose-600">Remove</button>
+                          <button onClick={() => setConfirmRm(null)} className="text-gray-500 hover:text-gray-300">keep</button>
+                        </span>
+                      ) : (
+                        <button onClick={() => setConfirmRm(p.id)} className="ml-2 rounded border border-gray-700 px-2 py-0.5 text-gray-300 hover:border-rose-700 hover:text-rose-300"
+                          title="Take it off the watchlist (its offers stop refreshing unless the plan covers it)">Remove</button>
+                      )}
                     </td>
                   </tr>,
                   open[p.id] && (
