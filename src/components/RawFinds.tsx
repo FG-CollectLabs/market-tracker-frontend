@@ -4,7 +4,7 @@ import { Link } from "react-router-dom";
 import { fetchWatchlist, type HitReview, type TargetHit, type WatchItem } from "../lib/api";
 import { Spinner, ErrorMsg } from "./Spinner";
 import GradeOddsBadge from "./GradeOddsBadge";
-import AdjEVCell, { CGCCell, OddsFlag, PSAOddsCell } from "./AdjEVCell";
+import AdjEVCell, { AtSaleCell, CGCCell, OddsFlag, PSAOddsCell } from "./AdjEVCell";
 import { CheckCentering } from "./HuntListings";
 import ActionCell, { ExplainChip, ShowFilter, countShows, showOf, type Show } from "./ActionCell";
 import { ItemNumber } from "./BidCells";
@@ -162,7 +162,8 @@ export default function RawFinds() {
                 <th className="py-2 px-2 font-medium text-right">PSA 10 odds</th>
                 <th className="py-2 px-2 font-medium">Pre-grade</th>
                 <th className="py-2 px-2 font-medium text-right">PSA EV</th>
-                <th className="py-2 px-3 font-medium text-right">CGC</th>
+                <th className="py-2 px-2 font-medium text-right">CGC</th>
+                <th className="py-2 px-3 font-medium text-right" title="Projected: the EVs when the slab is back from the grader and sold, on the card's release curve (expected declines, plus the rises the forecast backtest backs: IR PSA grades from month 6). Today's are in PSA EV / CGC; suggested bids never count a rise.">At sale</th>
               </tr>
             </thead>
             <tbody>
@@ -210,7 +211,8 @@ export default function RawFinds() {
                         : <CheckCentering listingId={h.listing_id} photos={h.image_count} />}
                     </td>
                     <td className="py-1.5 px-2 text-right"><AdjEVCell ev={h.adj_ev} /></td>
-                    <td className="py-1.5 px-3 text-right"><CGCCell ev={h.adj_ev} /></td>
+                    <td className="py-1.5 px-2 text-right"><CGCCell ev={h.adj_ev} /></td>
+                    <td className="py-1.5 px-3 text-right"><AtSaleCell ev={h.adj_ev} /></td>
                   </tr>
                 );
               })}

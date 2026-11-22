@@ -5,7 +5,7 @@ import { Link } from "react-router-dom";
 import { checkListingGradeOdds, fetchWatchHunt, type GradeOdds, type HuntListing, type HuntListingsReport, type ValueSource } from "../lib/api";
 import { Spinner, ErrorMsg } from "./Spinner";
 import GradeOddsBadge from "./GradeOddsBadge";
-import AdjEVCell, { CGCCell, OddsFlag, PSAOddsCell } from "./AdjEVCell";
+import AdjEVCell, { AtSaleCell, CGCCell, OddsFlag, PSAOddsCell } from "./AdjEVCell";
 import { BoughtButton } from "./BoughtToGrade";
 import { ItemNumber, SuggestedBid } from "./BidCells";
 import ActionCell, { ExplainChip, ShowFilter, countShows, showOf, type Show } from "./ActionCell";
@@ -160,6 +160,7 @@ export default function HuntListings({ seller, setSeller }: { seller: string; se
                     <th className="py-2 px-2 font-medium">Pre-grade</th>
                     <th className="py-2 px-2 font-medium text-right" title="PSA grading EV with the adjusted odds, and (smaller) at the public gem rate. Hover for the working.">PSA EV</th>
                     <th className="py-2 px-2 font-medium text-right" title="CGC Pristine / 10 / 9 odds (the card's CGC population, adjusted for this copy) and the EV at those and at the population's odds">CGC</th>
+                    <th className="py-2 px-2 font-medium text-right" title="Projected: the EVs when the slab is back from the grader and sold, on the card's release curve (expected declines, plus the rises the forecast backtest backs: IR PSA grades from month 6). Today's are in PSA EV / CGC; suggested bids never count a rise.">At sale</th>
                     <th className="py-2 px-2 font-medium text-right text-gray-300" title="Grade later at this copy's cost: yearly return">Grade later</th>
                     <th className="py-2 px-2 font-medium text-right" title="Grade now, sell when it's back: ROI at this cost">Flip now</th>
                     <th className="py-2 px-2 font-medium text-right" title="Grade later and it comes back a 10: profit">If it 10s</th>
@@ -229,6 +230,7 @@ function Row({ l, bench, review, onReview }: { l: HuntListing; bench: number; re
       </td>
       <td className="py-1.5 px-2 text-right"><AdjEVCell ev={l.adj_ev} /></td>
       <td className="py-1.5 px-2 text-right"><CGCCell ev={l.adj_ev} /></td>
+      <td className="py-1.5 px-2 text-right"><AtSaleCell ev={l.adj_ev} /></td>
       <td className={`${td} font-semibold ${y == null ? "text-gray-600" : y < 0 ? "text-red-300" : y >= bench ? "text-green-300" : "text-gray-300"}`}>{pct(y, 1)}</td>
       <td className={`${td} ${l.flip_now && l.flip_now.roi > 0 ? "text-gray-200" : "text-red-300"}`}>{l.flip_now ? pct(l.flip_now.roi) : "–"}</td>
       <td className={`${td} text-gray-300`}>{usd(l.if_ten_profit_cents)}</td>
