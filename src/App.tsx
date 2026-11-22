@@ -18,6 +18,7 @@ import SellerPage from "./pages/SellerPage";
 import DealsPage from "./pages/DealsPage";
 import BuyWindowsPage from "./pages/BuyWindowsPage";
 import BuyingPrepPage from "./pages/BuyingPrepPage";
+import ForecastSkillPage from "./pages/ForecastSkillPage";
 import TimingPage from "./pages/TimingPage";
 import SettingsPage from "./pages/SettingsPage";
 import RankingsPage from "./pages/RankingsPage";
@@ -137,6 +138,7 @@ const NAV: NavEntry[] = [
     label: "Analytics",
     items: [
       { to: "/timing", label: "Timing", hint: "Release curves and buy timing" },
+      { to: "/timing/forecast-skill", label: "Forecast skill", hint: "How well each price-forecasting method would have done on past cards: the backtest behind the blended model" },
       { to: "/sealed/timing", label: "Sealed timing", hint: "Priority buys, best plays after release and after a reprint, set-by-set data" },
       { to: "/sealed/reprints", label: "Sealed reprints", hint: "Each set's price drops (reprints / waves) to confirm" },
       { to: "/sealed/backtest", label: "Sealed backtests", hint: "Mechanical buying rules replayed over every set's chart" },
@@ -253,6 +255,7 @@ export default function App() {
             <Route path="/windows" element={<BuyWindowsPage />} />
             <Route path="/timing" element={<TimingPage />} />
             <Route path="/timing/group/:category" element={<GroupPage />} />
+            <Route path="/timing/forecast-skill" element={<ForecastSkillPage />} />
             <Route path="/settings" element={<SettingsPage />} />
             <Route path="/rankings" element={<RankingsPage />} />
             <Route path="/promos" element={<CardClassesPage />} />

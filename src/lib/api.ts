@@ -4364,3 +4364,15 @@ export function fetchPriceFreshness(listings: { source: string; listing_id: stri
 // "prices refreshing for N cards" for an expedite's message
 export const pricesNote = (p?: PriceRefreshQueued) =>
   !p ? "" : p.error ? ` · prices: couldn't queue a refresh` : p.queued ? ` · fresh prices for ${p.queued} card${p.queued === 1 ? "" : "s"} on the way` : p.cards ? ` · prices refreshed in the last 6h` : "";
+
+// ---- forecast skill (the blended price model's backtest) ----------------------
+export interface FcScore { member: string; n: number; bias_pct: number; median_abs_error_pct: number; skill_vs_flat: number | null; direction_right?: number }
+export interface FcRow { grade: string; horizon_months: number; age_months: string; group: string; cases: number; cards: number; sets: number; actual_median_pct: number; scores: FcScore[]; blend_weights?: { member: string; weight: number }[] }
+export interface ForecastSkill { built_at: string; members: { name: string; about: string }[]; rows: FcRow[] | null; method: string }
+export function fetchForecastSkill(q: { grade?: string; group?: string; horizon?: number } = {}): Promise<ForecastSkill> {
+  const p = new URLSearchParams();
+  if (q.grade) p.set("grade", q.grade);
+  if (q.group) p.set("group", q.group);
+  if (q.horizon) p.set("horizon", String(q.horizon));
+  return get(`/v1/analysis/forecast-skill?${p}`);
+}
