@@ -45,7 +45,11 @@ import { COMPANY_NAME, PRODUCT_NAME } from "./brand/brand";
 // dropdown of pages (Sets and Developer stand alone). A group shows as
 // active when one of its pages is open. Each game has its own Sets, Buying
 // and Analytics pages; Settings are shared.
-type NavEntry = { label: string; to?: string; items?: { to: string; label: string; hint: string }[] };
+// section: a heading the dropdown groups items under (Singles & graded / Sealed)
+type NavItem = { to: string; label: string; hint: string; section?: string };
+type NavEntry = { label: string; to?: string; items?: NavItem[] };
+const SINGLES = "Singles & graded";
+const SEALED = "Sealed";
 type Game = "pokemon" | "riftbound" | "mtg";
 
 const SHARED: NavEntry[] = [
@@ -136,28 +140,28 @@ const NAV: NavEntry[] = [
   {
     label: "Buying",
     items: [
-      { to: "/watchlist", label: "Watchlist", hint: "Your cards, their targets and hits; by consigner; hunt list; consigner board" },
-      { to: "/deals", label: "Deals", hint: "This week's auctions, ending soon, raw sellers" },
-      { to: "/windows", label: "Buy windows", hint: "When each tier usually bottoms" },
-      { to: "/prep", label: "Buying prep", hint: "Bid plans for the weekly auctions" },
-      { to: "/sealed/plan", label: "Sealed plan", hint: "The buying and selling plan by product and set type, why, and what it buys this month" },
-      { to: "/sealed/watchlist", label: "Sealed watchlist", hint: "Sealed you're watching, market price and the cheapest reliable place to buy" },
-      { to: "/sealed", label: "Sealed TODO", hint: "Sealed products to price or buy" },
+      { section: SINGLES, to: "/watchlist", label: "Watchlist", hint: "Your cards, their targets and hits; by consigner; hunt list; consigner board" },
+      { section: SINGLES, to: "/deals", label: "Deals", hint: "This week's auctions, ending soon, raw sellers" },
+      { section: SINGLES, to: "/prep", label: "Buying prep", hint: "Bid plans for the weekly auctions" },
+      { section: SEALED, to: "/sealed/watchlist", label: "Sealed watchlist", hint: "What you're watching, the cheapest reliable place to buy each, and deals across every shop" },
+      { section: SEALED, to: "/sealed/plan", label: "Sealed plan", hint: "The buying and selling plan by product and set type, why, and what it buys this month" },
+      { section: SEALED, to: "/sealed", label: "Sealed TODO", hint: "Sealed products to price or buy" },
     ],
   },
   {
     label: "Analytics",
     items: [
-      { to: "/timing", label: "Timing", hint: "Release curves and buy timing" },
-      { to: "/timing/forecast-skill", label: "Forecast skill", hint: "How well each price-forecasting method would have done on past cards: the backtest behind the blended model" },
-      { to: "/sealed/timing", label: "Sealed timing", hint: "Priority buys, best plays after release and after a reprint, set-by-set data" },
-      { to: "/sealed/reprints", label: "Sealed reprints", hint: "Each set's price drops (reprints / waves) to confirm" },
-      { to: "/sealed/backtest", label: "Sealed backtests", hint: "Mechanical buying rules replayed over every set's chart" },
-      { to: "/rankings", label: "Rankings", hint: "Cards ranked by play" },
-      { to: "/channels", label: "Sell channels", hint: "What cards sell for by platform and consigner" },
-      { to: "/auction-timing", label: "Auction timing", hint: "When to put graded copies into the Fanatics weekly auction: crowding, surges, our copies scored" },
-      { to: "/promos", label: "Promos", hint: "Card classes: promos, exotics" },
-      { to: "/pcg", label: "PCG grading", hint: "PCG grade odds and PCG vs PSA prices: when PCG pays" },
+      { section: SINGLES, to: "/timing", label: "Timing", hint: "Release curves and buy timing" },
+      { section: SINGLES, to: "/windows", label: "Buy windows", hint: "When each tier usually bottoms" },
+      { section: SINGLES, to: "/timing/forecast-skill", label: "Forecast skill", hint: "How well each price-forecasting method would have done on past cards: the backtest behind the blended model" },
+      { section: SINGLES, to: "/rankings", label: "Rankings", hint: "Cards ranked by play" },
+      { section: SINGLES, to: "/promos", label: "Promos", hint: "Card classes: promos, exotics" },
+      { section: SINGLES, to: "/pcg", label: "PCG grading", hint: "PCG grade odds and PCG vs PSA prices: when PCG pays" },
+      { section: SINGLES, to: "/channels", label: "Sell channels", hint: "What cards sell for by platform and consigner" },
+      { section: SINGLES, to: "/auction-timing", label: "Auction timing", hint: "When to put graded copies into the Fanatics weekly auction: crowding, surges, our copies scored" },
+      { section: SEALED, to: "/sealed/timing", label: "Sealed timing", hint: "Priority buys, best plays after release and after a reprint, set-by-set data" },
+      { section: SEALED, to: "/sealed/reprints", label: "Sealed reprints", hint: "Each set's price drops (reprints / waves) to confirm" },
+      { section: SEALED, to: "/sealed/backtest", label: "Sealed backtests", hint: "Mechanical buying rules replayed over every set's chart" },
     ],
   },
   ...SHARED,
@@ -184,8 +188,11 @@ function NavGroup({ g }: { g: NavEntry }) {
         {g.label}<span className={`text-[9px] transition-transform ${open ? "rotate-180" : ""}`}>▾</span>
       </button>
       {open && (
-        <div role="menu" className="absolute left-0 top-full -mt-1 w-64 rounded-lg border border-gray-800 bg-gray-900 shadow-xl py-1 z-40">
-          {g.items!.map((i) => (
+        <div role="menu" className="absolute left-0 top-full -mt-1 w-72 max-h-[80vh] overflow-y-auto rounded-lg border border-gray-800 bg-gray-900 shadow-xl py-1 z-40">
+          {g.items!.map((i, n) => [
+            i.section && i.section !== g.items![n - 1]?.section && (
+              <div key={`${i.section}-h`} role="presentation" className={`px-3 pb-1 pt-2 text-[10px] font-semibold uppercase tracking-wider text-gray-500 ${n > 0 ? "mt-1 border-t border-gray-800" : ""}`}>{i.section}</div>
+            ),
             <NavLink key={i.to} to={i.to} role="menuitem"
               className={({ isActive }) => `block px-3 py-2 ${isActive ? "bg-gray-800/80" : "hover:bg-gray-800/60"}`}>
               {({ isActive }) => (
@@ -194,8 +201,8 @@ function NavGroup({ g }: { g: NavEntry }) {
                   <div className="text-[11px] text-gray-500">{i.hint}</div>
                 </>
               )}
-            </NavLink>
-          ))}
+            </NavLink>,
+          ])}
         </div>
       )}
     </div>
