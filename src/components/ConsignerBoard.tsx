@@ -112,6 +112,8 @@ export default function ConsignerBoard({ seller, setSeller }: { seller: string; 
       if (win === "past_any" && !(t?.window === "past" || t?.window === "well_past")) return false;
       if (win && win !== "near_low" && win !== "past_any" && t?.window !== win) return false;
       const ev = l.adj_ev;
+      // held for manual centering: unknown, so it stays in view ("look at it"), never filtered out as a no
+      if (gradable && ev?.needs_manual_centering) return true;
       if (gradable === "measured" && ev?.ev_source !== "measured") return false;
       if (gradable === "above_gem" && !(ev?.ev_source === "measured" && ev.population_p10 != null && ev.p10 > ev.population_p10)) return false;
       if (gradable === "ev_pos" && !((best(l) ?? -1) > 0)) return false;
@@ -121,7 +123,7 @@ export default function ConsignerBoard({ seller, setSeller }: { seller: string; 
   const counts = useMemo(() => countShows(base, reviewOf), [base, rv]); // eslint-disable-line react-hooks/exhaustive-deps
   const rows = useMemo(() => {
     const out = base.filter((l) => show === "all" || showOf(reviewOf(l)) === show);
-    const val = (l: HuntListing) => sort === "best_ev" ? best(l) : sort === "adj_p10" ? l.adj_ev?.p10
+    const val = (l: HuntListing) => sort === "best_ev" ? best(l) : sort === "adj_p10" ? (l.adj_ev?.needs_manual_centering ? undefined : l.adj_ev?.p10)
       : sort === "vs_low" ? (l.timing?.copy_vs_low == null ? undefined : -l.timing.copy_vs_low) : l.score;
     return sort === "ending" ? out : [...out].sort((a, b) => (val(b) ?? -Infinity) - (val(a) ?? -Infinity));
   }, [base, show, rv, sort]); // eslint-disable-line react-hooks/exhaustive-deps

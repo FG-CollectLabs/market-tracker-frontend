@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { sendOddsFeedback, type AdjEV, type GradeOdds, type OddsIssue, type OddsVerdict } from "../lib/api";
+import ManualCenteringBadge from "./ManualCenteringBadge";
 
 // The grading EV with odds tailored to the copy: the predictor's measured
 // odds when it has looked at the photos, else the card's no-photo baseline.
@@ -13,10 +14,12 @@ const SOURCE: Record<AdjEV["ev_source"], { label: string; cls: string; hint: str
   listing_based: { label: "optimistic", cls: "border-amber-900 text-amber-300", hint: "No PSA gem rate to anchor to: odds from listings, which over-represent 10s" },
   what_if: { label: "what-if", cls: "border-indigo-900 text-indigo-300", hint: "Odds at the centering you set" },
   population: { label: "gem rate", cls: "border-gray-700 text-gray-500", hint: "No pre-grader odds for this card yet: its own PSA gem rate and CGC population" },
+  needs_manual_centering: { label: "manual centering", cls: "border-amber-800 text-amber-300", hint: "The pre-grader holds the odds until a person checks the centering" },
 };
 
 export default function AdjEVCell({ ev }: { ev?: AdjEV }) {
   if (!ev) return <span className="text-gray-600">–</span>;
+  if (ev.needs_manual_centering) return <ManualCenteringBadge reasons={ev.centering_reasons} url={ev.review_url} />;
   const s = SOURCE[ev.ev_source];
   const now = ev.now_ev_cents ?? ev.ev_cents; // this column: today's prices (the projection has its own)
   const tip = [
@@ -134,6 +137,14 @@ const pc = (p?: number) => (p == null ? "–" : `${(p * 100).toFixed(0)}%`);
 // measured odds, or the card's baseline until it's measured).
 export function PSAOddsCell({ ev, popFallback }: { ev?: AdjEV; popFallback?: number }) {
   const pop = ev?.population_p10 ?? popFallback;
+  if (ev?.needs_manual_centering) {
+    return (
+      <span className="inline-flex flex-col items-end tabular-nums">
+        <span className="text-gray-300"><span className="text-[10px] text-gray-500">gem </span>{pc(pop)}</span>
+        <ManualCenteringBadge reasons={ev.centering_reasons} url={ev.review_url} compact />
+      </span>
+    );
+  }
   return (
     <span className="inline-flex flex-col items-end tabular-nums" title="Gem rate: the card's PSA population 10 rate. Adjusted: the pre-grader's odds for this copy (the gem rate until its photos are measured).">
       <span className="text-gray-300"><span className="text-[10px] text-gray-500">gem </span>{pc(pop)}</span>
@@ -151,6 +162,7 @@ const CGC_GRADES: [string, string][] = [["10 pristine", "Pristine"], ["10", "10"
 // CGC: Pristine / 10 / 9 odds (adjusted, population on hover) and the EV at
 // adjusted and population odds.
 export function CGCCell({ ev }: { ev?: AdjEV }) {
+  if (ev?.needs_manual_centering) return <span className="text-gray-600" title="odds held for manual centering">–</span>;
   const g = ev?.cgc;
   if (!g) return <span className="text-gray-600">–</span>;
   const tip = [
@@ -187,6 +199,7 @@ export function CGCCell({ ev }: { ev?: AdjEV }) {
 // forecast backtest backs: IR PSA grades from month 6). Today's are in the
 // PSA EV / CGC columns; suggested bids never count a rise.
 export function AtSaleCell({ ev }: { ev?: AdjEV }) {
+  if (ev?.needs_manual_centering) return <span className="text-gray-600" title="odds held for manual centering">–</span>;
   if (!ev || (ev.at_sale_ev_cents == null && ev.cgc?.at_sale_ev_cents == null)) return <span className="text-gray-600">–</span>;
   const line = (label: string, v: number | undefined, sd: { days: number; ten_drift: number; basis: string } | undefined, now: number | undefined) => {
     if (v == null) return null;
