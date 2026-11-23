@@ -3830,11 +3830,17 @@ export function fetchPcgAnalysis(game: "pokemon" | "riftbound"): Promise<PcgAnal
 // ---- Sealed timing (import-sealed) -------------------------------------------
 
 export type SealedKind = "etb" | "pc_etb" | "booster_box" | "booster_bundle" | "booster_pack"
-  | "upc" | "premium_collection" | "special_collection" | "collection_box" | "tin" | "blister" | "build_battle";
+  | "upc" | "premium_collection" | "special_collection" | "collection_box" | "tin" | "blister" | "build_battle"
+  | MTGSealedKind;
+// Magic: The Gathering sealed products (game mtg)
+export type MTGSealedKind = "mtg_play_box" | "mtg_collector_box" | "mtg_collector_omega" | "mtg_bundle" | "mtg_play_pack" | "mtg_collector_pack";
+export const MTG_SEALED_KINDS: MTGSealedKind[] = ["mtg_play_box", "mtg_collector_box", "mtg_collector_omega", "mtg_bundle", "mtg_play_pack", "mtg_collector_pack"];
 export const SEALED_KIND_LABEL: Record<SealedKind, string> = {
   etb: "ETB", pc_etb: "PC ETB", booster_box: "Booster box", booster_bundle: "Bundle", booster_pack: "Pack",
   upc: "Ultra Premium", premium_collection: "Premium Collection", special_collection: "Special Collection",
   collection_box: "Collection box", tin: "Tin", blister: "Blister", build_battle: "Build & Battle",
+  mtg_play_box: "Play booster box", mtg_collector_box: "Collector booster box", mtg_collector_omega: "Collector omega pack",
+  mtg_bundle: "Play booster bundle", mtg_play_pack: "Play pack", mtg_collector_pack: "Collector pack",
 };
 export interface SealedRet { n: number; median: number | null; p25: number | null; p75: number | null; up_share: number | null; annualized: number | null }
 export interface SealedPlay { month: number; returns: SealedRet }
@@ -3893,8 +3899,14 @@ export type SetClass = "all" | "standard" | "special";
 export function fetchSealedTiming(era = "all", gross = false, cls: SetClass = "all"): Promise<{ kinds: SealedKindTiming[]; method: string; era: string; eras: { key: string; label: string }[]; classes?: { key: SetClass; label: string }[]; costs: string; net: boolean }> {
   return get(`/v1/sealed/timing?era=${era}${gross ? "&gross=1" : ""}${cls !== "all" ? `&class=${cls}` : ""}`);
 }
-export function fetchSealedProducts(kind = ""): Promise<{ products: SealedProduct[]; count: number }> {
-  return get(`/v1/sealed/products${kind ? `?kind=${kind}` : ""}`);
+export function fetchSealedProducts(kind = "", game: "pokemon" | "mtg" = "pokemon"): Promise<{ products: SealedProduct[]; count: number }> {
+  const q = new URLSearchParams();
+  if (kind) q.set("kind", kind);
+  if (game !== "pokemon") q.set("game", game);
+  return get(`/v1/sealed/products${q.size ? `?${q}` : ""}`);
+}
+export function fetchMTGSealedSets(): Promise<{ sets: SealedSetChart[]; count: number }> {
+  return get(`/v1/sealed/sets?game=mtg`);
 }
 export function fetchSealedReprints(kind = "", set = "", era = "all"): Promise<SealedReprints> {
   const q = new URLSearchParams({ era });

@@ -260,7 +260,7 @@ export default function SettingsPage() {
         </Field>
         <Field label="Sealed: shipping per sale" hint="Sealed timing returns are after the resale fee above and this shipping per product type.">
           <span className="grid grid-cols-2 gap-x-3 gap-y-1 text-xs text-gray-400 sm:grid-cols-3">
-            {(Object.keys(SEALED_KIND_LABEL) as SealedKind[]).map((k) => (
+            {(Object.keys(SEALED_KIND_LABEL) as SealedKind[]).filter((k) => !k.startsWith("mtg_")).map((k) => (
               <label key={k} className="flex items-center justify-between gap-2">
                 <span>{SEALED_KIND_LABEL[k]}</span>
                 <Money cents={s.sealed_ship_cents?.[k] ?? 0} onChange={(c) => set({ sealed_ship_cents: { ...(s.sealed_ship_cents ?? {}), [k]: c } })} />

@@ -19,6 +19,7 @@ import DealsPage from "./pages/DealsPage";
 import BuyWindowsPage from "./pages/BuyWindowsPage";
 import BuyingPrepPage from "./pages/BuyingPrepPage";
 import ForecastSkillPage from "./pages/ForecastSkillPage";
+import MTGSealedPage from "./pages/MTGSealedPage";
 import TimingPage from "./pages/TimingPage";
 import SettingsPage from "./pages/SettingsPage";
 import RankingsPage from "./pages/RankingsPage";
@@ -45,7 +46,7 @@ import { COMPANY_NAME, PRODUCT_NAME } from "./brand/brand";
 // active when one of its pages is open. Each game has its own Sets, Buying
 // and Analytics pages; Settings are shared.
 type NavEntry = { label: string; to?: string; items?: { to: string; label: string; hint: string }[] };
-type Game = "pokemon" | "riftbound";
+type Game = "pokemon" | "riftbound" | "mtg";
 
 const SHARED: NavEntry[] = [
   {
@@ -81,6 +82,11 @@ const NAV_RIFTBOUND: NavEntry[] = [
   ...SHARED,
 ];
 
+const NAV_MTG: NavEntry[] = [
+  { label: "Sealed", to: "/mtg" },
+  ...SHARED,
+];
+
 // Pages that exist in both games, for the switch to land on the same page.
 const TWIN: [string, string][] = [["/watchlist", "/rb/watchlist"], ["/deals", "/rb/deals"], ["/timing", "/rb/timing"], ["/pcg", "/rb/pcg"]];
 const POKEMON_ANALYTICS = ["/rankings", "/channels", "/promos", "/windows"];
@@ -88,6 +94,7 @@ const SHARED_PATHS = ["/settings", "/automation", "/developer", "/roadmap", "/ca
 
 function gameOf(path: string, last: Game): Game {
   if (path === "/rb" || path.startsWith("/rb/")) return "riftbound";
+  if (path === "/mtg" || path.startsWith("/mtg/") || path.startsWith("/cards/mtg-")) return "mtg";
   if (path.startsWith("/cards/riftbound-")) return "riftbound";
   if (path.startsWith("/cards/")) return "pokemon";
   return SHARED_PATHS.some((p) => path.startsWith(p)) ? last : "pokemon";
@@ -95,6 +102,7 @@ function gameOf(path: string, last: Game): Game {
 
 function switchTo(path: string, to: Game): string | null {
   if (SHARED_PATHS.some((p) => path.startsWith(p)) && !path.startsWith("/cards/")) return null; // stay; the menus change
+  if (to === "mtg") return "/mtg";
   if (to === "riftbound") {
     if (POKEMON_ANALYTICS.some((p) => path.startsWith(p))) return "/rb/analytics";
     return TWIN.find(([a]) => path.startsWith(a))?.[1] ?? "/rb";
@@ -104,16 +112,19 @@ function switchTo(path: string, to: Game): string | null {
 
 const LAST_GAME = "nav.game";
 function readLast(): Game {
-  try { return localStorage.getItem(LAST_GAME) === "riftbound" ? "riftbound" : "pokemon"; } catch { return "pokemon"; }
+  try {
+    const g = localStorage.getItem(LAST_GAME);
+    return g === "riftbound" || g === "mtg" ? g : "pokemon";
+  } catch { return "pokemon"; }
 }
 
 function GameSwitch({ game, onPick }: { game: Game; onPick: (g: Game) => void }) {
   return (
     <div className="flex rounded-md border border-gray-800 overflow-hidden text-xs shrink-0" role="tablist" aria-label="Game">
-      {(["pokemon", "riftbound"] as const).map((g) => (
+      {(["pokemon", "riftbound", "mtg"] as const).map((g) => (
         <button key={g} role="tab" aria-selected={game === g} onClick={() => onPick(g)}
-          className={`px-2 py-1 ${game === g ? (g === "pokemon" ? "bg-yellow-900/60 text-yellow-200" : "bg-sky-900/60 text-sky-200") : "text-gray-400 hover:text-gray-200"}`}>
-          {g === "pokemon" ? "Pokémon" : "Riftbound"}
+          className={`px-2 py-1 ${game === g ? ({ pokemon: "bg-yellow-900/60 text-yellow-200", riftbound: "bg-sky-900/60 text-sky-200", mtg: "bg-orange-900/60 text-orange-200" })[g] : "text-gray-400 hover:text-gray-200"}`}>
+          {({ pokemon: "Pokémon", riftbound: "Riftbound", mtg: "Magic" })[g]}
         </button>
       ))}
     </div>
@@ -207,7 +218,7 @@ function Nav() {
     const to = switchTo(loc.pathname, g);
     if (to) navigate(to);
   };
-  const nav = game === "riftbound" ? NAV_RIFTBOUND : NAV;
+  const nav = game === "riftbound" ? NAV_RIFTBOUND : game === "mtg" ? NAV_MTG : NAV;
   const linkCls = ({ isActive }: { isActive: boolean }) =>
     isActive
       ? "text-white text-sm"
@@ -215,7 +226,7 @@ function Nav() {
 
   return (
     <nav className="h-12 border-b border-gray-800 px-3 sm:px-6 flex items-center gap-3 sm:gap-6 sticky top-0 bg-gray-950 z-30 print:hidden">
-      <NavLink to={game === "riftbound" ? "/rb" : "/"} className="flex items-center gap-2 shrink-0" title={`${PRODUCT_NAME} · ${COMPANY_NAME}`}>
+      <NavLink to={game === "riftbound" ? "/rb" : game === "mtg" ? "/mtg" : "/"} className="flex items-center gap-2 shrink-0" title={`${PRODUCT_NAME} · ${COMPANY_NAME}`}>
         <Mark height={32} />
         <span className="hidden sm:flex flex-col leading-none">
           <span className="font-bold text-white tracking-tight text-sm">{PRODUCT_NAME}</span>
@@ -250,6 +261,7 @@ export default function App() {
             <Route path="/rb/watchlist" element={<RiftboundWatchlistPage />} />
             <Route path="/rb/deals" element={<RiftboundDealsPage />} />
             <Route path="/riftbound" element={<Navigate to="/rb" replace />} />
+            <Route path="/mtg" element={<MTGSealedPage />} />
             <Route path="/deals" element={<DealsPage />} />
             <Route path="/deals/seller/:username" element={<SellerPage />} />
             <Route path="/windows" element={<BuyWindowsPage />} />
