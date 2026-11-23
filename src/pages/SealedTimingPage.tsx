@@ -14,6 +14,8 @@ export const SEALED_COLORS: Record<SealedKind, string> = {
   etb: "#818cf8", pc_etb: "#f472b6", booster_box: "#34d399", booster_bundle: "#fbbf24", booster_pack: "#60a5fa",
   upc: "#f87171", premium_collection: "#c084fc", special_collection: "#2dd4bf", collection_box: "#fb923c", tin: "#a3e635",
   blister: "#94a3b8", build_battle: "#e879f9",
+  mtg_play_box: "#34d399", mtg_collector_box: "#f472b6", mtg_collector_omega: "#fbbf24", mtg_bundle: "#818cf8",
+  mtg_play_pack: "#60a5fa", mtg_collector_pack: "#c084fc",
 };
 const HOLDS = ["12", "24", "36"];
 export const pct = (v: number | null | undefined, digits = 0) => (v == null ? "–" : `${v >= 0 ? "+" : ""}${(v * 100).toFixed(digits)}%`);

@@ -11,7 +11,7 @@ import { SEALED_COLORS, YearStrip, pct, usd } from "./SealedTimingPage";
 // chart (a reprint or a fresh wave of product), to confirm or reject. The
 // timing stats use confirmed reprints once a product type has three.
 
-const KINDS: [SealedKind | "", string][] = [["", "All"], ...(Object.entries(SEALED_KIND_LABEL) as [SealedKind, string][])];
+const KINDS: [SealedKind | "", string][] = [["", "All"], ...(Object.entries(SEALED_KIND_LABEL) as [SealedKind, string][]).filter(([k]) => !k.startsWith("mtg_"))];
 
 function Chart({ points, events }: { points: { month: string; cents: number }[]; events: ReprintEvent[] }) {
   if (points.length < 2) return <div className="text-xs text-gray-600">no chart</div>;
