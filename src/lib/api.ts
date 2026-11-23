@@ -1676,7 +1676,12 @@ export interface TargetHit {
 
 // ---- Grade odds (grading predictor) ------------------------------------------
 
-export type GradeOddsStatus = "pending" | "measuring" | "ready" | "unmeasurable" | "failed" | "timeout";
+export type GradeOddsStatus = "pending" | "measuring" | "ready" | "unmeasurable" | "failed" | "timeout" | "needs_manual_centering";
+// the pre-grader's centering check: why odds are held for a person (needs_manual_centering), and its AI outline check
+export interface CenteringCheck {
+  status: "ok" | "needs_manual_centering"; reasons?: string[]; sides?: Record<string, string[]>;
+  ai_outline?: "" | "fixing" | "ok" | "fixed" | "needs_review";
+}
 
 export interface GradeOdds {
   id: number;
@@ -1705,6 +1710,7 @@ export interface GradeOdds {
   rank?: CopyRank[]; // where the centering sits among each grader's top grades (PSA 10 / 9, CGC 10 Pristine / 10 ...)
   rank_population?: CopyRank; // among every graded copy (any grade) of its rarity in its era
   ai?: AIStatus; // the pre-grader's full AI check
+  centering_check?: CenteringCheck;
 }
 
 // ---- Full AI check (pre-grader) -------------------------------------------------
@@ -1794,7 +1800,7 @@ export interface AdjEV {
   pop_ev_cents?: number; // PSA at the card's population gem rate
   pop_note?: string;
   cgc?: GraderEV;
-  ev_source: "measured" | "card_baseline" | "listing_based" | "what_if" | "population"; // population: no pre-grader odds, the card's own gem rates
+  ev_source: "measured" | "card_baseline" | "listing_based" | "what_if" | "population" | "needs_manual_centering"; // population: no pre-grader odds, the card's own gem rates
   p10: number;
   population_p10?: number;
   centering_cap?: string;
@@ -1809,6 +1815,8 @@ export interface AdjEV {
   at_sale_ev_cents?: number; // PSA EV on the projection (declines + the rises the backtest backs: IR from month 6)
   at_sale_note?: string;
   psa_at_sale?: SaleDrift;
+  // the pre-grader holds this copy's odds until a person checks its centering: no EV, never a "no"
+  needs_manual_centering?: boolean; centering_reasons?: string[]; review_url?: string;
 }
 
 export type OddsVerdict = "looks_right" | "false_positive" | "false_negative" | "bad_measurement" | "wrong_card" | "unusable_photos";

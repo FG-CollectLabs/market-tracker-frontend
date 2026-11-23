@@ -1,4 +1,5 @@
 import AICheck from "./AICheck";
+import ManualCenteringBadge from "./ManualCenteringBadge";
 import { useEffect, useState } from "react";
 import { GRADE_ODDS_REFRESHED, refreshGradeOdds, type CopyRank, type GradeOdds } from "../lib/api";
 
@@ -77,6 +78,14 @@ const STATUS: Record<string, string> = {
 export default function GradeOddsBadge({ o: given, compact }: { o: GradeOdds; compact?: boolean }) {
   const [o, setO] = useState(given);
   useEffect(() => setO(given), [given]);
+  if (o.status === "needs_manual_centering") {
+    return (
+      <span className="inline-flex flex-wrap items-center gap-x-1.5 text-[11px]">
+        <ManualCenteringBadge reasons={o.centering_check?.reasons} url={o.review_url} compact={compact} />
+        <RefreshOdds o={o} onDone={setO} />
+      </span>
+    );
+  }
   if (o.status !== "ready") {
     return (
       <span className="text-[11px] text-gray-500" title={o.error}>
@@ -103,6 +112,9 @@ export default function GradeOddsBadge({ o: given, compact }: { o: GradeOdds; co
         <span className={`tabular-nums ${o.ev_cents >= 0 ? "text-green-300" : "text-red-300"}`} title={o.ev_note}>
           EV {usd(o.ev_cents)}
         </span>
+      )}
+      {(o.centering_check?.ai_outline === "" || o.centering_check?.ai_outline === "fixing") && (
+        <span className="text-amber-300/80" title="The pre-grader's AI is still checking this copy's outline: the odds may change">AI checking outline…</span>
       )}
       {o.review_url && <a href={o.review_url} target="_blank" rel="noreferrer" className="text-indigo-300 hover:text-indigo-200">check</a>}
       <RefreshOdds o={o} onDone={setO} />
