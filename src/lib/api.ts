@@ -4016,6 +4016,24 @@ export function setOfferVerdict(productId: number, url: string, verdict: "ok" | 
   return adminFetch(`/v1/admin/sealed/offers/verdict`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ product_id: productId, url, verdict }) });
 }
 
+// deals in any shop's whole catalog (sealed, in stock, 15%+ under the shop's was price or our market price)
+export interface ShopDeal {
+  id: number; shop: string; shop_name: string; game: string; title: string; url: string;
+  price_cents: number; landed_cents: number; shipping_known: boolean; was_cents?: number; market_cents?: number;
+  was_off: number; market_off: number; landed_off?: number; suspect?: boolean;
+  product_id?: number; product?: string; watched: boolean; first_seen: string; checked_at: string;
+}
+export function fetchSealedDeals(q: { game?: string; minOff?: number; suspect?: boolean } = {}): Promise<{ deals: ShopDeal[]; count: number; last_refresh: string | null; min_off: number; method: string }> {
+  const p = new URLSearchParams();
+  if (q.game) p.set("game", q.game);
+  if (q.minOff != null) p.set("min_off", String(q.minOff));
+  if (q.suspect) p.set("suspect", "1");
+  return get(`/v1/sealed/deals?${p}`);
+}
+export function refreshSealedDeals(): Promise<{ job_id: number }> {
+  return adminFetch(`/v1/admin/sealed/deals/refresh`, { method: "POST" });
+}
+
 export function fetchSealedWatch(): Promise<{ products: SealedWatchRow[]; count: number; last_refresh: string | null; sources: string; suggested?: StrategyTrigger[]; suggested_from?: string }> {
   return get(`/v1/sealed/watch`);
 }

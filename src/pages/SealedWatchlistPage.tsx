@@ -7,6 +7,7 @@ import {
 import PlanWatchlist from "../components/PlanWatchlist";
 import OfferAudit from "../components/OfferAudit";
 import AddSealedProduct from "../components/AddSealedProduct";
+import ShopDeals from "../components/ShopDeals";
 import ReturnCell from "../components/ReturnCell";
 import { Spinner } from "../components/Spinner";
 import { SEALED_COLORS, pct, usd } from "./SealedTimingPage";
@@ -216,6 +217,7 @@ export default function SealedWatchlistPage() {
           </table>
         </div>
       )}
+      <ShopDeals onWatched={load} />
       <OfferAudit onChange={load} />
       <PlanWatchlist onWatched={load} />
       <p className="text-[11px] text-gray-500 max-w-4xl">{meta.sources}</p>
