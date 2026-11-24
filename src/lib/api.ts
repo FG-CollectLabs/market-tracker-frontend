@@ -2768,6 +2768,26 @@ export interface ChannelStats {
   buyer_ratio: ChannelDist | null;
   by_grade: ChannelCell[] | null;
   by_price_band: ChannelCell[] | null;
+  // what lands in the seller's pocket ÷ market (consigner payout schedule, Fanatics fees/rebate, eBay fee)
+  net_ratio?: ChannelDist | null;
+  net_basis?: string;
+  by_fine_band?: { key: string; label: string; seller_ratio: ChannelDist; net_ratio?: ChannelDist }[] | null;
+  by_card?: { display_key: string; name: string; sales: number; median_market_cents: number; median_seller_ratio: number; median_net_ratio?: number }[] | null;
+}
+export interface PayoutTier { up_to_cents?: number; pct: number; flat_cents?: number }
+export interface PayoutSchedule { graded: PayoutTier[]; sealed?: PayoutTier[]; listing_fee_cents?: number; source?: string; name?: string }
+export interface BestChannel {
+  channel: string; label: string; kind: ChannelKind; expected_net_cents: number; net_p25_cents: number; net_p75_cents: number;
+  median_net_ratio: number; median_sale_ratio: number; sales: number; basis: string; net_basis: string; approx_share?: number;
+}
+export function fetchBestChannels(q: { market_cents?: number; display_key?: string; grade?: string }): Promise<{
+  market_cents: number; price_band: string; days: number; channels: BestChannel[]; unpriced: { channel: string; label: string; median_sale_ratio: number; sales: number; why: string }[]; method: string;
+}> {
+  const p = new URLSearchParams();
+  if (q.market_cents) p.set("market_cents", String(q.market_cents));
+  if (q.display_key) p.set("display_key", q.display_key);
+  if (q.grade) p.set("grade", q.grade);
+  return get(`/v1/analysis/channels/best?${p}`);
 }
 
 export interface ChannelReport {
@@ -2827,13 +2847,14 @@ export interface EbaySellerRow {
   sales_matched: number;
   last_seen_at?: string;
   consigner_candidate: boolean;
+  payout?: PayoutSchedule; // the consigner's payout schedule
 }
 
-export function fetchEbaySellers(limit = 60): Promise<{ sellers: EbaySellerRow[]; tiers: Record<string, number> }> {
-  return adminFetch(`/v1/admin/ebay-sellers?limit=${limit}`);
+export function fetchEbaySellers(limit = 60, q = ""): Promise<{ sellers: EbaySellerRow[]; tiers: Record<string, number>; payout_presets?: { key: string; name: string; source: string }[] }> {
+  return adminFetch(`/v1/admin/ebay-sellers?limit=${limit}${q ? `&q=${encodeURIComponent(q)}` : ""}`);
 }
 
-export function saveEbaySeller(username: string, body: { tracked?: boolean; label?: string; kind?: string }): Promise<{ ok: boolean }> {
+export function saveEbaySeller(username: string, body: { tracked?: boolean; label?: string; kind?: string; payout_preset?: string; payout?: PayoutSchedule; clear_payout?: boolean }): Promise<{ ok: boolean }> {
   return adminFetch(`/v1/admin/ebay-sellers/${encodeURIComponent(username)}`, {
     method: "PUT",
     headers: { "Content-Type": "application/json" },

@@ -1,5 +1,5 @@
 import { Fragment, useEffect, useState } from "react";
-import { fetchChannels, fetchEbaySellers, saveEbaySeller, type ChannelKind, type ChannelReport, type ChannelStats, type EbaySellerRow } from "../lib/api";
+import { fetchBestChannels, fetchChannels, fetchEbaySellers, saveEbaySeller, type ChannelKind, type ChannelReport, type ChannelStats, type EbaySellerRow } from "../lib/api";
 import { useSession } from "../lib/auth";
 import { Spinner, ErrorMsg } from "../components/Spinner";
 import RatioStrip, { StripAxis, fmtX } from "../components/RatioStrip";
@@ -20,9 +20,12 @@ const GRADE_LABEL: Record<string, string> = {
 function Row({ c }: { c: ChannelStats }) {
   const [open, setOpen] = useState(false);
   const d = c.seller_ratio;
+  // the seven price bands (sale and net spread) when present, else the four
+  const fine = c.by_fine_band ?? [];
   const cells = [
-    ...(c.by_price_band ?? []).map((x) => ({ ...x, group: "Price band", label: x.label ?? x.key })),
-    ...(c.by_grade ?? []).map((x) => ({ ...x, group: "Grade", label: GRADE_LABEL[x.key] ?? x.key })),
+    ...(fine.length ? fine.map((x) => ({ key: x.key, seller_ratio: x.seller_ratio, net: x.net_ratio, group: "Price band", label: x.label }))
+      : (c.by_price_band ?? []).map((x) => ({ ...x, net: undefined, group: "Price band", label: x.label ?? x.key }))),
+    ...(c.by_grade ?? []).map((x) => ({ ...x, net: undefined, group: "Grade", label: GRADE_LABEL[x.key] ?? x.key })),
   ];
   return (
     <Fragment>
@@ -37,6 +40,10 @@ function Row({ c }: { c: ChannelStats }) {
             {c.approx > 0 && <> · {c.approx} pre-close bids</>}
             {c.channel === "fanatics_auction" && c.buyer_ratio && <> · buyer pays {fmtX(c.buyer_ratio.p50)} with the 20% premium</>}
           </div>
+          <div className="text-[11px] pl-4 tabular-nums" title={c.net_basis}>
+            {c.net_ratio ? <span className="text-emerald-300">you net {fmtX(c.net_ratio.p50)} <span className="text-gray-500">({fmtX(c.net_ratio.p25)}–{fmtX(c.net_ratio.p75)})</span></span>
+              : c.kind === "consigner" ? <span className="text-amber-400/80">payout schedule not entered: net unknown</span> : null}
+          </div>
         </td>
         <td className="py-2 px-2 w-[45%] min-w-[11rem]"><RatioStrip d={d} approx={c.approx > 0 && c.approx === c.sales} title={c.label} /></td>
         <td className="py-2 pl-3 text-right tabular-nums text-sm text-gray-100 whitespace-nowrap">{d ? fmtX(d.p50) : "–"}</td>
@@ -47,6 +54,7 @@ function Row({ c }: { c: ChannelStats }) {
         <tr key={x.group + x.key} className="bg-gray-950/40">
           <td className="py-1 pr-3 pl-8 text-xs text-gray-400">
             <span className="text-gray-600">{x.group}:</span> {x.label}
+            {x.net && <span className="ml-1.5 tabular-nums text-emerald-400/80" title={`what you net, ${fmtX(x.net.p25)}–${fmtX(x.net.p75)} middle half`}>net {fmtX(x.net.p50)}</span>}
             <span className={`ml-1.5 tabular-nums ${x.seller_ratio.n < 20 ? "text-amber-400/80" : "text-gray-600"}`} title={x.seller_ratio.n < 20 ? "Under 20 sales: not used for card estimates" : undefined}>
               n={x.seller_ratio.n}
             </span>
@@ -57,16 +65,38 @@ function Row({ c }: { c: ChannelStats }) {
           <td className="py-1 pl-3 text-right tabular-nums text-[11px] text-gray-600 hidden md:table-cell">{fmtX(x.seller_ratio.p10)}–{fmtX(x.seller_ratio.p90)}</td>
         </tr>
       ))}
+      {open && (c.by_card?.length ?? 0) > 0 && (
+        <tr className="bg-gray-950/40">
+          <td colSpan={5} className="py-2 pl-8 pr-3">
+            <div className="text-[11px] text-gray-500 mb-1">Cards it sold most (3+ sales): median sale ÷ market{c.net_ratio ? ", and what you net" : ""}</div>
+            <div className="flex flex-wrap gap-x-4 gap-y-0.5 text-[11px]">{c.by_card!.map((x) => (
+              <a key={x.display_key} href={`#/cards/${x.display_key}`} className="text-gray-300 hover:text-indigo-300 tabular-nums">
+                {x.name} <span className="text-gray-500">{x.display_key.replace(/^pokemon-/, "")}</span>{" "}
+                <span className={x.median_seller_ratio >= 0.9 ? "text-emerald-300" : x.median_seller_ratio >= 0.75 ? "text-gray-200" : "text-rose-300"}>{fmtX(x.median_seller_ratio)}</span>
+                {x.median_net_ratio != null && <span className="text-emerald-400/80"> net {fmtX(x.median_net_ratio)}</span>}
+                <span className="text-gray-600"> ×{x.sales} · ~${Math.round(x.median_market_cents / 100)}</span>
+              </a>
+            ))}</div>
+          </td>
+        </tr>
+      )}
     </Fragment>
   );
 }
 
 function Sellers() {
   const [rows, setRows] = useState<EbaySellerRow[] | null>(null);
+  const [presets, setPresets] = useState<{ key: string; name: string; source: string }[]>([]);
   const [err, setErr] = useState<string | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
-  const load = () => fetchEbaySellers(60).then((r) => setRows(r.sellers)).catch((e) => setErr(String(e)));
-  useEffect(() => { load(); }, []);
+  const [q, setQ] = useState("");
+  const load = (query = q) => fetchEbaySellers(60, query).then((r) => { setRows(r.sellers); setPresets(r.payout_presets ?? []); }).catch((e) => setErr(String(e)));
+  useEffect(() => { load(""); }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  const setPayout = async (s: EbaySellerRow, preset: string) => {
+    setBusy(s.username);
+    try { await saveEbaySeller(s.username, preset ? { payout_preset: preset } : { clear_payout: true }); await load(); }
+    catch (e) { setErr(String(e)); } finally { setBusy(null); }
+  };
   const toggle = async (s: EbaySellerRow) => {
     setBusy(s.username);
     try {
@@ -81,7 +111,14 @@ function Sellers() {
   if (err) return <ErrorMsg msg={err} />;
   if (!rows) return <Spinner />;
   return (
-    <div className="overflow-x-auto">
+    <div className="overflow-x-auto space-y-2">
+      <form onSubmit={(e) => { e.preventDefault(); load(q.trim().toLowerCase()); }} className="flex flex-wrap items-center gap-2 text-xs">
+        <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Find a seller by eBay username (e.g. retrospecs)"
+          className="w-72 rounded border border-gray-700 bg-gray-950 px-2 py-1 text-gray-200" />
+        <button type="submit" className="rounded border border-gray-700 px-2 py-1 text-gray-300 hover:text-white">Search</button>
+        {q && <button type="button" onClick={() => { setQ(""); load(""); }} className="text-gray-500 hover:text-gray-300">clear</button>}
+        <span className="text-gray-600">Searches every seller we've seen on a listing or sale.</span>
+      </form>
       <table className="w-full text-xs">
         <thead className="text-gray-500 text-left max-lg:!static">
           <tr>
@@ -91,6 +128,7 @@ function Sellers() {
             <th className="py-1.5 px-2 font-medium text-right">Auctions</th>
             <th className="py-1.5 px-2 font-medium text-right">Cards</th>
             <th className="py-1.5 px-2 font-medium text-right">Sales matched</th>
+            <th className="py-1.5 px-2 font-medium" title="What the consigner pays you, by sale price tier: sets the net ratio">Payout schedule</th>
             <th className="py-1.5 pl-2" />
           </tr>
         </thead>
@@ -111,6 +149,17 @@ function Sellers() {
               <td className="py-1.5 px-2 text-right tabular-nums text-gray-300">{s.auctions_60d.toLocaleString()}</td>
               <td className="py-1.5 px-2 text-right tabular-nums text-gray-300">{s.cards_60d.toLocaleString()}</td>
               <td className="py-1.5 px-2 text-right tabular-nums text-gray-300">{s.sales_matched.toLocaleString()}</td>
+              <td className="py-1.5 px-2">
+                {s.tracked ? (
+                  <select value={presets.find((p) => p.name === s.payout?.name)?.key ?? (s.payout ? "custom" : "")} disabled={busy === s.username}
+                    onChange={(e) => e.target.value !== "custom" && setPayout(s, e.target.value)}
+                    className="rounded border border-gray-700 bg-gray-950 px-1 py-0.5 text-[11px] text-gray-200" title={s.payout?.source}>
+                    <option value="">not entered</option>
+                    {presets.map((p) => <option key={p.key} value={p.key}>{p.name}</option>)}
+                    {s.payout && !presets.some((p) => p.name === s.payout?.name) && <option value="custom">custom</option>}
+                  </select>
+                ) : <span className="text-gray-600">–</span>}
+              </td>
               <td className="py-1.5 pl-2 text-right">
                 <button disabled={busy === s.username} onClick={() => toggle(s)}
                   className="px-2 py-0.5 rounded border border-gray-700 text-gray-300 hover:text-white hover:border-gray-500 disabled:opacity-50">
@@ -122,6 +171,54 @@ function Sellers() {
         </tbody>
       </table>
     </div>
+  );
+}
+
+// Where to sell one slab: every channel's expected net payout at a market price.
+function BestChannels() {
+  const [price, setPrice] = useState("250");
+  const [d, setD] = useState<Awaited<ReturnType<typeof fetchBestChannels>> | null>(null);
+  const [err, setErr] = useState("");
+  const run = (v = price) => {
+    const c = Math.round(parseFloat(v) * 100);
+    if (!(c > 0)) return;
+    setErr("");
+    fetchBestChannels({ market_cents: c }).then(setD).catch((e) => setErr(String(e)));
+  };
+  useEffect(() => { run(); }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  const usd = (c: number) => `$${(c / 100).toLocaleString(undefined, { maximumFractionDigits: c >= 10000 ? 0 : 2 })}`;
+  return (
+    <section className="rounded-lg border border-emerald-900/60 bg-gray-900 p-4 space-y-2">
+      <form onSubmit={(e) => { e.preventDefault(); run(); }} className="flex flex-wrap items-center gap-2">
+        <h2 className="text-sm font-semibold text-gray-100">Best place to sell a slab worth</h2>
+        <span className="text-gray-400">$</span>
+        <input value={price} onChange={(e) => setPrice(e.target.value)} inputMode="decimal" className="w-24 rounded border border-gray-700 bg-gray-950 px-2 py-1 text-sm text-gray-100" />
+        <button type="submit" className="rounded border border-gray-700 px-2 py-1 text-xs text-gray-300 hover:text-white">Rank</button>
+        {d && <span className="text-xs text-gray-500">{d.price_band} band · last {d.days} days</span>}
+      </form>
+      {err && <p className="text-xs text-rose-400">{err}</p>}
+      {d && (
+        <div className="overflow-x-auto">
+          <table className="w-full text-xs">
+            <thead className="text-left text-gray-500"><tr>
+              <th className="py-1 pr-3 font-medium">Channel</th><th className="py-1 px-2 text-right font-medium">You net</th>
+              <th className="py-1 px-2 text-right font-medium">Middle half</th><th className="py-1 px-2 text-right font-medium">Sells at</th>
+              <th className="py-1 pl-2 font-medium">Based on</th>
+            </tr></thead>
+            <tbody>{d.channels.map((c, i) => (
+              <tr key={c.channel} className="border-t border-gray-800">
+                <td className={`py-1 pr-3 ${i === 0 ? "text-emerald-300 font-medium" : "text-gray-200"}`} title={c.net_basis}>{c.label}</td>
+                <td className="py-1 px-2 text-right tabular-nums text-gray-100">{usd(c.expected_net_cents)} <span className="text-gray-500">({fmtX(c.median_net_ratio)})</span></td>
+                <td className="py-1 px-2 text-right tabular-nums text-gray-400">{usd(c.net_p25_cents)}–{usd(c.net_p75_cents)}</td>
+                <td className="py-1 px-2 text-right tabular-nums text-gray-400">{fmtX(c.median_sale_ratio)}</td>
+                <td className="py-1 pl-2 text-gray-500">{c.sales} sales, {c.basis}{c.approx_share ? ` · ${Math.round(c.approx_share * 100)}% pre-close bids` : ""}</td>
+              </tr>
+            ))}</tbody>
+          </table>
+          {d.unpriced.length > 0 && <p className="mt-1 text-[11px] text-amber-400/80">Not ranked (no payout schedule entered): {d.unpriced.map((u) => `${u.label} sells at ${fmtX(u.median_sale_ratio)} (${u.sales})`).join(" · ")}. Set one under eBay sellers below.</p>}
+        </div>
+      )}
+    </section>
   );
 }
 
@@ -176,6 +273,7 @@ export default function ChannelsPage() {
       {view === "overview" && !rep && !err && <Spinner />}
       {view === "overview" && rep && (
         <>
+          <BestChannels />
           <section className="rounded-lg border border-gray-800 bg-gray-900 p-4 overflow-x-auto">
             <table className="w-full">
               <thead className="max-lg:!static">
