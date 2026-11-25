@@ -6,6 +6,17 @@ import ManualCenteringBadge from "./ManualCenteringBadge";
 // odds when it has looked at the photos, else the card's no-photo baseline.
 // One line, the working and caveats in the tooltip.
 
+// One EV line: "adj $120" (this copy's odds) or "gem $80" (the public gem rate).
+function EVLine({ kind, v, main, title }: { kind: "adj" | "gem"; v?: number; main?: boolean; title: string }) {
+  if (v == null) return null;
+  return (
+    <span className="whitespace-nowrap tabular-nums" title={title}>
+      <span className="text-[10px] text-gray-500">{kind} </span>
+      <span className={main ? `font-semibold ${v >= 0 ? "text-green-300" : "text-red-300"}` : `text-[11px] ${v >= 0 ? "text-green-300/70" : "text-red-300/70"}`}>{usd(v)}</span>
+    </span>
+  );
+}
+
 const usd = (c: number) => `${c < 0 ? "−" : ""}$${(Math.abs(c) / 100).toLocaleString(undefined, { maximumFractionDigits: Math.abs(c) >= 10000 ? 0 : 2 })}`;
 
 const SOURCE: Record<AdjEV["ev_source"], { label: string; cls: string; hint: string }> = {
@@ -34,14 +45,15 @@ export default function AdjEVCell({ ev }: { ev?: AdjEV }) {
   ].filter(Boolean).join("\n");
   return (
     <span className="inline-flex flex-col items-end gap-0.5" title={tip}>
-      {now != null
-        ? <span className={`tabular-nums font-semibold ${now >= 0 ? "text-green-300" : "text-red-300"}`} title="EV with the adjusted odds, at today's prices">{usd(now)}</span>
-        : <span className="text-gray-500">no tier</span>}
-      {ev.pop_ev_cents != null && (
-        <span className="text-[10px] text-gray-500 tabular-nums" title={`At the public gem rate${ev.population_p10 ? ` (${(ev.population_p10 * 100).toFixed(0)}%)` : ""}: ${ev.pop_note ?? ""}`}>
-          gem rate {usd(ev.pop_ev_cents)}
-        </span>
-      )}
+      {now == null
+        ? <span className="text-gray-500">no tier</span>
+        : ev.ev_source === "population"
+          ? <EVLine kind="gem" v={now} main title="No pre-grader odds yet: EV at the card's public PSA gem rate, today's prices" />
+          : <>
+              <EVLine kind="adj" v={now} main title={`EV with the adjusted odds (${(ev.p10 * 100).toFixed(0)}% PSA 10), at today's prices`} />
+              <EVLine kind="gem" v={ev.pop_now_ev_cents ?? ev.pop_ev_cents}
+                title={`EV at the public gem rate${ev.population_p10 ? ` (${(ev.population_p10 * 100).toFixed(0)}% PSA 10)` : ""}, today's prices: what the copy is worth grading if it's an average copy`} />
+            </>}
       <span className="flex items-center gap-1">
         <span className={`px-1 rounded border text-[10px] ${s.cls}`} title={s.hint}>{s.label}{ev.pending ? " · measuring" : ""}</span>
         <span className="text-[10px] text-gray-500 tabular-nums">{(ev.p10 * 100).toFixed(0)}%</span>
@@ -185,10 +197,14 @@ export function CGCCell({ ev }: { ev?: AdjEV }) {
           <span className="text-[10px] text-gray-500">adj </span>{CGC_GRADES.map(([k, l]) => `${l} ${pc(g.odds[k])}`).join(" · ")}
         </span>
       )}
-      {(g.now_ev_cents ?? g.ev_cents) != null
-        ? <span className={`font-semibold ${(g.now_ev_cents ?? g.ev_cents)! >= 0 ? "text-green-300" : "text-red-300"}`} title="at today's prices">{usd((g.now_ev_cents ?? g.ev_cents)!)}</span>
-        : <span className="text-gray-500 text-[11px]">no tier</span>}
-      {g.pop_ev_cents != null && <span className="text-[10px] text-gray-500">gem rate {usd(g.pop_ev_cents)}</span>}
+      {(g.now_ev_cents ?? g.ev_cents) == null
+        ? <span className="text-gray-500 text-[11px]">no tier</span>
+        : g.source === "population"
+          ? <EVLine kind="gem" v={g.now_ev_cents ?? g.ev_cents} main title="No pre-grader odds yet: EV at the card's CGC population, today's prices" />
+          : <>
+              <EVLine kind="adj" v={g.now_ev_cents ?? g.ev_cents} main title="EV with the adjusted CGC odds, at today's prices" />
+              <EVLine kind="gem" v={g.pop_now_ev_cents ?? g.pop_ev_cents} title="EV at the card's CGC population gem rates, today's prices" />
+            </>}
       {g.source === "listing_based" && <span className="text-[10px] text-amber-300">optimistic</span>}
     </span>
   );
