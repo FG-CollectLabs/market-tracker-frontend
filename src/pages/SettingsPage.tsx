@@ -183,6 +183,16 @@ export default function SettingsPage() {
         <Field label="Price slabs for when they come back" hint="Adjust the 10's price by how cards usually move over the turnaround, based on the release curves (e.g. a 3-month-old set usually keeps falling).">
           <input type="checkbox" checked={s.use_timing} onChange={(e) => set({ use_timing: e.target.checked })} className="accent-indigo-500" />
         </Field>
+        <Field label="Auto-watch sets" hint="Set codes (comma-separated, e.g. 30thc) whose cards join the watchlist the first time a copy is up for auction (Fanatics weekly / premier, eBay). Checked every 30 minutes; a card you remove stays off.">
+          <input value={(s.auto_watch?.sets ?? []).join(", ")}
+            onChange={(e) => set({ auto_watch: { presets: s.auto_watch?.presets ?? ["grade_raw", "undervalued_psa10"], sets: e.target.value.split(",").map((x) => x.trim()).filter(Boolean) } })}
+            className="w-48 rounded border border-gray-700 bg-gray-950 px-2 py-1 text-xs text-gray-200" />
+        </Field>
+        <Field label="Auto-watch targets" hint="The watch presets an auto-watched card gets (grade_raw, undervalued_psa10, artist_slabs, invest_bulk, regrade_9s).">
+          <input value={(s.auto_watch?.presets ?? []).join(", ")}
+            onChange={(e) => set({ auto_watch: { sets: s.auto_watch?.sets ?? [], presets: e.target.value.split(",").map((x) => x.trim()).filter(Boolean) } })}
+            className="w-48 rounded border border-gray-700 bg-gray-950 px-2 py-1 text-xs text-gray-200" />
+        </Field>
       </section>
 
       <h2 className="text-xs font-semibold uppercase tracking-wide text-gray-500">Selling</h2>

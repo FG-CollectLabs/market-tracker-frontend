@@ -836,6 +836,8 @@ export interface AnalysisSettings {
   sourcing_pct: number;
   capital_rate: number;
   use_timing: boolean;
+  // cards of these sets join the watchlist (with these presets' targets) the first time a copy is up for auction
+  auto_watch?: { sets: string[]; presets: string[] };
   value_source?: "pricecharting" | "comps" | "ebay"; // where a grade's market value comes from
   sell_fee_pct: number;
   exit_fee_pct: number;
