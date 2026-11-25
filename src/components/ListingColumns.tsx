@@ -144,6 +144,23 @@ function Axis({ v, side, axis }: { v?: number; side: "front" | "back"; axis: str
   const nearEdge = Object.values(BANDS[side]).some((e) => w !== e && Math.abs(w - e) < 0.5);
   return <span className={BAND_CLS[band]} title={`${side} ${axis} ${exact(w)}: ${BAND_TIP[band]}`}>{nearEdge ? exact(w) : fmt(w)}</span>;
 }
+// CGC Pristine is stricter, mostly on front L/R (Pristine share falls from
+// the first point off center: 32% at 50-51, 25% at 52-53, 9% past 55/45;
+// ~47k CGC copies pooled, 2026-11-25). Per axis: [green to, amber to].
+const PRISTINE: [number, number][] = [[51.5, 53.5], [53, 55], [52, 55], [52, 55]]; // front L/R, front T/B, back L/R, back T/B
+export function pristineBand(o?: GradeOdds): Band | undefined {
+  const vals = [o?.front?.lr, o?.front?.tb, o?.back?.lr, o?.back?.tb].map(worse);
+  if (vals.every((w) => w == null)) return undefined;
+  let band: Band = "green";
+  vals.forEach((w, i) => {
+    if (w == null) return;
+    const [g, a] = PRISTINE[i];
+    if (w > a) band = "red";
+    else if (w > g && band === "green") band = "amber";
+  });
+  return band;
+}
+
 // The copy's centering verdict for a 10: red if any axis is past PSA's
 // limit; amber "both front" when both front axes are noticed (they add up).
 export function centeringVerdict(o?: GradeOdds): { band: Band; label: string } | undefined {
@@ -160,15 +177,19 @@ export function CenteringCell({ o }: { o?: GradeOdds }) {
     return <span className="text-gray-600" title={o ? "No centering measured" : "Not pre-graded yet"}>—</span>;
   }
   const v = centeringVerdict(o);
+  const pr = pristineBand(o);
   const tip = "Left/right · top/bottom, the worse side first, colored by where PSA starts deducting for a 10 (all cards pooled):\n"
     + "Front: green to 52.5/47.5 (not deducted) · amber to 55/45 (noticed) · red past 55/45 (reject).\n"
-    + "Back: green to 52.5/47.5 · amber to 75/25 (small, flat dip) · red past 75/25 (reject)."
+    + "Back: green to 52.5/47.5 · amber to 75/25 (small, flat dip) · red past 75/25 (reject).\n"
+    + "CGC Pristine is stricter: ✓ inside front L/R 51.5/48.5, front T/B 53/47, back 52/48; ~ to 53.5/46.5 front L/R and 55/45 otherwise."
     + (o.centering_check?.status === "needs_manual_centering" ? "\nHeld for manual centering: the outline may be wrong." : "");
   return (
     <span className="inline-flex flex-col tabular-nums whitespace-nowrap text-[11px]" title={tip}>
       <span><span className="text-gray-500">F </span><Axis v={o.front?.lr} side="front" axis="L/R" /><span className="text-gray-600"> · </span><Axis v={o.front?.tb} side="front" axis="T/B" /></span>
       <span><span className="text-gray-500">B </span><Axis v={o.back?.lr} side="back" axis="L/R" /><span className="text-gray-600"> · </span><Axis v={o.back?.tb} side="back" axis="T/B" /></span>
       {v && v.band !== "green" && <span className={`text-[10px] ${v.band === "red" ? "text-red-300" : "text-amber-300/80"}`}>{v.label}</span>}
+      {pr === "green" && <span className="text-[10px] text-emerald-300" title="Centering inside CGC Pristine's bands (front L/R ≤51.5/48.5, front T/B ≤53/47, back ≤52/48): Pristine odds about as good as a centered copy">Pristine ✓</span>}
+      {pr === "amber" && <span className="text-[10px] text-amber-300/80" title="Pristine possible but noticed (front L/R to 53.5/46.5, front T/B and back to 55/45): Pristine odds down">Pristine ~</span>}
       {o.psa_centering_cap && <span className="text-[10px] text-amber-300/80">caps at {o.psa_centering_cap}</span>}
     </span>
   );
