@@ -1,7 +1,9 @@
 import AICheck from "./AICheck";
 import ManualCenteringBadge from "./ManualCenteringBadge";
 import { useEffect, useState } from "react";
-import { GRADE_ODDS_REFRESHED, refreshGradeOdds, type CopyRank, type GradeOdds } from "../lib/api";
+import { announceOddsRefreshed } from "../lib/useOddsReload";
+import { MiniSpinner } from "./Spinner";
+import { refreshGradeOdds, type CopyRank, type GradeOdds } from "../lib/api";
 
 // "Top 8% of PSA 10s": where this copy's centering sits among measured graded
 // copies of a grade (the card, else its set, else its rarity in its era,
@@ -50,7 +52,7 @@ function RefreshOdds({ o, onDone }: { o: GradeOdds; onDone: (n: GradeOdds) => vo
         try {
           const n = await refreshGradeOdds(o.id);
           onDone(n);
-          window.dispatchEvent(new Event(GRADE_ODDS_REFRESHED));
+          announceOddsRefreshed(o.listing_id ? [o.listing_id] : undefined);
         } catch (x) {
           setErr(String(x));
         } finally {
@@ -58,7 +60,7 @@ function RefreshOdds({ o, onDone }: { o: GradeOdds; onDone: (n: GradeOdds) => vo
         }
       }}
       className={`${err ? "text-red-400" : "text-gray-500 hover:text-indigo-300"} disabled:opacity-40`}>
-      {busy ? "…" : "↻"}
+      {busy ? <MiniSpinner /> : "↻"}
     </button>
   );
 }

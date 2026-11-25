@@ -1,9 +1,9 @@
 import { AutoMore, CheckAll } from "./BoardTools";
-import { useOddsReload } from "../lib/useOddsReload";
+import { useOddsRefreshing } from "../lib/useOddsReload";
 import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import { fetchWatchHunt, type HuntListing, type HuntListingsReport, type ValueSource } from "../lib/api";
-import { Spinner, ErrorMsg } from "./Spinner";
+import { MiniSpinner, Spinner, ErrorMsg } from "./Spinner";
 import { ShowFilter, countShows, showOf, type Show } from "./ActionCell";
 import type { HitReview } from "../lib/api";
 import { useColumns } from "../lib/useColumns";
@@ -34,7 +34,9 @@ export default function HuntListings({ seller, setSeller }: { seller: string; se
   const [rv, setRv] = useState<Record<string, HitReview | undefined>>({});
   const reviewOf = (l: HuntListing) => (l.listing_id in rv ? rv[l.listing_id] : l.review);
   const [rep, setRep] = useState<HuntListingsReport | null>(null);
-  const oddsReload = useOddsReload(); // ↻ on an odds badge: refetch so odds and EV recompute
+  const refreshing = useOddsRefreshing(); // ↻ on an odds badge: refetch so odds and EV recompute (rows show updating)
+  const oddsReload = refreshing.tick;
+  const settle = refreshing.settle;
   const [err, setErr] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const cols = useColumns("watchlist.hunt", LISTING_COLS, HUNT_COLS);
@@ -46,9 +48,9 @@ export default function HuntListings({ seller, setSeller }: { seller: string; se
     fetchWatchHunt({ years, gradeAt: Math.max(0, years - gradeEarly), feeGrowth: 0.03, valueSource: source || undefined })
       .then((r) => live && setRep(r))
       .catch((e) => live && setErr(String(e)))
-      .finally(() => live && setLoading(false));
+      .finally(() => { if (live) { setLoading(false); settle(oddsReload); } });
     return () => { live = false; };
-  }, [source, years, gradeEarly, oddsReload]);
+  }, [source, years, gradeEarly, oddsReload, settle]);
 
   const base = useMemo(() => (rep?.listings ?? []).filter((l) =>
     (!seller || l.seller === seller) && (!kind || l.kind === kind) && (!beatOnly || l.beats_benchmark) && (!hideSlow || !l.slow)),
@@ -90,7 +92,11 @@ export default function HuntListings({ seller, setSeller }: { seller: string; se
                 {s.label} <span className="text-xs text-gray-500 tabular-nums" title="beat the S&P graded later · priced"><span className="text-green-400/90">{s.beat}</span> / {s.priced}</span>
               </button>
             ))}
-            {loading && <span className="text-xs text-gray-500 px-2 pb-2">Loading…</span>}
+            {loading && (
+              <span className="inline-flex items-center gap-1.5 text-xs text-indigo-300 px-2 pb-2">
+                <MiniSpinner />{refreshing.all ? "Updating the board with the refreshed pre-grades…" : refreshing.count ? `Updating ${refreshing.count} refreshed ${refreshing.count === 1 ? "copy" : "copies"}…` : "Loading…"}
+              </span>
+            )}
           </div>
 
           {cur && (
@@ -144,7 +150,7 @@ export default function HuntListings({ seller, setSeller }: { seller: string; se
                   <ListingHead ids={cols.visible} />
                 </thead>
                 <tbody>{rows.slice(0, shown).map((l) => <ListingRow key={l.listing_id} l={l} ids={cols.visible}
-                  ctx={{ bench: rep.params.benchmark, review: reviewOf(l), onReview: (r) => setRv((m) => ({ ...m, [l.listing_id]: r })) }} />)}</tbody>
+                  ctx={{ bench: rep.params.benchmark, updating: refreshing.isPending(l.listing_id), review: reviewOf(l), onReview: (r) => setRv((m) => ({ ...m, [l.listing_id]: r })) }} />)}</tbody>
               </table>
               <AutoMore remaining={rows.length - shown} page={PAGE} onMore={() => setShown((v) => v + PAGE)} />
             </div>
