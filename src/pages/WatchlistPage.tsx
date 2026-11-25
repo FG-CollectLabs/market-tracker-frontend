@@ -22,6 +22,8 @@ import FilterActions from "../components/FilterActions";
 import BidsResults from "../components/BidsResults";
 import RawFinds from "../components/RawFinds";
 import BoughtToGrade from "../components/BoughtToGrade";
+import { useColumns } from "../lib/useColumns";
+import ColumnPicker from "../components/ColumnPicker";
 
 const usd = (c?: number | null) => (c == null ? "—" : `$${(c / 100).toFixed(2)}`);
 const INTENT_LABEL: Record<WatchIntent, string> = { grade: "Grade", invest: "Invest", flip: "Flip", watch: "Watch" };
@@ -92,6 +94,7 @@ const COLS: Record<ColId, { label: string; title?: string }> = {
   score_cgc: { label: "CGC score", title: "The same for CGC, Pristine 10s counted" },
   held_raw: { label: "Raw held/yr", title: "A raw copy's projected yearly return held two years, after fees (tier curve + its own trend)" },
 };
+const COL_META = (Object.keys(COLS) as ColId[]).map((id) => ({ id, label: COLS[id].label, title: COLS[id].title }));
 const TAB_COLS: Record<Tab, ColId[]> = {
   "": ["raw", "low", "to_low", "score_psa", "score_cgc", "be_psa", "be_cgc", "psa10", "cgc10", "held_raw", "play"],
   raw_grade: ["raw", "low", "to_low", "score_psa", "score_cgc", "be_psa", "be_cgc", "grade_le", "psa10", "cgc10", "held_raw"],
@@ -316,6 +319,10 @@ function WatchCards() {
   }, [items]);
   const targetCount = (k: BuyTarget) => (items ?? []).filter((it) => it.targets?.includes(k)).length;
 
+  // each tab starts with the columns that decide it; the Columns menu changes them (saved per tab)
+  const colState = useColumns(`watchlist.cards.${target || "all"}`, COL_META, TAB_COLS[target]);
+  const cols = colState.visible as ColId[];
+
   if (!session) return <p className="text-sm text-gray-400">Sign in with Google to see your watchlist.</p>;
   if (error) return <ErrorMsg msg={error} />;
   if (!items) return <Spinner />;
@@ -334,7 +341,6 @@ function WatchCards() {
       // not remembered; fine
     }
   };
-  const cols = TAB_COLS[target];
 
   const toggleExpanded = (k: string) => setExpanded((s) => {
     const n = new Set(s);
@@ -428,6 +434,7 @@ function WatchCards() {
             {label} <span className="text-xs text-gray-500">{n}</span>
           </button>
         ))}
+        <span className="ml-auto pb-1"><ColumnPicker cols={colState} /></span>
       </div>
       <h2 className="hidden print:block text-sm font-semibold">{target ? (BUY_TARGETS.find((t) => t.key === target)?.label ?? "No targets") : "Every target"}</h2>
 
