@@ -113,25 +113,62 @@ function NeedsReview({ l }: { l: HuntListing }) {
   );
 }
 
-// ---- Centering: each axis's split, worse side first, against PSA's 10 limits
-// (front 55/45, back 75/25; PSA 9 to 60/40 and 90/10).
+// ---- Centering: each axis's split, worse side first, colored by where PSA
+// graders actually start deducting for a 10 (the pre-grader's centering
+// analytics, ~74k PSA copies pooled, 2026-11-25; per-card bands later):
+//   front (each axis): green to 53/47 (odds within ~3 points of a centered
+//     copy), amber to 55/45 (noticed: down ~6-14 points), red past 55/45
+//     (PSA's limit for a 10: reject).
+//   back (each axis): green to 52/48, amber to 75/25 (a small dip, ~5-8
+//     points, then flat), red past 75/25 (PSA's limit).
+type Band = "green" | "amber" | "red";
+const BANDS = { front: { green: 53, amber: 55 }, back: { green: 52, amber: 75 } };
+const BAND_CLS: Record<Band, string> = { green: "text-green-300", amber: "text-amber-300", red: "text-red-300 font-semibold" };
+const BAND_TIP: Record<Band, string> = {
+  green: "not deducted: PSA 10 odds about the same as a centered copy",
+  amber: "noticed: PSA 10 odds down, still gradable for a 10",
+  red: "past PSA's limit for a 10: reject when aiming for a 10",
+};
 const worse = (v?: number) => (v == null ? undefined : Math.max(v, 100 - v));
 const fmt = (w: number) => `${Math.round(w)}/${Math.round(100 - w)}`;
-function Axis({ v, ten, nine }: { v?: number; ten: number; nine: number }) {
+const exact = (w: number) => `${w.toFixed(1)}/${(100 - w).toFixed(1)}`;
+function bandOf(side: "front" | "back", w: number): Band {
+  const b = BANDS[side];
+  return w <= b.green ? "green" : w <= b.amber ? "amber" : "red";
+}
+function Axis({ v, side, axis }: { v?: number; side: "front" | "back"; axis: string }) {
   const w = worse(v);
   if (w == null) return <span className="text-gray-600">–</span>;
-  return <span className={w <= ten ? "text-green-300" : w <= nine ? "text-amber-300" : "text-red-300"}>{fmt(w)}</span>;
+  const band = bandOf(side, w);
+  // near a band edge whole numbers would mislead (53.4 reads 53/47 but is amber)
+  const nearEdge = Object.values(BANDS[side]).some((e) => w !== e && Math.abs(w - e) < 0.5);
+  return <span className={BAND_CLS[band]} title={`${side} ${axis} ${exact(w)}: ${BAND_TIP[band]}`}>{nearEdge ? exact(w) : fmt(w)}</span>;
+}
+// The copy's centering verdict for a 10: red if any axis is past PSA's
+// limit; amber "both front" when both front axes are noticed (they add up).
+export function centeringVerdict(o?: GradeOdds): { band: Band; label: string } | undefined {
+  if (!o?.front && !o?.back) return undefined;
+  const ax: [("front" | "back"), number | undefined][] = [["front", o.front?.lr], ["front", o.front?.tb], ["back", o.back?.lr], ["back", o.back?.tb]];
+  const bands = ax.map(([side, v]) => { const w = worse(v); return w == null ? undefined : bandOf(side, w); });
+  if (bands.includes("red")) return { band: "red", label: "reject for 10" };
+  if (bands[0] === "amber" && bands[1] === "amber") return { band: "amber", label: "both front noticed" };
+  if (bands.includes("amber")) return { band: "amber", label: "noticed" };
+  return { band: "green", label: "clean" };
 }
 export function CenteringCell({ o }: { o?: GradeOdds }) {
   if (!o?.front && !o?.back) {
     return <span className="text-gray-600" title={o ? "No centering measured" : "Not pre-graded yet"}>—</span>;
   }
-  const tip = "Left/right · top/bottom, the worse side first. Green: PSA 10 (front ≤55/45, back ≤75/25); amber: PSA 9 (≤60/40, ≤90/10); red: worse."
+  const v = centeringVerdict(o);
+  const tip = "Left/right · top/bottom, the worse side first, colored by where PSA starts deducting for a 10 (all cards pooled):\n"
+    + "Front: green to 53/47 (not deducted) · amber to 55/45 (noticed) · red past 55/45 (reject).\n"
+    + "Back: green to 52/48 · amber to 75/25 (small, flat dip) · red past 75/25 (reject)."
     + (o.centering_check?.status === "needs_manual_centering" ? "\nHeld for manual centering: the outline may be wrong." : "");
   return (
     <span className="inline-flex flex-col tabular-nums whitespace-nowrap text-[11px]" title={tip}>
-      <span><span className="text-gray-500">F </span><Axis v={o.front?.lr} ten={55} nine={60} /><span className="text-gray-600"> · </span><Axis v={o.front?.tb} ten={55} nine={60} /></span>
-      <span><span className="text-gray-500">B </span><Axis v={o.back?.lr} ten={75} nine={90} /><span className="text-gray-600"> · </span><Axis v={o.back?.tb} ten={75} nine={90} /></span>
+      <span><span className="text-gray-500">F </span><Axis v={o.front?.lr} side="front" axis="L/R" /><span className="text-gray-600"> · </span><Axis v={o.front?.tb} side="front" axis="T/B" /></span>
+      <span><span className="text-gray-500">B </span><Axis v={o.back?.lr} side="back" axis="L/R" /><span className="text-gray-600"> · </span><Axis v={o.back?.tb} side="back" axis="T/B" /></span>
+      {v && v.band !== "green" && <span className={`text-[10px] ${v.band === "red" ? "text-red-300" : "text-amber-300/80"}`}>{v.label}</span>}
       {o.psa_centering_cap && <span className="text-[10px] text-amber-300/80">caps at {o.psa_centering_cap}</span>}
     </span>
   );
@@ -224,7 +261,7 @@ export const LISTING_COLS: ListingCol[] = [
     title: "What's waiting on a person: centering held for a manual check, an outline the AI couldn't fix, unmeasurable photos, a failed pre-grade, AI-found issues, or odds you flagged",
     td: (l) => <NeedsReview l={l} />,
   },
-  { id: "centering", label: "Centering", title: "Measured centering, front (F) and back (B): left/right · top/bottom, worse side first, colored by PSA grade", td: (l) => <CenteringCell o={l.grade_odds} /> },
+  { id: "centering", label: "Centering", title: "Measured centering, front (F) and back (B): left/right · top/bottom, worse side first: green not deducted, amber noticed, red reject for a 10", td: (l) => <CenteringCell o={l.grade_odds} /> },
   {
     id: "raw_links", label: "Raw links",
     title: "Check the raw price yourself: the card on TCGplayer and PriceCharting, eBay sold raw copies, and its PokeData set page (copies the card name to paste)",
