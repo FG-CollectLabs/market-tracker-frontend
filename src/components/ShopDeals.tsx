@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { fetchSealedDeals, refreshSealedDeals, watchSealed, type ShopDeal } from "../lib/api";
 import { Spinner } from "./Spinner";
+import ReturnCell from "./ReturnCell";
 import { usd } from "../pages/SealedTimingPage";
 
 // Deals: in-stock sealed items in any shop's whole catalog (not just the
@@ -26,6 +27,7 @@ export default function ShopDeals({ onWatched }: { onWatched?: () => void }) {
   const [minOff, setMinOff] = useState(0.15);
   const [suspect, setSuspect] = useState(false);
   const [shop, setShop] = useState("");
+  const [sort, setSort] = useState<"off" | "return" | "gain">("off");
   const [d, setD] = useState<{ deals: ShopDeal[]; last_refresh: string | null; method: string; categories?: { key: string; label: string }[] } | null>(null);
   const [hidden, setHiddenState] = useState<Set<string>>(loadHidden);
   const setHidden = (s: Set<string>) => { setHiddenState(s); saveHidden(s); };
@@ -44,7 +46,12 @@ export default function ShopDeals({ onWatched }: { onWatched?: () => void }) {
     return m;
   }, [byShop]);
   const cats = (d?.categories ?? []).filter((c) => catCount.has(c.key) || hidden.has(c.key));
-  const rows = useMemo(() => byShop.filter((x) => !hidden.has(x.category ?? "other")), [byShop, hidden]);
+  const rows = useMemo(() => {
+    const out = byShop.filter((x) => !hidden.has(x.category ?? "other"));
+    if (sort === "off") return out; // the server's order: biggest discount first
+    const v = (x: ShopDeal) => (sort === "return" ? x.returns?.irr_at_offer : x.returns?.irr_gain_pts) ?? -Infinity;
+    return [...out].sort((a, b) => v(b) - v(a));
+  }, [byShop, hidden, sort]);
   const toggle = (k: string) => { const s = new Set(hidden); if (s.has(k)) s.delete(k); else s.add(k); setHidden(s); };
   // only: show just this category (alt-click a chip)
   const only = (k: string) => setHidden(new Set((d?.categories ?? []).map((c) => c.key).filter((c) => c !== k)));
@@ -74,6 +81,9 @@ export default function ShopDeals({ onWatched }: { onWatched?: () => void }) {
         </select>
         <select value={shop} onChange={(e) => setShop(e.target.value)} className={sel}>
           <option value="">every shop</option>{shops.map((s) => <option key={s}>{s}</option>)}
+        </select>
+        <select value={sort} onChange={(e) => setSort(e.target.value as typeof sort)} className={sel} title="Return: held to the sealed plan's exit, at this deal's landed price">
+          <option value="off">biggest discount</option><option value="return">best return / yr</option><option value="gain">most return the discount adds</option>
         </select>
         <label className="flex items-center gap-1 text-gray-400" title="60%+ under market: usually a different product (a pack, a single, another set)">
           <input type="checkbox" checked={suspect} onChange={(e) => setSuspect(e.target.checked)} /> show suspect
@@ -109,7 +119,9 @@ export default function ShopDeals({ onWatched }: { onWatched?: () => void }) {
               <th className="py-1 pr-3 font-medium">Item</th><th className="py-1 pr-3 font-medium">Shop</th>
               <th className="py-1 pr-3 text-right font-medium" title="price; landed = with the shop's shipping and tax settings">Price</th>
               <th className="py-1 pr-3 text-right font-medium" title="our market price for the matched product (PriceCharting)">Market</th>
-              <th className="py-1 pr-3 text-right font-medium">Deal</th><th className="py-1 font-medium"></th>
+              <th className="py-1 pr-3 text-right font-medium">Deal</th>
+              <th className="py-1 pr-3 text-right font-medium" title="A year, held to the sealed plan's exit (12 months after rotation, else the projected best month) and sold net of fees: bought at market → at this deal, and the points the discount adds. Below: the same with the whole market flat. Matched products only.">Return / yr</th>
+              <th className="py-1 font-medium"></th>
             </tr></thead>
             <tbody>{rows.map((x) => (
               <tr key={x.id} className={`border-t border-gray-800 align-top ${x.suspect ? "opacity-60" : ""}`}>
@@ -126,6 +138,7 @@ export default function ShopDeals({ onWatched }: { onWatched?: () => void }) {
                   {x.market_off > 0 && <div className="text-emerald-300" title="price under market">{off(x.landed_off ?? x.market_off)} market</div>}
                   {x.was_off > 0 && <div className="text-sky-300" title="the shop's own markdown">{off(x.was_off)} shop sale</div>}
                 </td>
+                <td className="py-1.5 pr-3 text-right tabular-nums whitespace-nowrap">{x.product_id ? <ReturnCell x={x.returns} /> : <span className="text-gray-600" title="Not matched to a catalog product: no price history to project">–</span>}</td>
                 <td className="py-1.5 text-right whitespace-nowrap">
                   {x.product_id && (x.watched || done[x.id] ? <span className="text-emerald-400">watched</span>
                     : <button onClick={() => watch(x)} className="rounded border border-gray-700 px-2 py-0.5 text-gray-300 hover:text-white">Watch</button>)}
