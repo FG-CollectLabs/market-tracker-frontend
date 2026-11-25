@@ -116,13 +116,13 @@ function NeedsReview({ l }: { l: HuntListing }) {
 // ---- Centering: each axis's split, worse side first, colored by where PSA
 // graders actually start deducting for a 10 (the pre-grader's centering
 // analytics, ~74k PSA copies pooled, 2026-11-25; per-card bands later):
-//   front (each axis): green to 53/47 (odds within ~3 points of a centered
+//   front (each axis): green to 52.5/47.5 (odds within ~2 points of a centered
 //     copy), amber to 55/45 (noticed: down ~6-14 points), red past 55/45
 //     (PSA's limit for a 10: reject).
-//   back (each axis): green to 52/48, amber to 75/25 (a small dip, ~5-8
+//   back (each axis): green to 52.5/47.5, amber to 75/25 (a small dip, ~5-8
 //     points, then flat), red past 75/25 (PSA's limit).
 type Band = "green" | "amber" | "red";
-const BANDS = { front: { green: 53, amber: 55 }, back: { green: 52, amber: 75 } };
+const BANDS = { front: { green: 52.5, amber: 55 }, back: { green: 52.5, amber: 75 } };
 const BAND_CLS: Record<Band, string> = { green: "text-green-300", amber: "text-amber-300", red: "text-red-300 font-semibold" };
 const BAND_TIP: Record<Band, string> = {
   green: "not deducted: PSA 10 odds about the same as a centered copy",
@@ -161,8 +161,8 @@ export function CenteringCell({ o }: { o?: GradeOdds }) {
   }
   const v = centeringVerdict(o);
   const tip = "Left/right · top/bottom, the worse side first, colored by where PSA starts deducting for a 10 (all cards pooled):\n"
-    + "Front: green to 53/47 (not deducted) · amber to 55/45 (noticed) · red past 55/45 (reject).\n"
-    + "Back: green to 52/48 · amber to 75/25 (small, flat dip) · red past 75/25 (reject)."
+    + "Front: green to 52.5/47.5 (not deducted) · amber to 55/45 (noticed) · red past 55/45 (reject).\n"
+    + "Back: green to 52.5/47.5 · amber to 75/25 (small, flat dip) · red past 75/25 (reject)."
     + (o.centering_check?.status === "needs_manual_centering" ? "\nHeld for manual centering: the outline may be wrong." : "");
   return (
     <span className="inline-flex flex-col tabular-nums whitespace-nowrap text-[11px]" title={tip}>
