@@ -119,7 +119,7 @@ export default function ShopDeals({ onWatched }: { onWatched?: () => void }) {
                 </td>
                 <td className="py-1.5 pr-3 text-gray-300 whitespace-nowrap">{x.shop_name}<div className="text-[10px] text-gray-500">seen {ago(x.first_seen)}</div></td>
                 <td className="py-1.5 pr-3 text-right tabular-nums text-gray-100">{usd(x.price_cents)}
-                  <div className="text-[10px] text-gray-500">{x.landed_cents !== x.price_cents ? `${usd(x.landed_cents)} landed` : x.shipping_known ? "free ship" : "+ ship?"}</div></td>
+                  <div className="text-[10px] text-gray-500">{x.landed_cents !== x.price_cents ? `${usd(x.landed_cents)} landed` : x.free_ship_assumed ? `free ship at ${usd(x.free_ship_min_cents ?? 0)}+` : x.shipping_known ? "free ship" : "+ ship?"}</div></td>
                 <td className="py-1.5 pr-3 text-right tabular-nums text-gray-400">{x.market_cents ? usd(x.market_cents) : "–"}
                   {x.was_cents ? <div className="text-[10px] text-gray-500">was {usd(x.was_cents)}</div> : null}</td>
                 <td className="py-1.5 pr-3 text-right tabular-nums whitespace-nowrap">

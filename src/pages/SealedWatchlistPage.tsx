@@ -149,6 +149,7 @@ export default function SealedWatchlistPage() {
                           <a href={b.url} target="_blank" rel="noreferrer" className="font-medium text-emerald-300 hover:underline">{usd(b.landed_cents)} at {b.retailer} ↗</a>
                           {b.landed_cents !== b.price_cents && <div className="text-[10px] text-gray-500">{usd(b.price_cents)} + {usd(b.add_ship_cents)} ship + {usd(b.tax_cents)} tax</div>}
                           {!b.shipping_known && <div className="text-[10px] text-amber-300">shipping not set for this shop</div>}
+                          {b.free_ship_assumed && <div className="text-[10px] text-sky-300/80" title="Settings: orders are filled out to the shop's free-shipping minimum">free ship (assumes a {usd(b.free_ship_min_cents ?? 0)}+ order)</div>}
                           {b.seller_note && <div className="text-[10px] text-gray-500">{b.seller ? `${b.seller} · ` : ""}{b.seller_note}</div>}
                           {r.below_target && <div className="text-[10px] text-emerald-300">below your target</div>}
                           {r.market_check && <div className="text-[10px] text-amber-300" title={r.market_check}>market price to check</div>}
@@ -194,6 +195,7 @@ export default function SealedWatchlistPage() {
                                 <td className="py-0.5 pr-3 tabular-nums text-gray-100">{usd(o.landed_cents)}
                                   {o.landed_cents !== o.price_cents && <span className="text-gray-500"> ({usd(o.price_cents)} + {usd(o.add_ship_cents)} ship + {usd(o.tax_cents)} tax)</span>}
                                   {!o.shipping_known && <span className="text-amber-300"> no shipping set</span>}
+                                  {o.free_ship_assumed && <span className="text-sky-300/80" title="Settings: orders are filled out to the shop's free-shipping minimum"> free ship at {usd(o.free_ship_min_cents ?? 0)}+</span>}
                                   {o.shipping_cents ? <span className="text-gray-500"> incl. {usd(o.shipping_cents)} ship</span> : ""}
                                   {o.premium_cents ? <span className="text-gray-500"> (bid {usd(o.price_cents)} + {usd(o.premium_cents)} premium)</span> : ""}
                                   {o.fancash_cents != null && <span className="text-emerald-300/80"> · {usd(o.fancash_cents)} in FanCash</span>}</td>
