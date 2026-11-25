@@ -1,6 +1,6 @@
 import { AutoMore, CheckAll } from "./BoardTools";
 import { useOddsReload } from "../lib/useOddsReload";
-import { Fragment, useEffect, useMemo, useState } from "react";
+import { Fragment, useEffect, useMemo, useState, type ReactNode } from "react";
 import { Link } from "react-router-dom";
 import { fetchCCRegrade, fetchRegrade, type CCLang, type RegradeListing, type RegradePlay, type RegradeReport, type ValueSource } from "../lib/api";
 import { Spinner, ErrorMsg } from "./Spinner";
@@ -8,13 +8,22 @@ import GradeOddsBadge from "./GradeOddsBadge";
 import { CheckCentering } from "./HuntListings";
 import { ItemNumber } from "./BidCells";
 import ActionCell, { ShowFilter, countShows, showOf, type Show } from "./ActionCell";
-import type { HitReview } from "../lib/api";
+import type { HitReview, LaterPlay } from "../lib/api";
+import { useColumns, type ColMeta } from "../lib/useColumns";
+import ColumnPicker, { FROZEN_BOX, FROZEN_HEAD } from "./ColumnPicker";
+import { CenteringCell, centeringVerdict } from "./ListingColumns";
 
 // Graded side of the Consigner board: slabs below the premium grade from the
 // tracked consigners, each priced as a crack-and-resubmit (PSA, CGC; CGC 10s
 // for Pristine) against just holding the slab. Shafted copies: a good-looking
 // PSA 9 that should have been a 10, a BGS 9.5 or TAG 10 that crosses to a
 // PSA 10, a CGC 10 that reshoots Pristine.
+//
+// Views: regrade EV positive; value slabs (offered under what the slab cost
+// its grader to make: raw + fee + shipping, the seller eating the fees);
+// hold now and act later (sell or crack at 3-24 months on the card's
+// projected prices beats today); and a centering filter for the slabs whose
+// measured centering looks like a 10 (under-graded 9s).
 
 const usd = (c?: number | null) => (c == null ? "–" : `${c < 0 ? "−" : ""}$${(Math.abs(c) / 100).toFixed(2)}`);
 const pc = (v?: number | null) => (v == null ? "–" : `${(v * 100).toFixed(0)}%`);
@@ -23,7 +32,9 @@ const DAY = 864e5;
 const startOfDay = (d: Date) => new Date(d.getFullYear(), d.getMonth(), d.getDate());
 
 type Ending = "" | "today" | "tomorrow" | "48h" | "week";
-type Sort = "ending" | "best_ev" | "roi" | "discount";
+type Sort = "ending" | "best_ev" | "roi" | "discount" | "under_cost" | "later";
+type View = "regrade" | "value" | "later" | "all";
+type CenterF = "" | "clean" | "gradable";
 
 const GRADERS: [string, string][] = [["", "All slabs"], ["psa", "PSA 9"], ["cgc", "CGC"], ["bgs", "BGS"], ["tag", "TAG"], ["pcg", "PCG"]];
 const gradeLabel = (gk: string) => {
@@ -69,7 +80,9 @@ export default function RegradeBoard({ seller, setSeller, market, lang = "en" }:
   const [grader, setGrader] = useState("");
   const [ending, setEnding] = useState<Ending>("");
   const [kind, setKind] = useState<"" | "auction" | "buy_now">("");
-  const [posOnly, setPosOnly] = useState(true);
+  const [view, setView] = useState<View>("regrade");
+  const [centerF, setCenterF] = useState<CenterF>("");
+  const cols = useColumns(cc ? "regrade.cc" : "regrade.board", REGRADE_COLS, REGRADE_DEFAULTS);
   const [show, setShow] = useState<Show>("open");
   const [rv, setRv] = useState<Record<string, HitReview | undefined>>({});
   const reviewOf = (l: RegradeListing) => (l.listing_id in rv ? rv[l.listing_id] : l.review);
@@ -100,17 +113,25 @@ export default function RegradeBoard({ seller, setSeller, market, lang = "en" }:
     const until = endsBefore(ending);
     return (rep?.listings ?? []).filter((l) =>
       (!seller || l.seller === seller) && (!grader || l.grader === grader) && (!kind || l.kind === kind) &&
-      (!ending || (l.ends_at && new Date(l.ends_at).getTime() < until)) && (!posOnly || (l.best?.ev_cents ?? -1) > 0) &&
+      (!ending || (l.ends_at && new Date(l.ends_at).getTime() < until)) &&
+      (view !== "regrade" || (l.best?.ev_cents ?? -1) > 0) &&
+      (view !== "value" || (l.under_cost_to_make_cents ?? -1) > 0) &&
+      (view !== "later" || (l.later?.beats_now_cents ?? -1) > 0) &&
+      (!centerF || centerOK(l, centerF)) &&
       (!measuredOnly || (l.best != null && l.best.rate_source !== "settings")));
-  }, [rep, seller, grader, kind, ending, posOnly, measuredOnly]);
+  }, [rep, seller, grader, kind, ending, view, centerF, measuredOnly]);
   const showCounts = useMemo(() => countShows(base, reviewOf), [base, rv]); // eslint-disable-line react-hooks/exhaustive-deps
   const rows = useMemo(() => {
     const out = base.filter((l) => show === "all" || showOf(reviewOf(l)) === show);
     const val = (l: RegradeListing) => sort === "best_ev" ? l.best?.ev_cents : sort === "roi" ? l.best?.roi
-      : sort === "discount" ? (l.vs_hold == null ? undefined : -l.vs_hold) : undefined;
+      : sort === "discount" ? (l.vs_hold == null ? undefined : -l.vs_hold)
+      : sort === "under_cost" ? l.under_cost_to_make_cents
+      : sort === "later" ? l.later?.ev_cents : undefined;
     return sort === "ending" ? out : [...out].sort((a, b) => (val(b) ?? -Infinity) - (val(a) ?? -Infinity));
   }, [base, show, rv, sort]); // eslint-disable-line react-hooks/exhaustive-deps
-  useEffect(() => setShown(PAGE), [seller, grader, kind, ending, posOnly, sort, show]);
+  useEffect(() => setShown(PAGE), [seller, grader, kind, ending, view, centerF, sort, show]);
+  // each view's natural order
+  useEffect(() => { setSort(view === "value" ? "under_cost" : view === "later" ? "later" : "best_ev"); }, [view]);
 
   const sel = "rounded border border-gray-700 bg-gray-950 px-2 py-1 text-xs text-gray-200";
   const page = rows.slice(0, shown);
@@ -172,10 +193,24 @@ export default function RegradeBoard({ seller, setSeller, market, lang = "en" }:
             </>}
             <label className="flex items-center gap-1.5">Sort
               <select value={sort} onChange={(e) => setSort(e.target.value as Sort)} className={sel}>
-                <option value="best_ev">Best regrade EV</option><option value="roi">Best regrade ROI</option><option value="discount">Cheapest vs slab market</option><option value="ending">Ending soonest</option>
+                <option value="best_ev">Best regrade EV</option><option value="roi">Best regrade ROI</option><option value="discount">Cheapest vs slab market</option>
+                <option value="under_cost">Most under cost to make</option><option value="later">Best later EV</option><option value="ending">Ending soonest</option>
               </select>
             </label>
-            <label className="flex items-center gap-1.5"><input type="checkbox" checked={posOnly} onChange={(e) => setPosOnly(e.target.checked)} /> Regrade EV positive only</label>
+            <label className="flex items-center gap-1.5">View
+              <select value={view} onChange={(e) => setView(e.target.value as View)} className={sel}>
+                <option value="regrade">Regrade EV positive</option>
+                <option value="value">Value: under cost to make</option>
+                <option value="later">Hold now, act later beats today</option>
+                <option value="all">All slabs</option>
+              </select>
+            </label>
+            <label className="flex items-center gap-1.5" title="The slab's measured centering against PSA 10: clean = every axis green (not deducted); gradable = no axis past PSA's limit. Under-graded 9s hide here.">Centering
+              <select value={centerF} onChange={(e) => setCenterF(e.target.value as CenterF)} className={sel}>
+                <option value="">Any</option><option value="clean">Clean for a 10</option><option value="gradable">Gradable for a 10</option>
+              </select>
+            </label>
+            <ColumnPicker cols={cols} />
             {cc && <label className="flex items-center gap-1.5" title="Only slabs the pre-grader has measured (the EV uses this copy's odds, not the base rate)">
               <input type="checkbox" checked={measuredOnly} onChange={(e) => setMeasuredOnly(e.target.checked)} /> Pre-graded only</label>}
             {!cc && <label className="flex items-center gap-1.5">Prices
@@ -189,33 +224,30 @@ export default function RegradeBoard({ seller, setSeller, market, lang = "en" }:
           </div>
 
           {rows.length === 0 ? <p className="text-sm text-gray-500">Nothing matches right now.</p> : (
-            <div className="overflow-x-auto rounded-lg border border-gray-800 bg-gray-900">
+            <div className={FROZEN_BOX}>
               <table className="w-full text-xs">
-                <thead className="text-gray-500 text-left max-lg:!static">
+                <thead className={`text-gray-500 text-left ${FROZEN_HEAD}`}>
                   <tr>
-                    <th className="py-2 px-3 font-medium">Card</th>
-                    <th className="py-2 px-2 font-medium" title="Bid (with your max) or pass; then report won / lost">Action</th>
-                    <th className="py-2 px-2 font-medium">Slab</th>
-                    <th className="py-2 px-2 font-medium">Seller</th>
-                    <th className="py-2 px-2 font-medium">Ends</th>
-                    <th className="py-2 px-2 font-medium text-right" title="Ask or current bid, with its listed shipping">Now</th>
-                    <th className="py-2 px-2 font-medium text-right" title="Item (auctions: the slab's market, its expected close) + what it adds to an order from the consigner">Your cost</th>
-                    <th className="py-2 px-2 font-medium text-right" title="This slab grade's 90-day market, your cost against it, and what selling it as is nets">Slab market</th>
-                    <th className="py-2 px-2 font-medium text-right" title="PSA 10 market and the card's PSA gem rate">PSA 10</th>
-                    <th className="py-2 px-2 font-medium text-right" title="The raw card's market and your cost for this slab against it: what buying a raw copy to grade costs instead">Raw</th>
-                    <th className="py-2 px-2 font-medium" title="Each regrade play: share expected back at the top grade and the EV after the buy, fees and the selling fee. Hover for the working.">Regrade plays</th>
-                    <th className="py-2 px-2 font-medium">Photos</th>
-                    <th className="py-2 px-3 font-medium text-right">Best EV</th>
+                    {cols.visible.map((id) => {
+                      const c = REGRADE_BY_ID.get(id)!;
+                      return <th key={id} title={c.title} className={`py-2 font-medium whitespace-nowrap ${id === "card" ? "px-3" : "px-2"} ${c.right ? "text-right" : ""}`}>{c.label}</th>;
+                    })}
                   </tr>
                 </thead>
                 <tbody>
                   {page.map((l, i) => {
                     const day = sort === "ending" ? dayLabel(l.ends_at) : "";
                     const head = sort === "ending" && (i === 0 || dayLabel(page[i - 1].ends_at) !== day);
+                    const x: RCtx = { cc, review: reviewOf(l), onReview: (r) => setRv((m) => ({ ...m, [l.listing_id]: r })) };
                     return (
                       <Fragment key={l.listing_id}>
-                        {head && <tr className="border-t border-gray-800 bg-gray-950/60"><td colSpan={13} className="py-1.5 px-3 text-[11px] font-semibold text-gray-300 uppercase tracking-wide">{day}</td></tr>}
-                        <Row l={l} cc={cc} review={reviewOf(l)} onReview={(r) => setRv((m) => ({ ...m, [l.listing_id]: r }))} />
+                        {head && <tr className="border-t border-gray-800 bg-gray-950/60"><td colSpan={cols.visible.length} className="py-1.5 px-3 text-[11px] font-semibold text-gray-300 uppercase tracking-wide">{day}</td></tr>}
+                        <tr className="border-t border-gray-800 align-top">
+                          {cols.visible.map((id) => {
+                            const c = REGRADE_BY_ID.get(id)!;
+                            return <td key={id} className={id === "card" ? "py-1.5 px-3" : c.right ? TDN : "py-1.5 px-2"}>{c.td(l, x)}</td>;
+                          })}
+                        </tr>
                       </Fragment>
                     );
                   })}
@@ -261,64 +293,130 @@ function Play({ p }: { p: RegradePlay }) {
 
 const MEASURABLE = new Set(["psa", "cgc", "bgs"]);
 
-function Row({ l, cc, review, onReview }: { l: RegradeListing; cc?: boolean; review?: HitReview; onReview: (r: HitReview | undefined) => void }) {
-  const td = "py-1.5 px-2 text-right tabular-nums whitespace-nowrap";
-  const v = l.vs_hold;
+const TDN = "py-1.5 px-2 text-right tabular-nums whitespace-nowrap";
+
+interface RCtx { cc?: boolean; review?: HitReview; onReview: (r: HitReview | undefined) => void }
+interface RegradeCol extends ColMeta { right?: boolean; td: (l: RegradeListing, x: RCtx) => ReactNode }
+
+function centerOK(l: RegradeListing, f: CenterF): boolean {
+  const v = centeringVerdict(l.grade_odds);
+  if (!v) return false;
+  return f === "clean" ? v.band === "green" : v.band !== "red";
+}
+
+function Later({ p }: { p?: LaterPlay }) {
+  if (!p) return <span className="text-gray-600" title="No price projection for this card (or no slab market)">–</span>;
+  const what = p.action === "hold" ? "sell as is" : `crack → ${p.action.toUpperCase()}`;
+  const tip = [p.note, p.basis ? `Projection: ${p.basis}` : "", `Cost of money while held: ${usd(p.capital_cents)}`,
+    `PSA 10 ${p.ten_drift >= 0 ? "+" : ""}${(p.ten_drift * 100).toFixed(0)}% · this slab ${p.slab_drift >= 0 ? "+" : ""}${(p.slab_drift * 100).toFixed(0)}% by then`].filter(Boolean).join("\n");
   return (
-    <tr className="border-t border-gray-800 align-top">
-      <td className="py-1.5 px-3">
-        <div className="flex gap-2 items-start min-w-[15rem]">
-          {(l.image_url || l.card_image_url) && <img src={l.image_url || l.card_image_url} alt="" loading="lazy" className="w-9 h-12 object-cover rounded border border-gray-800" />}
-          <div className="min-w-0">
-            <Link to={`/cards/${l.display_key}`} className="text-gray-100 hover:text-indigo-300">{l.name}</Link>
-            <span className="text-gray-500"> #{l.number} · {l.set_code}</span>
-            {l.watched && <span className="ml-1.5 px-1 rounded bg-indigo-900/50 text-indigo-200" title="On your watchlist">watching</span>}
-            {l.review?.status === "interested" && !l.review.result && <span className="ml-1.5 px-1 rounded bg-indigo-900/50 text-indigo-200">bidding</span>}
-            {l.review?.status === "shortlist" && <span className="ml-1.5 px-1 rounded bg-amber-900/50 text-amber-200">interested</span>}
-            {l.url
-              ? <a href={l.url} target="_blank" rel="noreferrer" className="block truncate max-w-[22rem] text-indigo-300/80 hover:text-indigo-200">{l.title}</a>
-              : <div className="truncate max-w-[22rem] text-gray-500">{l.title}</div>}
-            <ItemNumber n={l.item_number} />
-          </div>
-        </div>
-      </td>
-      <td className="py-1.5 px-2">{cc ? <a href={l.url} target="_blank" rel="noreferrer" className="text-indigo-300/80 hover:text-indigo-200">Buy on CC ↗</a>
-        : <ActionCell listingId={l.listing_id} displayKey={l.display_key} priceCents={l.price_cents} review={review}
-        shown={{ grade_key: l.grade_key, add_cents: l.add_cents, hold_cents: l.hold_cents, best: l.best, plays: l.plays, odds: l.grade_odds }} onChange={onReview} />}</td>
-      <td className="py-1.5 px-2 whitespace-nowrap"><span className="px-1.5 py-0.5 rounded border border-gray-700 text-gray-200">{gradeLabel(l.grade_key)}</span></td>
-      <td className="py-1.5 px-2 whitespace-nowrap text-gray-400">{l.seller_label}</td>
-      <td className="py-1.5 px-2 whitespace-nowrap text-gray-300">
-        {l.kind === "auction" ? <>{endsAt(l.ends_at)}{l.bids != null && <div className="text-[10px] text-gray-500">{l.bids} bids</div>}</> : <span className="text-gray-400">Buy Now</span>}
-      </td>
-      <td className={`${td} text-gray-400`}>{usd(l.price_cents)}</td>
-      <td className={`${td} text-gray-100`} title={l.notes?.join("\n")}>
-        {usd(l.add_cents)}
-        {l.expected && <div className="text-[10px] text-gray-500">expected close</div>}
-      </td>
-      <td className={`${td} text-gray-300`}>
-        {usd(l.hold_cents)}
-        {v != null && <div className={`text-[10px] ${v <= 0.9 ? "text-green-300" : v <= 1 ? "text-green-300/70" : "text-gray-500"}`}>{v <= 1 ? `${Math.round((1 - v) * 100)}% under` : `${Math.round((v - 1) * 100)}% over`}</div>}
-        {l.hold_ev_cents != null && <div className={`text-[10px] ${l.hold_ev_cents >= 0 ? "text-green-300/80" : "text-gray-500"}`} title="Sell the slab as is: market after the selling fee, minus your cost">hold {usd(l.hold_ev_cents)}</div>}
-      </td>
-      <td className={`${td} text-gray-300`}>
-        {usd(l.psa10_cents)}
-        {l.psa_gem_rate != null && l.psa_gem_rate > 0 && <div className="text-[10px] text-gray-500">gem {pc(l.psa_gem_rate)}</div>}
-      </td>
-      <td className={`${td} text-gray-300`}>
-        {l.raw_cents ? <>
-          {usd(l.raw_cents)}
-          <div className="text-[10px] text-gray-500" title="Your cost for this slab ÷ the raw card's market">slab {(l.add_cents / l.raw_cents).toFixed(1)}× raw</div>
-        </> : <span className="text-gray-600">–</span>}
-      </td>
-      <td className="py-1.5 px-2">{l.plays?.length ? l.plays.map((p) => <Play key={p.to} p={p} />) : <span className="text-gray-600" title={l.notes?.join("\n")}>–</span>}</td>
-      <td className="py-1.5 px-2">
-        {l.grade_odds && l.grade_odds.status !== "failed" ? <GradeOddsBadge o={l.grade_odds} compact />
-          : MEASURABLE.has(l.grader) ? <CheckCentering listingId={l.listing_id} photos={l.image_count} source={cc ? "cc" : "ebay"} />
-          : <span className="text-[11px] text-gray-600" title="The pre-grader measures PSA, CGC and BGS slabs only">not measurable</span>}
-      </td>
-      <td className={`py-1.5 px-3 text-right tabular-nums whitespace-nowrap font-semibold ${l.best == null ? "text-gray-600" : l.best.ev_cents >= 0 ? "text-green-300" : "text-red-300"}`}>
-        {l.best ? <>{usd(l.best.ev_cents)}<div className="text-[10px] font-normal text-gray-500">→ {l.best.to.toUpperCase()}</div></> : "–"}
-      </td>
-    </tr>
+    <span className="inline-flex flex-col items-end" title={tip}>
+      <span className={`font-semibold ${p.ev_cents >= 0 ? "text-green-300" : "text-red-300"}`}>{usd(p.ev_cents)}</span>
+      <span className="text-[10px] text-gray-400 whitespace-nowrap">{what} in {p.months} mo</span>
+      <span className={`text-[10px] ${p.beats_now_cents > 0 ? "text-sky-300" : "text-gray-500"}`}>
+        {p.beats_now_cents > 0 ? `+${usd(p.beats_now_cents)} vs today` : "today is better"}
+      </span>
+    </span>
   );
 }
+
+const REGRADE_COLS: RegradeCol[] = [
+  {
+    id: "card", label: "Card", locked: true,
+    td: (l) => (
+      <div className="flex gap-2 items-start min-w-[15rem]">
+        {(l.image_url || l.card_image_url) && <img src={l.image_url || l.card_image_url} alt="" loading="lazy" className="w-9 h-12 object-cover rounded border border-gray-800" />}
+        <div className="min-w-0">
+          <Link to={`/cards/${l.display_key}`} className="text-gray-100 hover:text-indigo-300">{l.name}</Link>
+          <span className="text-gray-500"> #{l.number} · {l.set_code}</span>
+          {l.watched && <span className="ml-1.5 px-1 rounded bg-indigo-900/50 text-indigo-200" title="On your watchlist">watching</span>}
+          {l.review?.status === "interested" && !l.review.result && <span className="ml-1.5 px-1 rounded bg-indigo-900/50 text-indigo-200">bidding</span>}
+          {l.review?.status === "shortlist" && <span className="ml-1.5 px-1 rounded bg-amber-900/50 text-amber-200">interested</span>}
+          {l.url
+            ? <a href={l.url} target="_blank" rel="noreferrer" className="block truncate max-w-[22rem] text-indigo-300/80 hover:text-indigo-200">{l.title}</a>
+            : <div className="truncate max-w-[22rem] text-gray-500">{l.title}</div>}
+          <ItemNumber n={l.item_number} />
+        </div>
+      </div>
+    ),
+  },
+  {
+    id: "action", label: "Action", title: "Bid (with your max) or pass; then report won / lost",
+    td: (l, x) => x.cc ? <a href={l.url} target="_blank" rel="noreferrer" className="text-indigo-300/80 hover:text-indigo-200">Buy on CC ↗</a>
+      : <ActionCell listingId={l.listing_id} displayKey={l.display_key} priceCents={l.price_cents} review={x.review}
+        shown={{ grade_key: l.grade_key, add_cents: l.add_cents, hold_cents: l.hold_cents, best: l.best, plays: l.plays, odds: l.grade_odds }} onChange={x.onReview} />,
+  },
+  { id: "slab", label: "Slab", td: (l) => <span className="whitespace-nowrap px-1.5 py-0.5 rounded border border-gray-700 text-gray-200">{gradeLabel(l.grade_key)}</span> },
+  { id: "seller", label: "Seller", td: (l) => <span className="whitespace-nowrap text-gray-400">{l.seller_label}</span> },
+  {
+    id: "ends", label: "Ends",
+    td: (l) => <span className="whitespace-nowrap text-gray-300">{l.kind === "auction" ? <>{endsAt(l.ends_at)}{l.bids != null && <div className="text-[10px] text-gray-500">{l.bids} bids</div>}</> : <span className="text-gray-400">Buy Now</span>}</span>,
+  },
+  { id: "now", label: "Now", right: true, title: "Ask or current bid, with its listed shipping", td: (l) => <span className="text-gray-400">{usd(l.price_cents)}</span> },
+  {
+    id: "cost", label: "Your cost", right: true, title: "Item (auctions: the slab's market, its expected close) + what it adds to an order from the consigner",
+    td: (l) => <span className="text-gray-100" title={l.notes?.join("\n")}>{usd(l.add_cents)}{l.expected && <div className="text-[10px] text-gray-500">expected close</div>}</span>,
+  },
+  {
+    id: "slab_market", label: "Slab market", right: true, title: "This slab grade's 90-day market, your cost against it, and what selling it as is nets",
+    td: (l) => {
+      const v = l.vs_hold;
+      return (
+        <span className="text-gray-300">
+          {usd(l.hold_cents)}
+          {v != null && <div className={`text-[10px] ${v <= 0.9 ? "text-green-300" : v <= 1 ? "text-green-300/70" : "text-gray-500"}`}>{v <= 1 ? `${Math.round((1 - v) * 100)}% under` : `${Math.round((v - 1) * 100)}% over`}</div>}
+          {l.hold_ev_cents != null && <div className={`text-[10px] ${l.hold_ev_cents >= 0 ? "text-green-300/80" : "text-gray-500"}`} title="Sell the slab as is: market after the selling fee, minus your cost">hold {usd(l.hold_ev_cents)}</div>}
+        </span>
+      );
+    },
+  },
+  {
+    id: "cost_to_make", label: "Cost to make", right: true,
+    title: "What the slab cost its grader to make: the raw card + the grading fee and shipping. Under it, the seller is eating the grading fees: you get the slab for less than a raw copy plus grading.",
+    td: (l) => {
+      if (l.cost_to_make_cents == null) return <span className="text-gray-600">–</span>;
+      const u = l.under_cost_to_make_cents ?? 0;
+      return (
+        <span className="text-gray-300" title={l.cost_to_make_note}>
+          {usd(l.cost_to_make_cents)}
+          <div className={`text-[10px] ${u > 0 ? "text-green-300" : "text-gray-500"}`}>{u > 0 ? `${usd(u)} under` : `${usd(-u)} over`}</div>
+        </span>
+      );
+    },
+  },
+  {
+    id: "psa10", label: "PSA 10", right: true, title: "PSA 10 market and the card's PSA gem rate",
+    td: (l) => <span className="text-gray-300">{usd(l.psa10_cents)}{l.psa_gem_rate != null && l.psa_gem_rate > 0 && <div className="text-[10px] text-gray-500">gem {pc(l.psa_gem_rate)}</div>}</span>,
+  },
+  {
+    id: "raw", label: "Raw", right: true, title: "The raw card's market and your cost for this slab against it: what buying a raw copy to grade costs instead",
+    td: (l) => l.raw_cents ? <span className="text-gray-300">{usd(l.raw_cents)}<div className="text-[10px] text-gray-500" title="Your cost for this slab ÷ the raw card's market">slab {(l.add_cents / l.raw_cents).toFixed(1)}× raw</div></span> : <span className="text-gray-600">–</span>,
+  },
+  {
+    id: "centering", label: "Centering", title: "The slab's measured centering (from its photos), colored against PSA 10: green not deducted, amber noticed, red past PSA's limit. A PSA 9 that's all green may be under-graded.",
+    td: (l) => <CenteringCell o={l.grade_odds} />,
+  },
+  {
+    id: "plays", label: "Regrade plays", title: "Each regrade play: share expected back at the top grade and the EV after the buy, fees and the selling fee. Hover for the working.",
+    td: (l) => l.plays?.length ? <>{l.plays.map((p) => <Play key={p.to} p={p} />)}</> : <span className="text-gray-600" title={l.notes?.join("\n")}>–</span>,
+  },
+  {
+    id: "photos", label: "Photos",
+    td: (l, x) => l.grade_odds && l.grade_odds.status !== "failed" ? <GradeOddsBadge o={l.grade_odds} compact />
+      : MEASURABLE.has(l.grader) ? <CheckCentering listingId={l.listing_id} photos={l.image_count} source={x.cc ? "cc" : "ebay"} />
+      : <span className="text-[11px] text-gray-600" title="The pre-grader measures PSA, CGC and BGS slabs only">not measurable</span>,
+  },
+  {
+    id: "later", label: "Later", right: true,
+    title: "Hold now and act later: the best of selling as is or cracking to PSA / CGC at 3-24 months, on the card's projected prices, less the cost of money while held. Hover for the working.",
+    td: (l) => <Later p={l.later} />,
+  },
+  {
+    id: "best", label: "Best EV", right: true,
+    td: (l) => <span className={`font-semibold ${l.best == null ? "text-gray-600" : l.best.ev_cents >= 0 ? "text-green-300" : "text-red-300"}`}>
+      {l.best ? <>{usd(l.best.ev_cents)}<div className="text-[10px] font-normal text-gray-500">→ {l.best.to.toUpperCase()}</div></> : "–"}
+    </span>,
+  },
+];
+const REGRADE_BY_ID = new Map(REGRADE_COLS.map((c) => [c.id, c]));
+const REGRADE_DEFAULTS = ["card", "action", "slab", "seller", "ends", "now", "cost", "slab_market", "cost_to_make", "psa10", "raw", "centering", "plays", "photos", "later", "best"];
