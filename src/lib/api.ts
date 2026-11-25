@@ -3429,6 +3429,25 @@ export interface RegradeListing {
   watched?: boolean;
   review?: HitReview;
   notes?: string[];
+  cost_to_make_cents?: number; // raw + the slab's grader's fee and shipping
+  under_cost_to_make_cents?: number; // + = offered under what grading it cost the seller
+  cost_to_make_note?: string;
+  later?: LaterPlay; // hold now, act later on the card's projected prices
+}
+
+// The best thing to do with a slab later: sell as is (hold) or crack and
+// resubmit (psa / cgc) at `months`, on the card's projected prices.
+export interface LaterPlay {
+  months: number;
+  action: "hold" | "psa" | "cgc";
+  ev_cents: number;
+  ten_drift: number;
+  slab_drift: number;
+  beats_now_cents: number;
+  capital_cents: number;
+  basis?: string;
+  note: string;
+  play?: RegradePlay;
 }
 
 export interface RegradeReport {
