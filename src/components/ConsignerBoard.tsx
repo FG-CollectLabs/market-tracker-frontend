@@ -1,16 +1,13 @@
 import { AutoMore, CheckAll, ChainCheck } from "./BoardTools";
 import { useOddsReload } from "../lib/useOddsReload";
 import { Fragment, useEffect, useMemo, useState } from "react";
-import { Link } from "react-router-dom";
-import { fetchConsignerBoard, fetchSellerPage, startSellerSweep, type CopyTiming, type HuntListing, type HuntListingsReport, type ValueSource } from "../lib/api";
+import { fetchConsignerBoard, fetchSellerPage, startSellerSweep, type HuntListing, type HuntListingsReport, type ValueSource } from "../lib/api";
 import { Spinner, ErrorMsg } from "./Spinner";
-import GradeOddsBadge from "./GradeOddsBadge";
-import AdjEVCell, { AtSaleCell, CGCCell, OddsFlag, PSAOddsCell } from "./AdjEVCell";
-import { BoughtButton } from "./BoughtToGrade";
-import { CheckCentering } from "./HuntListings";
-import { ItemNumber, SuggestedBid } from "./BidCells";
-import ActionCell, { ExplainChip, ShowFilter, countShows, showOf, type Show } from "./ActionCell";
+import { ShowFilter, countShows, showOf, type Show } from "./ActionCell";
 import type { HitReview } from "../lib/api";
+import { useColumns } from "../lib/useColumns";
+import ColumnPicker, { FROZEN_BOX, FROZEN_HEAD } from "./ColumnPicker";
+import { LISTING_COLS, ListingHead, ListingRow, reviewFlags } from "./ListingColumns";
 
 // Consigner board: every raw copy the tracked consigners have listed of a
 // tracked card, hunt list or not. For gradable gems of cards you aren't
@@ -18,14 +15,13 @@ import type { HitReview } from "../lib/api";
 // past their buy window, bought from consigners you're already ordering from.
 // Auctions soonest first, grouped by the day they end, for a daily review.
 
-const usd = (c?: number | null) => (c == null ? "–" : `$${(c / 100).toFixed(2)}`);
-const pct = (v?: number | null, digits = 0) => (v == null ? "–" : `${v > 0 ? "+" : ""}${(v * 100).toFixed(digits)}%`);
 const PAGE = 150;
+const BOARD_COLS = ["card", "action", "seller", "ends", "now", "cost", "max_bid", "raw", "exp_low", "timing", "p10_odds", "pregrade", "review", "centering", "psa_ev", "cgc", "at_sale", "grade_later"];
 
 type Ending = "" | "today" | "tomorrow" | "48h" | "week";
 type Watch = "" | "not_watched" | "watched";
 type Win = "" | "near_low" | "before" | "in" | "past" | "well_past" | "past_any";
-type Gradable = "" | "measured" | "above_gem" | "ev_pos";
+type Gradable = "" | "measured" | "above_gem" | "ev_pos" | "review";
 type Sort = "ending" | "best_ev" | "adj_p10" | "vs_low" | "score";
 
 const startOfDay = (d: Date) => new Date(d.getFullYear(), d.getMonth(), d.getDate());
@@ -48,25 +44,9 @@ function dayLabel(iso?: string) {
   return `Ends ${new Date(iso).toLocaleDateString(undefined, { weekday: "long", month: "short", day: "numeric" })}`;
 }
 
-function endsAt(iso?: string) {
-  if (!iso) return "";
-  const t = new Date(iso), h = (t.getTime() - Date.now()) / 3.6e6;
-  const clock = t.toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" });
-  const left = h <= 0 ? "ending" : h < 1 ? `${Math.round(h * 60)}m` : h < 48 ? `${Math.round(h)}h` : `${Math.round(h / 24)}d`;
-  return `${clock} · ${left}`;
-}
-
 const best = (l: HuntListing) => {
   const a = l.adj_ev?.ev_cents, c = l.adj_ev?.cgc?.ev_cents;
   return a == null ? c : c == null ? a : Math.max(a, c);
-};
-
-const WINDOW: Record<CopyTiming["window"], { label: string; cls: string; hint: string }> = {
-  before: { label: "before low", cls: "text-amber-300", hint: "Still falling toward its expected low" },
-  in: { label: "in window", cls: "text-green-300", hint: "In its tier's low window: the usual time to buy" },
-  past: { label: "past window", cls: "text-gray-300", hint: "Recovering: past its low window" },
-  well_past: { label: "well past", cls: "text-indigo-300", hint: "12+ months past its low window" },
-  unknown: { label: "—", cls: "text-gray-600", hint: "Not enough release-curve data" },
 };
 
 export default function ConsignerBoard({ seller, setSeller }: { seller: string; setSeller: (s: string) => void }) {
@@ -87,6 +67,7 @@ export default function ConsignerBoard({ seller, setSeller }: { seller: string; 
   const [scanned, setScanned] = useState(0); // an ending-soon scan finished: refetch
   const [err, setErr] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+  const cols = useColumns("watchlist.board", LISTING_COLS, BOARD_COLS);
 
   useEffect(() => {
     let live = true;
@@ -112,6 +93,7 @@ export default function ConsignerBoard({ seller, setSeller }: { seller: string; 
       if (win === "past_any" && !(t?.window === "past" || t?.window === "well_past")) return false;
       if (win && win !== "near_low" && win !== "past_any" && t?.window !== win) return false;
       const ev = l.adj_ev;
+      if (gradable === "review") return reviewFlags(l).length > 0;
       // held for manual centering: unknown, so it stays in view ("look at it"), never filtered out as a no
       if (gradable && ev?.needs_manual_centering) return true;
       if (gradable === "measured" && ev?.ev_source !== "measured") return false;
@@ -215,6 +197,7 @@ export default function ConsignerBoard({ seller, setSeller }: { seller: string; 
                 <option value="above_gem">Measured, PSA 10 odds above the gem rate</option>
                 <option value="measured">Measured from photos</option>
                 <option value="ev_pos">Grading EV positive (PSA or CGC)</option>
+                <option value="review">Needs manual review</option>
               </select>
             </label>
             <label className="flex items-center gap-1.5">Sort
@@ -230,6 +213,7 @@ export default function ConsignerBoard({ seller, setSeller }: { seller: string; 
             </label>
             <ShowFilter show={show} setShow={setShow} counts={counts} />
             <span className="text-gray-500 tabular-nums">{rows.length} copies</span>
+            <ColumnPicker cols={cols} />
             <CheckAll listingIds={rows.filter((l) => !l.grade_odds && (l.image_count == null || l.image_count >= 2)).map((l) => l.listing_id)} />
             <ChainCheck listingIds={rows.filter((l) => (l.image_count == null || l.image_count >= 2)
               && (!l.grade_odds?.ai || ["not_checked", "failed", "skipped"].includes(l.grade_odds.ai.state))).map((l) => l.listing_id)} />
@@ -255,27 +239,10 @@ export default function ConsignerBoard({ seller, setSeller }: { seller: string; 
           )}
 
           {rows.length === 0 ? <p className="text-sm text-gray-500">Nothing matches right now.</p> : (
-            <div className="overflow-x-auto rounded-lg border border-gray-800 bg-gray-900">
+            <div className={FROZEN_BOX}>
               <table className="w-full text-xs">
-                <thead className="text-gray-500 text-left max-lg:!static">
-                  <tr>
-                    <th className="py-2 px-3 font-medium">Card</th>
-                    <th className="py-2 px-2 font-medium" title="Bid (with your max) or pass; then report won / lost">Action</th>
-                    <th className="py-2 px-2 font-medium">Seller</th>
-                    <th className="py-2 px-2 font-medium">Ends</th>
-                    <th className="py-2 px-2 font-medium text-right" title="Ask or current bid, with its listed shipping">Now</th>
-                    <th className="py-2 px-2 font-medium text-right" title="Item (auctions: expected close, the raw market) + what it adds to an order's shipping">Your cost</th>
-                    <th className="py-2 px-2 font-medium text-right" title="Suggested max bid, the item price to enter in eBay or Gixen: beats most of this consigner's recent finals, never above what the copy is worth to you. Click to copy; hover for the working.">Max bid</th>
-                    <th className="py-2 px-2 font-medium text-right" title="Raw market (eBay sold by default)">Raw market</th>
-                    <th className="py-2 px-2 font-medium text-right" title="The card's expected raw low (release curve), and this copy's cost against it">Exp. low</th>
-                    <th className="py-2 px-2 font-medium" title="Where the card is on its tier's raw release curve">Timing</th>
-                    <th className="py-2 px-2 font-medium text-right" title="PSA 10 odds: the public gem rate, and adjusted for this copy by the pre-grader">PSA 10 odds</th>
-                    <th className="py-2 px-2 font-medium">Pre-grade</th>
-                    <th className="py-2 px-2 font-medium text-right" title="PSA grading EV at today's prices, with the adjusted odds and at the public gem rate. Hover for the working.">PSA EV</th>
-                    <th className="py-2 px-2 font-medium text-right" title="CGC Pristine / 10 / 9: gem rates (the card's CGC population), adjusted for this copy, and the EV">CGC</th>
-                    <th className="py-2 px-2 font-medium text-right" title="Projected: the EVs when the slab is back from the grader and sold, on the card's release curve (expected declines, plus the rises the forecast backtest backs: IR PSA grades from month 6). Today's are in PSA EV / CGC; suggested bids never count a rise.">At sale</th>
-                    <th className="py-2 px-3 font-medium text-right" title="Grade later (graded 6 months before selling at year 5) at this copy's cost: yearly return">Grade later</th>
-                  </tr>
+                <thead className={`text-gray-500 text-left ${FROZEN_HEAD}`}>
+                  <ListingHead ids={cols.visible} />
                 </thead>
                 <tbody>
                   {page.map((l, i) => {
@@ -283,8 +250,8 @@ export default function ConsignerBoard({ seller, setSeller }: { seller: string; 
                     const head = sort === "ending" && (i === 0 || dayLabel(page[i - 1].ends_at) !== day);
                     return (
                       <Fragment key={l.listing_id}>
-                        {head && <tr className="border-t border-gray-800 bg-gray-950/60"><td colSpan={16} className="py-1.5 px-3 text-[11px] font-semibold text-gray-300 uppercase tracking-wide">{day}</td></tr>}
-                        <Row l={l} bench={rep.params.benchmark} review={reviewOf(l)} onReview={(r) => setRv((m) => ({ ...m, [l.listing_id]: r }))} />
+                        {head && <tr className="border-t border-gray-800 bg-gray-950/60"><td colSpan={cols.visible.length} className="py-1.5 px-3 text-[11px] font-semibold text-gray-300 uppercase tracking-wide">{day}</td></tr>}
+                        <ListingRow l={l} ids={cols.visible} ctx={{ bench: rep.params.benchmark, review: reviewOf(l), onReview: (r) => setRv((m) => ({ ...m, [l.listing_id]: r })) }} />
                       </Fragment>
                     );
                   })}
@@ -297,88 +264,6 @@ export default function ConsignerBoard({ seller, setSeller }: { seller: string; 
         </>
       )}
     </div>
-  );
-}
-
-function Timing({ t }: { t?: CopyTiming }) {
-  if (!t) return <span className="text-gray-600">—</span>;
-  const w = WINDOW[t.window] ?? WINDOW.unknown;
-  return (
-    <span className="inline-flex flex-col whitespace-nowrap" title={`${w.hint}. Month ${t.month} since release; low window M${t.window_from}–M${t.window_to}.`}>
-      <span className={w.cls}>{w.label}{t.months_past_window != null && t.months_past_window > 0 && <span className="text-gray-500"> +{Math.round(t.months_past_window)}mo</span>}</span>
-      {t.window === "before" && t.to_low != null && (
-        <span className={`text-[10px] ${t.to_low <= -0.25 ? "text-red-400" : t.to_low <= -0.1 ? "text-amber-300" : "text-gray-500"}`}>
-          {pct(t.to_low)} more{t.low_month != null && ` by M${t.low_month}`}
-        </span>
-      )}
-      {t.after_low_yearly != null && (
-        <span className={`text-[10px] ${t.after_low_yearly > 0.05 ? "text-green-400" : t.after_low_yearly < 0 ? "text-red-400" : "text-gray-500"}`} title="The tier's yearly change after its low">
-          then {pct(t.after_low_yearly)}/yr
-        </span>
-      )}
-    </span>
-  );
-}
-
-function Row({ l, bench, review, onReview }: { l: HuntListing; bench: number; review?: HitReview; onReview: (r: HitReview | undefined) => void }) {
-  const td = "py-1.5 px-2 text-right tabular-nums whitespace-nowrap";
-  const y = l.grade_later?.yearly;
-  const v = l.timing?.copy_vs_low;
-  return (
-    <tr className="border-t border-gray-800 align-top">
-      <td className="py-1.5 px-3">
-        <div className="flex gap-2 items-start min-w-[15rem]">
-          {(l.image_url || l.card_image_url) && <img src={l.image_url || l.card_image_url} alt="" loading="lazy" className="w-9 h-12 object-cover rounded border border-gray-800" />}
-          <div className="min-w-0">
-            <Link to={`/cards/${l.display_key}`} className="text-gray-100 hover:text-indigo-300">{l.name}</Link>
-            <span className="text-gray-500"> #{l.number} · {l.set_code}</span>
-            {l.watched && <span className="ml-1.5 px-1 rounded bg-indigo-900/50 text-indigo-200" title="On your watchlist">watching</span>}
-            {l.slow && <span className="ml-1.5 px-1 rounded bg-amber-900/50 text-amber-200" title="PSA 10s sell less than once a month">slow</span>}
-            {l.image_count === 1 && <span className="ml-1.5 px-1 rounded bg-amber-900/50 text-amber-200" title="Only one photo: the back isn't shown">1 photo</span>}
-            {l.review?.status === "interested" && <span className="ml-1.5 px-1 rounded bg-indigo-900/50 text-indigo-200">interested</span>}
-            {l.url
-              ? <a href={l.url} target="_blank" rel="noreferrer" className="block truncate max-w-[22rem] text-indigo-300/80 hover:text-indigo-200">{l.title}</a>
-              : <div className="truncate max-w-[22rem] text-gray-500">{l.title}</div>}
-            <ItemNumber n={l.item_number} />
-          </div>
-        </div>
-      </td>
-      <td className="py-1.5 px-2"><ActionCell listingId={l.listing_id} displayKey={l.display_key} priceCents={l.price_cents} review={review} suggestCents={l.suggested_bid?.item_cents}
-        shown={{ adj_ev: l.adj_ev, odds: l.grade_odds, add_cents: l.add_cents, raw_market_cents: l.raw_market_cents, grade_later: l.grade_later, timing: l.timing }} onChange={onReview} /></td>
-      <td className="py-1.5 px-2 whitespace-nowrap text-gray-400">{l.seller_label}</td>
-      <td className="py-1.5 px-2 whitespace-nowrap text-gray-300">
-        {l.kind === "auction" ? <>{endsAt(l.ends_at)}{l.bids != null && <div className="text-[10px] text-gray-500">{l.bids} bids</div>}</> : <span className="text-gray-400">Buy Now</span>}
-      </td>
-      <td className={`${td} text-gray-400`}>{usd(l.price_cents)}</td>
-      <td className={`${td} text-gray-100`} title={l.notes?.join("\n")}>
-        {usd(l.add_cents)}
-        {l.expected && <div className="text-[10px] text-gray-500">expected close</div>}
-      </td>
-      <td className="py-1.5 px-2 text-right"><SuggestedBid b={l.suggested_bid} /></td>
-      <td className={`${td} text-gray-300`}>
-        {usd(l.raw_market_cents)}
-        <div className={`text-[10px] ${l.vs_raw <= 1 ? "text-green-300/80" : "text-gray-500"}`}>{l.vs_raw <= 1 ? `${Math.round((1 - l.vs_raw) * 100)}% under` : `${Math.round((l.vs_raw - 1) * 100)}% over`}</div>
-      </td>
-      <td className={`${td} text-gray-300`}>
-        {usd(l.timing?.exp_low_cents)}
-        {v != null && <div className={`text-[10px] ${v <= 0 ? "text-green-300" : v <= 0.1 ? "text-green-300/70" : v <= 0.25 ? "text-amber-300" : "text-gray-500"}`} title="This copy's cost vs the expected low">{v <= 0 ? `${Math.round(-v * 100)}% under` : `${Math.round(v * 100)}% over`}</div>}
-      </td>
-      <td className="py-1.5 px-2"><Timing t={l.timing} /></td>
-      <td className={td}><PSAOddsCell ev={l.adj_ev} popFallback={l.p10 || undefined} /></td>
-      <td className="py-1.5 px-2">
-        {l.grade_odds
-          ? <><span className="inline-flex flex-wrap items-center gap-1"><GradeOddsBadge o={l.grade_odds} compact /><OddsFlag odds={l.grade_odds} shown={l.adj_ev} /></span>
-              <ExplainChip e={l.grade_odds.explain?.PSA} /></>
-          : <CheckCentering listingId={l.listing_id} photos={l.image_count} />}
-        {(l.image_count == null || l.image_count >= 2 || l.grade_odds) && (
-          <div className="mt-0.5"><BoughtButton listingId={l.listing_id} priceCents={l.price_cents} shown={{ adj_ev: l.adj_ev, odds: l.grade_odds }} initial={!!l.grade_odds?.bought_at} /></div>
-        )}
-      </td>
-      <td className="py-1.5 px-2 text-right"><AdjEVCell ev={l.adj_ev} /></td>
-      <td className="py-1.5 px-2 text-right"><CGCCell ev={l.adj_ev} /></td>
-      <td className="py-1.5 px-2 text-right"><AtSaleCell ev={l.adj_ev} /></td>
-      <td className={`py-1.5 px-3 text-right tabular-nums whitespace-nowrap font-semibold ${y == null ? "text-gray-600" : y < 0 ? "text-red-300" : y >= bench ? "text-green-300" : "text-gray-300"}`}>{pct(y, 1)}</td>
-    </tr>
   );
 }
 
