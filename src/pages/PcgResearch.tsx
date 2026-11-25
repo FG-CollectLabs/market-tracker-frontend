@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { fetchPcgModel, pcgValue, type PcgModel, type PcgRatio, type PcgValue } from "../lib/api";
 import { Spinner } from "../components/Spinner";
+import PCGOutcomes from "../components/PCGOutcomes";
 
 // PCG pricing research: the model that prices PCG slabs from the same card's
 // PSA 10 (and raw), refit as PCG sales are recorded, its evidence per grade
@@ -82,6 +83,7 @@ export default function PcgResearch({ game }: { game: "pokemon" | "riftbound" })
   const cell = (g: string, b: string) => m.ratios.find((r) => r.grade === g && r.band === b);
   return (
     <div className="space-y-5">
+      {game === "pokemon" && <PCGOutcomes />}
       <section className="grid gap-3 sm:grid-cols-3">
         <div className="rounded-lg border border-gray-800 bg-gray-900 p-3"><div className="text-xs text-gray-500">PCG sales behind the model</div>
           <div className="text-xl font-semibold text-gray-100 tabular-nums">{m.sales}</div><div className="text-[11px] text-gray-500">{m.cards} cards{m.first_sale ? ` · since ${m.first_sale.slice(0, 10)}` : ""}</div></div>
