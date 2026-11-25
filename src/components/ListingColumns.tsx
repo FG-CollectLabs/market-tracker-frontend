@@ -2,6 +2,7 @@ import type { ReactNode } from "react";
 import { Link } from "react-router-dom";
 import type { CopyTiming, GradeOdds, HitReview, HuntListing } from "../lib/api";
 import { GradedLinks, RawLinks } from "./PriceLinks";
+import { MiniSpinner } from "./Spinner";
 import type { ColMeta } from "../lib/useColumns";
 import GradeOddsBadge from "./GradeOddsBadge";
 import ManualCenteringBadge from "./ManualCenteringBadge";
@@ -18,7 +19,13 @@ const usd = (c?: number | null) => (c == null ? "–" : `$${(c / 100).toFixed(2)
 const pct = (v?: number | null, digits = 0) => (v == null ? "–" : `${v > 0 ? "+" : ""}${(v * 100).toFixed(digits)}%`);
 const NUM = "py-1.5 px-2 text-right tabular-nums whitespace-nowrap";
 
-export interface RowCtx { bench: number; review?: HitReview; onReview: (r: HitReview | undefined) => void }
+// updating: the copy's odds were just refreshed and the board is reloading
+// (centering, odds and EV are recomputed server-side): those cells fade with
+// a spinner until the new numbers land.
+export interface RowCtx { bench: number; review?: HitReview; onReview: (r: HitReview | undefined) => void; updating?: boolean }
+
+// The cells a refresh changes (the Pre-grade badge updates itself at once).
+const RECOMPUTED = new Set(["p10_odds", "centering", "review", "psa_ev", "cgc", "at_sale", "grade_later", "flip_now", "if_ten", "score", "max_bid"]);
 interface ListingCol extends ColMeta { th?: string; td: (l: HuntListing, x: RowCtx) => ReactNode }
 
 function endsAt(iso?: string) {
@@ -265,7 +272,17 @@ export function ListingRow({ l, ids, ctx }: { l: HuntListing; ids: string[]; ctx
       {ids.map((id) => {
         const c = BY_ID.get(id)!;
         const right = c.th?.includes("text-right");
-        return <td key={id} className={right ? NUM : id === "card" ? "py-1.5 px-3" : "py-1.5 px-2"}>{c.td(l, ctx)}</td>;
+        const cell = c.td(l, ctx);
+        return (
+          <td key={id} className={right ? NUM : id === "card" ? "py-1.5 px-3" : "py-1.5 px-2"}>
+            {ctx.updating && RECOMPUTED.has(id)
+              ? <div className="relative" title="Updating: recomputing with the refreshed pre-grade…">
+                  <div className="opacity-30">{cell}</div>
+                  <span className="absolute inset-0 flex items-center justify-center"><MiniSpinner className="h-4 w-4" /></span>
+                </div>
+              : cell}
+          </td>
+        );
       })}
     </tr>
   );

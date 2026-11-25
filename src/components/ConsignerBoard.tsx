@@ -1,8 +1,8 @@
 import { AutoMore, CheckAll, ChainCheck } from "./BoardTools";
-import { useOddsReload } from "../lib/useOddsReload";
+import { useOddsRefreshing } from "../lib/useOddsReload";
 import { Fragment, useEffect, useMemo, useState } from "react";
 import { fetchConsignerBoard, fetchSellerPage, startSellerSweep, type HuntListing, type HuntListingsReport, type ValueSource } from "../lib/api";
-import { Spinner, ErrorMsg } from "./Spinner";
+import { MiniSpinner, Spinner, ErrorMsg } from "./Spinner";
 import { ShowFilter, countShows, showOf, type Show } from "./ActionCell";
 import type { HitReview } from "../lib/api";
 import { useColumns } from "../lib/useColumns";
@@ -63,7 +63,9 @@ export default function ConsignerBoard({ seller, setSeller }: { seller: string; 
   const [rv, setRv] = useState<Record<string, HitReview | undefined>>({});
   const reviewOf = (l: HuntListing) => (l.listing_id in rv ? rv[l.listing_id] : l.review);
   const [rep, setRep] = useState<HuntListingsReport | null>(null);
-  const oddsReload = useOddsReload(); // ↻ on an odds badge: refetch so odds and EV recompute
+  const refreshing = useOddsRefreshing(); // ↻ on an odds badge: refetch so odds and EV recompute (rows show updating)
+  const oddsReload = refreshing.tick;
+  const settle = refreshing.settle;
   const [scanned, setScanned] = useState(0); // an ending-soon scan finished: refetch
   const [err, setErr] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
@@ -76,9 +78,9 @@ export default function ConsignerBoard({ seller, setSeller }: { seller: string; 
     fetchConsignerBoard({ years: 5, gradeAt: 4.5, feeGrowth: 0.03, valueSource: source || undefined })
       .then((r) => live && setRep(r))
       .catch((e) => live && setErr(String(e)))
-      .finally(() => live && setLoading(false));
+      .finally(() => { if (live) { setLoading(false); settle(oddsReload); } });
     return () => { live = false; };
-  }, [source, oddsReload, scanned]);
+  }, [source, oddsReload, scanned, settle]);
 
   const base = useMemo(() => {
     const until = endsBefore(ending);
@@ -151,7 +153,11 @@ export default function ConsignerBoard({ seller, setSeller }: { seller: string; 
                 {s.label} <span className="text-xs text-gray-500 tabular-nums" title="raw copies priced">{s.priced}</span>
               </button>
             ))}
-            {loading && <span className="text-xs text-gray-500 px-2 pb-2">Loading…</span>}
+            {loading && (
+              <span className="inline-flex items-center gap-1.5 text-xs text-indigo-300 px-2 pb-2">
+                <MiniSpinner />{refreshing.all ? "Updating the board with the refreshed pre-grades…" : refreshing.count ? `Updating ${refreshing.count} refreshed ${refreshing.count === 1 ? "copy" : "copies"}…` : "Loading…"}
+              </span>
+            )}
           </div>
 
           {cur && (
@@ -251,7 +257,7 @@ export default function ConsignerBoard({ seller, setSeller }: { seller: string; 
                     return (
                       <Fragment key={l.listing_id}>
                         {head && <tr className="border-t border-gray-800 bg-gray-950/60"><td colSpan={cols.visible.length} className="py-1.5 px-3 text-[11px] font-semibold text-gray-300 uppercase tracking-wide">{day}</td></tr>}
-                        <ListingRow l={l} ids={cols.visible} ctx={{ bench: rep.params.benchmark, review: reviewOf(l), onReview: (r) => setRv((m) => ({ ...m, [l.listing_id]: r })) }} />
+                        <ListingRow l={l} ids={cols.visible} ctx={{ bench: rep.params.benchmark, updating: refreshing.isPending(l.listing_id), review: reviewOf(l), onReview: (r) => setRv((m) => ({ ...m, [l.listing_id]: r })) }} />
                       </Fragment>
                     );
                   })}

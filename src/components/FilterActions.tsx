@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
-import { bulkAICheck, bulkCheckGradeOdds, bulkRefreshOdds, chainAICheck, fetchPriceFreshness, pricesNote, refreshPrices, GRADE_ODDS_REFRESHED, type AIState, type ChainFilter, type TargetHit } from "../lib/api";
+import { announceOddsRefreshed } from "../lib/useOddsReload";
+import { bulkAICheck, bulkCheckGradeOdds, bulkRefreshOdds, chainAICheck, fetchPriceFreshness, pricesNote, refreshPrices, type AIState, type ChainFilter, type TargetHit } from "../lib/api";
 
 // Bulk actions on the listings a board's filters are showing: pre-grade every
 // unchecked raw copy, run the full AI check on all of them, refresh all, and
@@ -174,7 +175,7 @@ export default function FilterActions({ hits, onReload, label }: { hits: TargetH
     try {
       const r = await bulkRefreshOdds(toRefresh);
       setMsg({ ok: r.failed === 0, text: `Refreshed ${r.refreshed} copies' odds and ${r.ai_statuses} AI statuses${r.failed ? ` · ${r.failed} failed` : ""}${r.over_limit ? ` · ${r.over_limit} over the ${r.limit} limit` : ""}.` });
-      window.dispatchEvent(new Event(GRADE_ODDS_REFRESHED));
+      announceOddsRefreshed();
       onReload();
     } catch (e) {
       setMsg({ ok: false, text: `Refresh failed: ${e instanceof Error ? e.message : String(e)}` });
