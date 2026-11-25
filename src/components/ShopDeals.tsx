@@ -14,12 +14,21 @@ const ago = (iso: string | null) => {
 };
 const off = (v?: number | null) => (v == null || v <= 0 ? "" : `${Math.round(v * 100)}% off`);
 
+// Categories filtered out, remembered in this browser.
+const HIDDEN_KEY = "sealed.deals.hidden_categories";
+const loadHidden = (): Set<string> => {
+  try { return new Set(JSON.parse(localStorage.getItem(HIDDEN_KEY) || "[]") as string[]); } catch { return new Set(); }
+};
+const saveHidden = (s: Set<string>) => { try { localStorage.setItem(HIDDEN_KEY, JSON.stringify([...s])); } catch { /* private window */ } };
+
 export default function ShopDeals({ onWatched }: { onWatched?: () => void }) {
   const [game, setGame] = useState("");
   const [minOff, setMinOff] = useState(0.15);
   const [suspect, setSuspect] = useState(false);
   const [shop, setShop] = useState("");
-  const [d, setD] = useState<{ deals: ShopDeal[]; last_refresh: string | null; method: string } | null>(null);
+  const [d, setD] = useState<{ deals: ShopDeal[]; last_refresh: string | null; method: string; categories?: { key: string; label: string }[] } | null>(null);
+  const [hidden, setHiddenState] = useState<Set<string>>(loadHidden);
+  const setHidden = (s: Set<string>) => { setHiddenState(s); saveHidden(s); };
   const [err, setErr] = useState("");
   const [msg, setMsg] = useState("");
   const [done, setDone] = useState<Record<number, boolean>>({});
@@ -28,7 +37,17 @@ export default function ShopDeals({ onWatched }: { onWatched?: () => void }) {
     fetchSealedDeals({ game, minOff, suspect }).then(setD).catch((e) => setErr(String(e)));
   }, [game, minOff, suspect]);
   const shops = useMemo(() => [...new Set((d?.deals ?? []).map((x) => x.shop_name))].sort(), [d]);
-  const rows = useMemo(() => (d?.deals ?? []).filter((x) => !shop || x.shop_name === shop), [d, shop]);
+  const byShop = useMemo(() => (d?.deals ?? []).filter((x) => !shop || x.shop_name === shop), [d, shop]);
+  const catCount = useMemo(() => {
+    const m = new Map<string, number>();
+    for (const x of byShop) m.set(x.category ?? "other", (m.get(x.category ?? "other") ?? 0) + 1);
+    return m;
+  }, [byShop]);
+  const cats = (d?.categories ?? []).filter((c) => catCount.has(c.key) || hidden.has(c.key));
+  const rows = useMemo(() => byShop.filter((x) => !hidden.has(x.category ?? "other")), [byShop, hidden]);
+  const toggle = (k: string) => { const s = new Set(hidden); if (s.has(k)) s.delete(k); else s.add(k); setHidden(s); };
+  // only: show just this category (alt-click a chip)
+  const only = (k: string) => setHidden(new Set((d?.categories ?? []).map((c) => c.key).filter((c) => c !== k)));
   const refresh = async () => {
     setMsg("");
     try { const r = await refreshSealedDeals(); setMsg(`Scan queued (job ${r.job_id}): every shop's catalog, ~20-30 minutes.`); } catch (e) { setErr(String(e)); }
@@ -61,6 +80,26 @@ export default function ShopDeals({ onWatched }: { onWatched?: () => void }) {
         </label>
         {msg && <span className="text-emerald-300">{msg}</span>}
       </div>
+      {cats.length > 0 && (
+        <div className="flex flex-wrap items-center gap-1.5 text-xs" role="group" aria-label="Categories">
+          <span className="text-gray-500 mr-0.5" title="Click to filter a category in or out; alt-click (or double-click) to show only it. Remembered in this browser.">Categories</span>
+          {cats.map((c) => {
+            const on = !hidden.has(c.key);
+            return (
+              <button key={c.key} type="button" aria-pressed={on}
+                onClick={(e) => (e.altKey ? only(c.key) : toggle(c.key))} onDoubleClick={() => only(c.key)}
+                title={on ? `Hide ${c.label} (alt-click: only this)` : `Show ${c.label}`}
+                className={`rounded-full border px-2 py-0.5 ${on ? "border-emerald-800 bg-emerald-950/50 text-emerald-200" : "border-gray-800 text-gray-500 line-through"}`}>
+                {c.label} <span className="tabular-nums text-gray-400">{catCount.get(c.key) ?? 0}</span>
+              </button>
+            );
+          })}
+          <button type="button" onClick={() => setHidden(new Set())} className="ml-1 text-gray-400 hover:text-white">all</button>
+          <span className="text-gray-700">·</span>
+          <button type="button" onClick={() => setHidden(new Set((d?.categories ?? []).map((c) => c.key)))} className="text-gray-400 hover:text-white">none</button>
+          {hidden.size > 0 && <span className="text-gray-500">· {byShop.length - rows.length} hidden</span>}
+        </div>
+      )}
       {err && <p className="text-xs text-rose-400">{err}</p>}
       {!d && !err && <Spinner />}
       {d && (rows.length === 0 ? <p className="text-xs text-gray-500">No deals at this cut. The first scan runs daily at 12:00 UTC, or press Scan now.</p> : (

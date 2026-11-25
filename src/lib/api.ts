@@ -4095,8 +4095,9 @@ export interface ShopDeal {
   price_cents: number; landed_cents: number; shipping_known: boolean; was_cents?: number; market_cents?: number;
   was_off: number; market_off: number; landed_off?: number; suspect?: boolean;
   product_id?: number; product?: string; watched: boolean; first_seen: string; checked_at: string;
+  category?: string; // etb, pc_etb, booster_box, booster_bundle, booster_pack, collector_box, blister, tin, collection, build_battle, deck, case, other
 }
-export function fetchSealedDeals(q: { game?: string; minOff?: number; suspect?: boolean } = {}): Promise<{ deals: ShopDeal[]; count: number; last_refresh: string | null; min_off: number; method: string }> {
+export function fetchSealedDeals(q: { game?: string; minOff?: number; suspect?: boolean } = {}): Promise<{ deals: ShopDeal[]; count: number; last_refresh: string | null; min_off: number; method: string; categories?: { key: string; label: string }[] }> {
   const p = new URLSearchParams();
   if (q.game) p.set("game", q.game);
   if (q.minOff != null) p.set("min_off", String(q.minOff));
