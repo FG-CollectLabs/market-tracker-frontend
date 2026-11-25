@@ -2,6 +2,7 @@ import type { ReactNode } from "react";
 import { Link } from "react-router-dom";
 import type { CopyTiming, GradeOdds, HitReview, HuntListing } from "../lib/api";
 import { GradedLinks, RawLinks } from "./PriceLinks";
+import PCGCell from "./PCGCell";
 import { MiniSpinner } from "./Spinner";
 import type { ColMeta } from "../lib/useColumns";
 import GradeOddsBadge from "./GradeOddsBadge";
@@ -25,7 +26,7 @@ const NUM = "py-1.5 px-2 text-right tabular-nums whitespace-nowrap";
 export interface RowCtx { bench: number; review?: HitReview; onReview: (r: HitReview | undefined) => void; updating?: boolean }
 
 // The cells a refresh changes (the Pre-grade badge updates itself at once).
-const RECOMPUTED = new Set(["p10_odds", "centering", "review", "psa_ev", "cgc", "at_sale", "grade_later", "flip_now", "if_ten", "score", "max_bid"]);
+const RECOMPUTED = new Set(["p10_odds", "centering", "review", "psa_ev", "cgc", "pcg", "at_sale", "grade_later", "flip_now", "if_ten", "score", "max_bid"]);
 interface ListingCol extends ColMeta { th?: string; td: (l: HuntListing, x: RowCtx) => ReactNode }
 
 function endsAt(iso?: string) {
@@ -294,6 +295,11 @@ export const LISTING_COLS: ListingCol[] = [
     td: (l) => <GradedLinks c={l} />,
   },
   { id: "psa_ev", label: "PSA EV", title: "PSA grading EV at today's prices, with the adjusted odds and at the public gem rate. Hover for the working.", th: "text-right", td: (l) => <AdjEVCell ev={l.adj_ev} /> },
+  {
+    id: "pcg", label: "PCG EV", th: "text-right",
+    title: "Grading with PCG (sold on eBay): profit after fees and this copy's cost, PCG 10+ / Pristine / Flawless odds, and whether the centering can get a Pristine (50/50 front). Hover for the working.",
+    td: (l) => <PCGCell p={l.pcg} />,
+  },
   { id: "cgc", label: "CGC", title: "CGC Pristine / 10 / 9: gem rates (the card's CGC population), adjusted for this copy, and the EV", th: "text-right", td: (l) => <CGCCell ev={l.adj_ev} /> },
   {
     id: "at_sale", label: "At sale", th: "text-right",

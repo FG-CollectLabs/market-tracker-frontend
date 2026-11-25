@@ -19,7 +19,7 @@ export { CheckCentering } from "./CheckCentering";
 const usd = (c?: number | null) => (c == null ? "–" : `$${(c / 100).toFixed(2)}`);
 const pct = (v?: number | null, digits = 0) => (v == null ? "–" : `${v > 0 ? "+" : ""}${(v * 100).toFixed(digits)}%`);
 const PAGE = 100;
-const HUNT_COLS = ["card", "action", "seller", "type", "now", "cost", "max_bid", "raw", "psa10", "p10_odds", "pregrade", "review", "centering", "psa_ev", "cgc", "at_sale", "grade_later", "flip_now", "if_ten", "score", "raw_links", "graded_links"];
+const HUNT_COLS = ["card", "action", "seller", "type", "now", "cost", "max_bid", "raw", "psa10", "p10_odds", "pregrade", "review", "centering", "psa_ev", "cgc", "pcg", "at_sale", "grade_later", "flip_now", "if_ten", "score", "raw_links", "graded_links"];
 
 export default function HuntListings({ seller, setSeller }: { seller: string; setSeller: (s: string) => void }) {
   const [source, setSource] = useState<ValueSource | "">("ebay");

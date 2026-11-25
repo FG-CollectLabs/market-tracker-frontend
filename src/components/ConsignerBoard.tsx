@@ -16,7 +16,7 @@ import { LISTING_COLS, ListingHead, ListingRow, reviewFlags } from "./ListingCol
 // Auctions soonest first, grouped by the day they end, for a daily review.
 
 const PAGE = 150;
-const BOARD_COLS = ["card", "action", "seller", "ends", "now", "cost", "max_bid", "raw", "exp_low", "timing", "p10_odds", "pregrade", "review", "centering", "psa_ev", "cgc", "at_sale", "grade_later", "raw_links", "graded_links"];
+const BOARD_COLS = ["card", "action", "seller", "ends", "now", "cost", "max_bid", "raw", "exp_low", "timing", "p10_odds", "pregrade", "review", "centering", "psa_ev", "cgc", "pcg", "at_sale", "grade_later", "raw_links", "graded_links"];
 
 type Ending = "" | "today" | "tomorrow" | "48h" | "week";
 type Watch = "" | "not_watched" | "watched";

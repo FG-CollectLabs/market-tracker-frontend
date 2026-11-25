@@ -841,6 +841,7 @@ export interface AnalysisSettings {
   value_source?: "pricecharting" | "comps" | "ebay"; // where a grade's market value comes from
   sell_fee_pct: number;
   exit_fee_pct: number;
+  pcg_flawless_vs_pristine?: number; // PCG Flawless as a multiple of Pristine (0: leave its upside out)
   premium_pct: number;
   target_margin: number;
   min_roi: number;
@@ -3242,8 +3243,25 @@ export function fetchHunt(game: string, code: string, o: { years: number; gradeA
 
 // Outside price pages for a card, to check a stale price by hand.
 export interface CardLinks { set_name?: string; tcgplayer_id?: string; pricecharting_url?: string }
+// Grading this copy with PCG (sold on eBay): profit, top-grade odds and
+// whether its centering can get a Pristine / Flawless.
+export interface BoardPCG {
+  profit_cents?: number;
+  profit_with_flawless_cents?: number; // Flawless at your multiple of Pristine (Settings)
+  flawless_vs_pristine?: number;
+  expected_sale_cents?: number;
+  p10: number; p_pristine: number; p_flawless: number;
+  pristine_cents?: number; ten_cents?: number;
+  pristine_eligible?: boolean; flawless_eligible?: boolean;
+  cap_label?: string; cap_why?: string;
+  odds_source: "pregrader_cgc" | "card_pop" | "set_pop" | "all_pop" | "none";
+  odds_n?: number;
+  fee_cents: number; fee_tier?: string;
+  notes?: string[];
+}
 export interface HuntListing {
   links?: CardLinks;
+  pcg?: BoardPCG;
   display_key: string;
   name: string;
   number: string;
