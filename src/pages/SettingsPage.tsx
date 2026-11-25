@@ -209,6 +209,12 @@ export default function SettingsPage() {
         <Field label="Resale fee on flips" hint="Selling a slab you bought, in the max bid and flip margin.">
           <Pct value={s.exit_fee_pct} onChange={(v) => set({ exit_fee_pct: v })} step={0.25} />
         </Field>
+        <Field label="PCG Flawless is worth" hint="As a multiple of the card's PCG Pristine price. No Flawless (gold label) has sold yet, so the PCG EV values it at the Pristine price; set a multiple (e.g. 3) to also show the EV with its upside. 0 = off.">
+          <input type="number" min={0} max={50} step={0.5} value={s.pcg_flawless_vs_pristine ?? 0}
+            onChange={(e) => set({ pcg_flawless_vs_pristine: Number(e.target.value) || 0 })}
+            className="w-24 rounded border border-gray-700 bg-gray-950 px-2 py-1 text-sm text-gray-200" />
+          <span className="ml-1.5 text-sm text-gray-400">× Pristine</span>
+        </Field>
         <Field label="Fanatics buyer's premium" hint="Added to every auction hammer price.">
           <Pct value={s.premium_pct} onChange={(v) => set({ premium_pct: v })} />
         </Field>
