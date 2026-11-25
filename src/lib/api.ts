@@ -841,7 +841,8 @@ export interface AnalysisSettings {
   value_source?: "pricecharting" | "comps" | "ebay"; // where a grade's market value comes from
   sell_fee_pct: number;
   exit_fee_pct: number;
-  pcg_flawless_vs_pristine?: number; // PCG Flawless as a multiple of Pristine (0: leave its upside out)
+  pcg_flawless_vs_pristine?: number;
+  sealed_assume_free_ship?: boolean; // sealed buying: a shop's free-shipping minimum counts as met // PCG Flawless as a multiple of Pristine (0: leave its upside out)
   premium_pct: number;
   target_margin: number;
   min_roi: number;
@@ -4020,6 +4021,7 @@ export interface SealedOffer {
   id: number; source: string; retailer: string; title?: string; url: string; price_cents: number; shipping_cents?: number;
   seller?: string; seller_note?: string; reference_only: boolean; in_stock: boolean; note?: string; checked_at: string; stale: boolean; suspect?: boolean; // under half the market price: left out of the best offer and the return
   landed_cents: number; add_ship_cents: number; tax_cents: number; shipping_known: boolean;
+  free_ship_assumed?: boolean; free_ship_min_cents?: number; // the shop's free-shipping minimum counted as met (Settings)
   premium_cents?: number; // Fanatics auction: buyer's premium on the current bid (in landed)
   fancash_cents?: number; // Fanatics: paid in FanCash, valued at what it would cash out for
   needs_check?: boolean; // 25-50% under market: left out of the best offer until confirmed
@@ -4093,6 +4095,7 @@ export function setOfferVerdict(productId: number, url: string, verdict: "ok" | 
 export interface ShopDeal {
   id: number; shop: string; shop_name: string; game: string; title: string; url: string;
   price_cents: number; landed_cents: number; shipping_known: boolean; was_cents?: number; market_cents?: number;
+  free_ship_assumed?: boolean; free_ship_min_cents?: number;
   was_off: number; market_off: number; landed_off?: number; suspect?: boolean;
   product_id?: number; product?: string; watched: boolean; first_seen: string; checked_at: string;
   category?: string; // etb, pc_etb, booster_box, booster_bundle, booster_pack, collector_box, blister, tin, collection, build_battle, deck, case, other

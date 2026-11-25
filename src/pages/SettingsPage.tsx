@@ -209,6 +209,9 @@ export default function SettingsPage() {
         <Field label="Resale fee on flips" hint="Selling a slab you bought, in the max bid and flip margin.">
           <Pct value={s.exit_fee_pct} onChange={(v) => set({ exit_fee_pct: v })} step={0.25} />
         </Field>
+        <Field label="Sealed: assume free-shipping minimums are met" hint="On the sealed watchlist and Deals, count a shop's free-shipping minimum as met (you'd fill the order out to it), so its shipping is $0 even when one item is under it. Off: the flat rate below the minimum. Tax still applies.">
+          <input type="checkbox" checked={s.sealed_assume_free_ship ?? true} onChange={(e) => set({ sealed_assume_free_ship: e.target.checked })} className="accent-indigo-500" />
+        </Field>
         <Field label="PCG Flawless is worth" hint="As a multiple of the card's PCG Pristine price. No Flawless (gold label) has sold yet, so the PCG EV values it at the Pristine price; set a multiple (e.g. 3) to also show the EV with its upside. 0 = off.">
           <input type="number" min={0} max={50} step={0.5} value={s.pcg_flawless_vs_pristine ?? 0}
             onChange={(e) => set({ pcg_flawless_vs_pristine: Number(e.target.value) || 0 })}
