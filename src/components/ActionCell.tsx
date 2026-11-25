@@ -1,10 +1,12 @@
 import { useState } from "react";
 import { Link } from "react-router-dom";
-import { HIT_REASONS, clearHitReview, reviewHit, saveBidResult, type HitReason, type HitReview, type OddsExplain } from "../lib/api";
+import { HIT_REASONS, clearHitReview, reviewHit, saveBidResult, type HitReview, type OddsExplain } from "../lib/api";
 
-// The action on a listing: pass on it (it moves to the Passed view) or bid
-// with a max, then report what happened (won and what you paid, lost, didn't
-// bid). The rest (in hand, graded, sold) is on Watchlist → Bids & results.
+// The action on a listing: pass on it (one click; it moves to the Passed
+// view, undo from there), mark it interested (a shortlist to come back to
+// before deciding what to bid on; not a bid), or bid with a max, then report
+// what happened (won and what you paid, lost, didn't bid). The rest (in hand,
+// graded, sold) is on Watchlist → Bids & results.
 
 const usd = (c?: number | null) => (c == null ? "–" : `$${(c / 100).toFixed(2)}`);
 const toCents = (v: string) => {
@@ -12,16 +14,18 @@ const toCents = (v: string) => {
   return Number.isFinite(n) && n >= 0 ? Math.round(n * 100) : undefined;
 };
 
-export type Show = "open" | "bidding" | "passed" | "all";
+export type Show = "open" | "interested" | "bidding" | "passed" | "all";
 export function showOf(r?: HitReview): Exclude<Show, "all"> {
   if (r?.status === "pass") return "passed";
+  if (r?.status === "shortlist" && !r.result) return "interested";
   if (r?.status === "interested" || r?.result) return "bidding";
   return "open";
 }
 
 export function ShowFilter({ show, setShow, counts }: { show: Show; setShow: (s: Show) => void; counts: Record<Exclude<Show, "all">, number> }) {
   const opts: [Show, string, string][] = [
-    ["open", "To review", "Not passed or bid on yet"],
+    ["open", "To review", "Not passed, marked interested or bid on yet"],
+    ["interested", "Interested", "Shortlisted to come back to before deciding what to bid"],
     ["bidding", "Bidding", "Marked to bid (with your max), and what came of it"],
     ["passed", "Passed", "Set aside: undo from here"],
     ["all", "All", ""],
@@ -39,7 +43,7 @@ export function ShowFilter({ show, setShow, counts }: { show: Show; setShow: (s:
 }
 
 export function countShows<T>(rows: T[], review: (r: T) => HitReview | undefined) {
-  const c = { open: 0, bidding: 0, passed: 0 };
+  const c = { open: 0, interested: 0, bidding: 0, passed: 0 };
   for (const r of rows) c[showOf(review(r))]++;
   return c;
 }
@@ -48,9 +52,8 @@ export default function ActionCell({ listingId, displayKey, priceCents, review, 
   listingId: string; displayKey: string; priceCents?: number; review?: HitReview; shown?: unknown; suggestCents?: number;
   onChange: (r: HitReview | undefined) => void;
 }) {
-  const [mode, setMode] = useState<"" | "bid" | "pass" | "won" | "lost">("");
+  const [mode, setMode] = useState<"" | "bid" | "won" | "lost">("");
   const [val, setVal] = useState("");
-  const [reason, setReason] = useState<HitReason>("not_interested");
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
   const now = () => new Date().toISOString();
@@ -77,19 +80,6 @@ export default function ActionCell({ listingId, displayKey, priceCents, review, 
       await reviewHit({ source: "ebay", listing_id: listingId, display_key: displayKey, status: "interested", max_bid_cents: max, price_cents: priceCents, shown });
       return { ...(review ?? {}), status: "interested", max_bid_cents: max, reviewed_at: now() } as HitReview;
     }));
-  } else if (mode === "pass") {
-    body = (
-      <span className="inline-flex items-center gap-1">
-        <select value={reason} onChange={(e) => setReason(e.target.value as HitReason)} className="rounded border border-gray-700 bg-gray-950 px-1 py-0.5 text-[11px] text-gray-200">
-          {HIT_REASONS.map((r) => <option key={r.key} value={r.key} title={r.hint}>{r.label}</option>)}
-        </select>
-        <button disabled={busy} className={`${btn} border-gray-600 text-gray-200`} onClick={() => run(async () => {
-          await reviewHit({ source: "ebay", listing_id: listingId, display_key: displayKey, status: "pass", reason, price_cents: priceCents });
-          return { status: "pass", reason, reviewed_at: now() } as HitReview;
-        })}>Pass</button>
-        <button onClick={() => setMode("")} className="text-[11px] text-gray-500">×</button>
-      </span>
-    );
   } else if (mode === "won" || mode === "lost") {
     const result = mode;
     body = bidForm(result === "won" ? "Paid, all-in" : "What it went for (optional)", () => run(async () => {
@@ -131,11 +121,32 @@ export default function ActionCell({ listingId, displayKey, priceCents, review, 
       </span>
     );
   } else {
+    const shortlisted = review?.status === "shortlist";
     body = (
-      <span className="inline-flex gap-1">
-        <button className={`${btn} border-indigo-800 text-indigo-200`} title="Plan to bid: set your max (pre-filled with the suggested max bid)"
-          onClick={() => { setVal(suggestCents != null ? (suggestCents / 100).toFixed(2) : ""); setMode("bid"); }}>Bid</button>
-        <button className={`${btn} border-gray-700 text-gray-400`} onClick={() => setMode("pass")} title="Set aside (moves to Passed)">Pass</button>
+      <span className="inline-flex flex-col gap-0.5">
+        {shortlisted && (
+          <span className="inline-flex items-center gap-1 text-[11px]">
+            <span className="text-amber-300" title="Shortlisted: come back to it before deciding what to bid">★ Interested</span>
+            <button disabled={busy} className="text-gray-500 hover:text-gray-300" title="Back to To review"
+              onClick={() => run(async () => { await clearHitReview("ebay", listingId); return undefined; })}>undo</button>
+          </span>
+        )}
+        <span className="inline-flex gap-1">
+          <button className={`${btn} border-indigo-800 text-indigo-200`} title="Plan to bid: set your max (pre-filled with the suggested max bid)"
+            onClick={() => { setVal(suggestCents != null ? (suggestCents / 100).toFixed(2) : ""); setMode("bid"); }}>Bid</button>
+          {!shortlisted && (
+            <button disabled={busy} className={`${btn} border-amber-800/70 text-amber-300`} title="Shortlist it: review the rest of the auctions, then decide what to bid on (moves to Interested; not a bid)"
+              onClick={() => run(async () => {
+                await reviewHit({ source: "ebay", listing_id: listingId, display_key: displayKey, status: "shortlist", price_cents: priceCents });
+                return { status: "shortlist", reviewed_at: now() } as HitReview;
+              })}>Interested</button>
+          )}
+          <button disabled={busy} className={`${btn} border-gray-700 text-gray-400`} title="Pass: set aside now (moves to Passed; undo from there)"
+            onClick={() => run(async () => {
+              await reviewHit({ source: "ebay", listing_id: listingId, display_key: displayKey, status: "pass", price_cents: priceCents });
+              return { status: "pass", reviewed_at: now() } as HitReview;
+            })}>Pass</button>
+        </span>
       </span>
     );
   }
