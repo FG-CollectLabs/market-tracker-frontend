@@ -1,6 +1,7 @@
 import type { ReactNode } from "react";
 import { Link } from "react-router-dom";
 import type { CopyTiming, GradeOdds, HitReview, HuntListing } from "../lib/api";
+import { GradedLinks, RawLinks } from "./PriceLinks";
 import type { ColMeta } from "../lib/useColumns";
 import GradeOddsBadge from "./GradeOddsBadge";
 import ManualCenteringBadge from "./ManualCenteringBadge";
@@ -141,7 +142,8 @@ export const LISTING_COLS: ListingCol[] = [
           {l.watched && <span className="ml-1.5 px-1 rounded bg-indigo-900/50 text-indigo-200" title="On your watchlist">watching</span>}
           {l.slow && <span className="ml-1.5 px-1 rounded bg-amber-900/50 text-amber-200" title="PSA 10s sell less than once a month">slow</span>}
           {l.image_count === 1 && <span className="ml-1.5 px-1 rounded bg-amber-900/50 text-amber-200" title="Only one photo: the back isn't shown">1 photo</span>}
-          {l.review?.status === "interested" && <span className="ml-1.5 px-1 rounded bg-indigo-900/50 text-indigo-200">interested</span>}
+          {l.review?.status === "interested" && !l.review.result && <span className="ml-1.5 px-1 rounded bg-indigo-900/50 text-indigo-200">bidding</span>}
+            {l.review?.status === "shortlist" && <span className="ml-1.5 px-1 rounded bg-amber-900/50 text-amber-200">interested</span>}
           {l.url
             ? <a href={l.url} target="_blank" rel="noreferrer" className="block truncate max-w-[22rem] text-indigo-300/80 hover:text-indigo-200">{l.title}</a>
             : <div className="truncate max-w-[22rem] text-gray-500">{l.title}</div>}
@@ -216,6 +218,16 @@ export const LISTING_COLS: ListingCol[] = [
     td: (l) => <NeedsReview l={l} />,
   },
   { id: "centering", label: "Centering", title: "Measured centering, front (F) and back (B): left/right · top/bottom, worse side first, colored by PSA grade", td: (l) => <CenteringCell o={l.grade_odds} /> },
+  {
+    id: "raw_links", label: "Raw links",
+    title: "Check the raw price yourself: the card on TCGplayer and PriceCharting, eBay sold raw copies, and its PokeData set page (copies the card name to paste)",
+    td: (l) => <RawLinks c={l} />,
+  },
+  {
+    id: "graded_links", label: "Graded links",
+    title: "Check graded prices yourself: PriceCharting (graded prices on the card page), eBay sold PSA 10s, and 130point (copies the search to paste)",
+    td: (l) => <GradedLinks c={l} />,
+  },
   { id: "psa_ev", label: "PSA EV", title: "PSA grading EV at today's prices, with the adjusted odds and at the public gem rate. Hover for the working.", th: "text-right", td: (l) => <AdjEVCell ev={l.adj_ev} /> },
   { id: "cgc", label: "CGC", title: "CGC Pristine / 10 / 9: gem rates (the card's CGC population), adjusted for this copy, and the EV", th: "text-right", td: (l) => <CGCCell ev={l.adj_ev} /> },
   {

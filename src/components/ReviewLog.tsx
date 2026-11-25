@@ -9,9 +9,10 @@ import { HIT_REASONS, clearHitReview, fetchHitReviews, reviewHit, type HitReason
 const usd = (c?: number) => (c == null ? "—" : `$${(c / 100).toFixed(2)}`);
 const when = (iso: string) => new Date(iso).toLocaleString(undefined, { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" });
 
-const STATUS_FILTERS: [string, string][] = [["", "All"], ["pass", "Set aside"], ["interested", "Interested"], ["note", "Notes"]];
+const STATUS_FILTERS: [string, string][] = [["", "All"], ["pass", "Set aside"], ["interested", "Bids"], ["shortlist", "Interested"], ["note", "Notes"]];
 
 function label(r: ReviewLogRow): string {
+  if (r.status === "shortlist") return "☆ Interested (no bid yet)";
   if (r.status === "interested") return `★ Interested${r.max_bid_cents != null ? ` · max ${usd(r.max_bid_cents)}` : ""}`;
   if (r.status === "note") return "Note";
   if (r.reason === "no_back_photo") return "Set aside · No back photo (auto)";

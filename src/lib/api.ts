@@ -1866,7 +1866,7 @@ export function checkListingGradeOdds(listingId: string, source: string = "ebay"
 
 // Your pass or note on a hit (one listing).
 export interface HitReview {
-  status: "pass" | "note" | "interested";
+  status: "pass" | "note" | "interested" | "shortlist"; // interested: a bid (max_bid_cents); shortlist: marked Interested on a board, not a bid
   max_bid_cents?: number; // interested: the most you'd pay, all-in
   reason?: HitReason;
   note?: string;
@@ -1892,7 +1892,7 @@ export const HIT_REASONS: { key: Exclude<HitReason, "no_back_photo">; label: str
   { key: "other", label: "Other", hint: "Say why in the note" },
 ];
 
-export function reviewHit(h: { source: string; listing_id: string; display_key: string; status: "pass" | "note" | "interested"; reason?: HitReason; note?: string; price_cents?: number; max_bid_cents?: number; shown?: unknown }): Promise<{ saved: boolean }> {
+export function reviewHit(h: { source: string; listing_id: string; display_key: string; status: "pass" | "note" | "interested" | "shortlist"; reason?: HitReason; note?: string; price_cents?: number; max_bid_cents?: number; shown?: unknown }): Promise<{ saved: boolean }> {
   return adminFetch(`/v1/admin/watch-hits/review`, { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify(h) });
 }
 
@@ -2592,7 +2592,7 @@ export function fetchGroupCards(category: string, grade: string, lang: string): 
 export interface ReviewLogRow {
   source: string;
   listing_id: string;
-  status: "pass" | "note" | "interested";
+  status: "pass" | "note" | "interested" | "shortlist";
   reason?: HitReason;
   note?: string;
   max_bid_cents?: number;
@@ -3238,7 +3238,10 @@ export function fetchHunt(game: string, code: string, o: { years: number; gradeA
 
 // ---- Watchlist hunt listings (consigner / raw-seller raw copies, hunt-ranked) -----
 
+// Outside price pages for a card, to check a stale price by hand.
+export interface CardLinks { set_name?: string; tcgplayer_id?: string; pricecharting_url?: string }
 export interface HuntListing {
+  links?: CardLinks;
   display_key: string;
   name: string;
   number: string;

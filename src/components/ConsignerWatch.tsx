@@ -182,7 +182,8 @@ function Row({ l }: { l: ConsignerListing }) {
             <Link to={`/cards/${l.display_key}`} className="text-gray-100 hover:text-indigo-300">{l.name}</Link>
             <span className="text-gray-500"> #{l.number} · {l.set_code}</span>
             {l.image_count === 1 && <span className="ml-1.5 px-1 rounded bg-amber-900/50 text-amber-200" title="Only one photo: the back isn't shown">1 photo</span>}
-            {l.review?.status === "interested" && <span className="ml-1.5 px-1 rounded bg-indigo-900/50 text-indigo-200">interested</span>}
+            {l.review?.status === "interested" && !l.review.result && <span className="ml-1.5 px-1 rounded bg-indigo-900/50 text-indigo-200">bidding</span>}
+            {l.review?.status === "shortlist" && <span className="ml-1.5 px-1 rounded bg-amber-900/50 text-amber-200">interested</span>}
             {l.url
               ? <a href={l.url} target="_blank" rel="noreferrer" className="block truncate max-w-[22rem] text-indigo-300/80 hover:text-indigo-200">{l.title}</a>
               : <div className="truncate max-w-[22rem] text-gray-500">{l.title}</div>}
