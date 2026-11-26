@@ -12,6 +12,7 @@ import type { HitReview, LaterPlay } from "../lib/api";
 import { useColumns, type ColMeta } from "../lib/useColumns";
 import ColumnPicker, { FROZEN_BOX, FROZEN_HEAD } from "./ColumnPicker";
 import { CenteringCell, centeringVerdict } from "./ListingColumns";
+import { peekBands, useBandsFor } from "../lib/centeringBands";
 
 // Graded side of the Consigner board: slabs below the premium grade from the
 // tracked consigners, each priced as a crack-and-resubmit (PSA, CGC; CGC 10s
@@ -109,6 +110,9 @@ export default function RegradeBoard({ seller, setSeller, market, lang = "en" }:
     return () => { live = false; };
   }, [source, oddsReload, cc, lang]);
 
+  // the Centering filter judges each slab by its card's bands (load them for the measured ones)
+  const measuredKeys = useMemo(() => (centerF ? [...new Set((rep?.listings ?? []).filter((l) => l.grade_odds?.front || l.grade_odds?.back).map((l) => l.display_key))] : []), [rep, centerF]);
+  const bandsV = useBandsFor(measuredKeys);
   const base = useMemo(() => {
     const until = endsBefore(ending);
     return (rep?.listings ?? []).filter((l) =>
@@ -119,7 +123,7 @@ export default function RegradeBoard({ seller, setSeller, market, lang = "en" }:
       (view !== "later" || (l.later?.beats_now_cents ?? -1) > 0) &&
       (!centerF || centerOK(l, centerF)) &&
       (!measuredOnly || (l.best != null && l.best.rate_source !== "settings")));
-  }, [rep, seller, grader, kind, ending, view, centerF, measuredOnly]);
+  }, [rep, seller, grader, kind, ending, view, centerF, measuredOnly, bandsV]); // eslint-disable-line react-hooks/exhaustive-deps
   const showCounts = useMemo(() => countShows(base, reviewOf), [base, rv]); // eslint-disable-line react-hooks/exhaustive-deps
   const rows = useMemo(() => {
     const out = base.filter((l) => show === "all" || showOf(reviewOf(l)) === show);
@@ -299,7 +303,7 @@ interface RCtx { cc?: boolean; review?: HitReview; onReview: (r: HitReview | und
 interface RegradeCol extends ColMeta { right?: boolean; td: (l: RegradeListing, x: RCtx) => ReactNode }
 
 function centerOK(l: RegradeListing, f: CenterF): boolean {
-  const v = centeringVerdict(l.grade_odds);
+  const v = centeringVerdict(l.grade_odds, peekBands(l.display_key));
   if (!v) return false;
   return f === "clean" ? v.band === "green" : v.band !== "red";
 }
@@ -394,7 +398,7 @@ const REGRADE_COLS: RegradeCol[] = [
   },
   {
     id: "centering", label: "Centering", title: "The slab's measured centering (from its photos), colored against PSA 10: green not deducted, amber noticed, red past PSA's limit. A PSA 9 that's all green may be under-graded.",
-    td: (l) => <CenteringCell o={l.grade_odds} />,
+    td: (l) => <CenteringCell o={l.grade_odds} dk={l.display_key} />,
   },
   {
     id: "plays", label: "Regrade plays", title: "Each regrade play: share expected back at the top grade and the EV after the buy, fees and the selling fee. Hover for the working.",
