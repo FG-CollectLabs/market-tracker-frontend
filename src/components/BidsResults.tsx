@@ -205,9 +205,9 @@ function Steps({ b, slab, onSaved }: { b: BidRow; slab: boolean; onSaved: () => 
       ) : b.in_hand === "gradable" && (
         <div className="flex flex-wrap items-center gap-1">
           <span className="text-gray-500">Graded:</span>
-          <select value={grader} onChange={(e) => setGrader(e.target.value)} className={inp}>{["PSA", "CGC", "BGS", "TAG"].map((g) => <option key={g}>{g}</option>)}</select>
+          <select value={grader} onChange={(e) => setGrader(e.target.value)} className={inp}>{["PSA", "CGC", "BGS", "TAG", "PCG"].map((g) => <option key={g}>{g}</option>)}</select>
           <select value={grade} onChange={(e) => setGrade(e.target.value)} className={inp}>
-            {["10 pristine", "10 black", "10", "9.5", "9", "8.5", "8", "7"].map((g) => <option key={g}>{g}</option>)}
+            {(grader === "PCG" ? ["10 flawless", "10 pristine", "10", "9.5", "9", "8.5", "8", "7"] : ["10 pristine", "10 black", "10", "9.5", "9", "8.5", "8", "7"]).map((g) => <option key={g} value={g}>{g === "10 flawless" ? "10 flawless (gold)" : g}</option>)}
           </select>
           <input value={fee} onChange={(e) => setFee(e.target.value)} placeholder="$ fee" className={`${inp} w-16`} />
           <button disabled={busy} className={`${btn} border-indigo-800 text-indigo-200`} onClick={() => save({ step: "graded", grader, grade, fee_cents: toCents(fee) })}>Save</button>

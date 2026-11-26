@@ -9,13 +9,14 @@ const usd = (c: number) => `${c < 0 ? "−" : ""}$${(Math.abs(c) / 100).toLocale
 const pc = (p: number) => `${p > 0 && p < 0.01 ? (p * 100).toFixed(1) : Math.round(p * 100)}%`;
 
 const SOURCE: Record<string, string> = {
+  own_outcomes: "your own PCG results for copies with this centering (Your PCG results on the PCG page)",
   pregrader_cgc: "this copy's pre-grade (its CGC odds), capped by PCG's centering rules",
   card_pop: "the card's PCG population (what was submitted: screened copies grade better)",
   set_pop: "its set's PCG population (the card has under 20 graded)",
   all_pop: "every PCG-graded Pokémon card (its set has under 20)",
   none: "no PCG population or pre-grade",
 };
-const SHORT: Record<string, string> = { card_pop: "card pop", set_pop: "set pop", all_pop: "all PCG" };
+const SHORT: Record<string, string> = { own_outcomes: "your results", card_pop: "card pop", set_pop: "set pop", all_pop: "all PCG" };
 
 export default function PCGCell({ p }: { p?: BoardPCG }) {
   if (!p || p.profit_cents == null) return <span className="text-gray-600" title={p?.notes?.join("\n") || "No PCG price or odds"}>–</span>;

@@ -3255,7 +3255,7 @@ export interface BoardPCG {
   pristine_cents?: number; ten_cents?: number;
   pristine_eligible?: boolean; flawless_eligible?: boolean;
   cap_label?: string; cap_why?: string;
-  odds_source: "pregrader_cgc" | "card_pop" | "set_pop" | "all_pop" | "none";
+  odds_source: "own_outcomes" | "pregrader_cgc" | "card_pop" | "set_pop" | "all_pop" | "none";
   odds_n?: number;
   fee_cents: number; fee_tier?: string;
   notes?: string[];
@@ -4359,6 +4359,16 @@ export interface PcgGate { grade: string; front_worst: number; front_best?: numb
 export interface PcgModel {
   game: string; sales: number; cards: number; first_sale?: string; ratios: PcgRatio[]; centering_gates: PcgGate[]; notes: string[]; method: string;
   fits?: { grade: string; label: string; n: number; w_raw: number; log_k: number; median_error: number; ratio_error: number; borrowed_w?: boolean }[];
+}
+export interface PcgOutcomeClass {
+  class: "flawless" | "pristine" | "ten" | "below" | "unmeasured";
+  label: string; n: number;
+  grades: Record<string, number>; shares: Record<string, number>;
+  used_on_boards: boolean;
+}
+export interface PcgOutcomes { classes: PcgOutcomeClass[]; min_n: number; method: string }
+export function fetchPcgOutcomes(): Promise<PcgOutcomes> {
+  return get(`/v1/analysis/pcg/outcomes`);
 }
 export function fetchPcgModel(game = "pokemon"): Promise<PcgModel> {
   return get(`/v1/analysis/pcg/model?game=${game}`);
