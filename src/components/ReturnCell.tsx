@@ -7,6 +7,40 @@ const yr = (v?: number | null) => (v == null ? "–" : `${(v * 100).toFixed(0)}%
 const tone = (v?: number | null) => (v == null ? "text-gray-500" : v >= 0.2 ? "text-emerald-300" : v >= 0.08 ? "text-amber-300" : "text-rose-300");
 
 // a year at market → at the best offer (+ points), history path; then the flat-market case
+const pct = (v: number) => `${(v * 100).toFixed(0)}%`;
+
+// Deals: labeled lines — a year at market, at the deal (+ points), then how much lower it's projected to go first
+export function DealReturnCell({ x }: { x?: WatchReturns }) {
+  if (!x) return <span className="text-gray-600">–</span>;
+  const gain = x.irr_gain_pts;
+  const vsLow = x.offer_vs_low_pct;
+  const title = `Held to ${x.sell_month} (${x.months_held} months; ${x.sell_why}), selling about ${usd(x.sell_cents)} (${usd(x.net_cents)} net of fees). ` +
+    (x.low_month ? `Projected low before then: ${usd(x.low_cents)} in ${x.low_month} (bad case ${usd(x.low_p25_cents)}). ` : "No projected dip below today's market before the sale. ") +
+    `Flat whole market: ${yr(x.irr_at_market_flat)} at market${x.irr_at_offer_flat != null ? ` → ${yr(x.irr_at_offer_flat)} at the deal` : ""}. Confidence ${x.confidence}.`;
+  return (
+    <div title={title} className="leading-tight">
+      <div className="text-[11px] text-gray-400">at market <span className={tone(x.irr_at_market)}>{yr(x.irr_at_market)}</span>/yr</div>
+      {x.irr_at_offer != null && (
+        <div>at deal <span className={`font-medium ${tone(x.irr_at_offer)}`}>{yr(x.irr_at_offer)}</span>/yr
+          {gain != null && Math.abs(gain) >= 0.005 && <span className={`ml-1 text-[10px] ${gain > 0 ? "text-emerald-300" : "text-rose-300"}`}>{gain > 0 ? "+" : ""}{(gain * 100).toFixed(0)} pts</span>}
+        </div>
+      )}
+      {x.low_month && x.drop_to_low_pct != null ? (
+        vsLow != null && vsLow <= 0 ? (
+          <div className="text-[10px] text-emerald-300">at/below projected low ({usd(x.low_cents)}, {x.low_month})</div>
+        ) : (
+          <div className={`text-[10px] ${vsLow != null && vsLow >= 0.1 ? "text-rose-300" : "text-amber-300"}`}>
+            {vsLow != null ? `${pct(vsLow)} above` : `${pct(x.drop_to_low_pct)} under market:`} projected low {usd(x.low_cents)} by {x.low_month}
+            {x.irr_at_low != null && <span className="text-gray-500"> · wait: {yr(x.irr_at_low)}/yr</span>}
+          </div>
+        )
+      ) : (
+        <div className="text-[10px] text-gray-500">no projected dip · sell {x.sell_month}</div>
+      )}
+    </div>
+  );
+}
+
 export default function ReturnCell({ x }: { x?: WatchReturns }) {
   if (!x) return <span className="text-gray-600">–</span>;
   const title = `Sell ${x.sell_month} (${x.months_held} months; ${x.sell_why}): about ${usd(x.sell_cents)} (${usd(x.net_cents)} net), ` +

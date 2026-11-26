@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { fetchSealedDeals, refreshSealedDeals, watchSealed, type ShopDeal } from "../lib/api";
 import { Spinner } from "./Spinner";
-import ReturnCell from "./ReturnCell";
+import { DealReturnCell } from "./ReturnCell";
 import { usd } from "../pages/SealedTimingPage";
 
 // Deals: in-stock sealed items in any shop's whole catalog (not just the
@@ -27,7 +27,7 @@ export default function ShopDeals({ onWatched }: { onWatched?: () => void }) {
   const [minOff, setMinOff] = useState(0.15);
   const [suspect, setSuspect] = useState(false);
   const [shop, setShop] = useState("");
-  const [sort, setSort] = useState<"off" | "return" | "gain">("off");
+  const [sort, setSort] = useState<"off" | "return" | "gain" | "low">("off");
   const [d, setD] = useState<{ deals: ShopDeal[]; last_refresh: string | null; method: string; categories?: { key: string; label: string }[] } | null>(null);
   const [hidden, setHiddenState] = useState<Set<string>>(loadHidden);
   const setHidden = (s: Set<string>) => { setHiddenState(s); saveHidden(s); };
@@ -49,7 +49,9 @@ export default function ShopDeals({ onWatched }: { onWatched?: () => void }) {
   const rows = useMemo(() => {
     const out = byShop.filter((x) => !hidden.has(x.category ?? "other"));
     if (sort === "off") return out; // the server's order: biggest discount first
-    const v = (x: ShopDeal) => (sort === "return" ? x.returns?.irr_at_offer : x.returns?.irr_gain_pts) ?? -Infinity;
+    const v = (x: ShopDeal) =>
+      (sort === "return" ? x.returns?.irr_at_offer : sort === "gain" ? x.returns?.irr_gain_pts
+        : x.returns ? -(x.returns.offer_vs_low_pct ?? -1) : null) ?? -Infinity; // low: no projected dip counts as at the low
     return [...out].sort((a, b) => v(b) - v(a));
   }, [byShop, hidden, sort]);
   const toggle = (k: string) => { const s = new Set(hidden); if (s.has(k)) s.delete(k); else s.add(k); setHidden(s); };
@@ -83,7 +85,7 @@ export default function ShopDeals({ onWatched }: { onWatched?: () => void }) {
           <option value="">every shop</option>{shops.map((s) => <option key={s}>{s}</option>)}
         </select>
         <select value={sort} onChange={(e) => setSort(e.target.value as typeof sort)} className={sel} title="Return: held to the sealed plan's exit, at this deal's landed price">
-          <option value="off">biggest discount</option><option value="return">best return / yr</option><option value="gain">most return the discount adds</option>
+          <option value="off">biggest discount</option><option value="return">best return / yr</option><option value="gain">most return the discount adds</option><option value="low">closest to projected low</option>
         </select>
         <label className="flex items-center gap-1 text-gray-400" title="60%+ under market: usually a different product (a pack, a single, another set)">
           <input type="checkbox" checked={suspect} onChange={(e) => setSuspect(e.target.checked)} /> show suspect
@@ -138,7 +140,7 @@ export default function ShopDeals({ onWatched }: { onWatched?: () => void }) {
                   {x.market_off > 0 && <div className="text-emerald-300" title="price under market">{off(x.landed_off ?? x.market_off)} market</div>}
                   {x.was_off > 0 && <div className="text-sky-300" title="the shop's own markdown">{off(x.was_off)} shop sale</div>}
                 </td>
-                <td className="py-1.5 pr-3 text-right tabular-nums whitespace-nowrap">{x.product_id ? <ReturnCell x={x.returns} /> : <span className="text-gray-600" title="Not matched to a catalog product: no price history to project">–</span>}</td>
+                <td className="py-1.5 pr-3 text-right tabular-nums whitespace-nowrap">{x.product_id ? <DealReturnCell x={x.returns} /> : <span className="text-gray-600" title="Not matched to a catalog product: no price history to project">–</span>}</td>
                 <td className="py-1.5 text-right whitespace-nowrap">
                   {x.product_id && (x.watched || done[x.id] ? <span className="text-emerald-400">watched</span>
                     : <button onClick={() => watch(x)} className="rounded border border-gray-700 px-2 py-0.5 text-gray-300 hover:text-white">Watch</button>)}

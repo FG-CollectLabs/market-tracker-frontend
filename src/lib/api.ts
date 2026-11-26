@@ -4041,6 +4041,8 @@ export interface WatchReturns {
   net_cents: number; net_flat_market_cents: number; market_cents: number; offer_cents?: number; offer_where?: string; discount_pct?: number;
   irr_at_market: number | null; irr_at_market_flat: number | null; irr_at_offer?: number | null; irr_at_offer_flat?: number | null;
   irr_gain_pts?: number | null; irr_gain_pts_flat?: number | null; confidence: string; note?: string;
+  // the projected low between now and the sale (history path)
+  low_month?: string; low_cents?: number; low_p25_cents?: number; drop_to_low_pct?: number; offer_vs_low_pct?: number; irr_at_low?: number | null;
 }
 // ---- the sealed plan (recommended strategy) ----
 export interface StrategyTrigger {
