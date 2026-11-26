@@ -4098,6 +4098,7 @@ export interface ShopDeal {
   free_ship_assumed?: boolean; free_ship_min_cents?: number;
   was_off: number; market_off: number; landed_off?: number; suspect?: boolean;
   product_id?: number; product?: string; watched: boolean; first_seen: string; checked_at: string;
+  returns?: WatchReturns; // a year bought at this deal vs at market, held to the sealed plan's exit (matched products)
   category?: string; // etb, pc_etb, booster_box, booster_bundle, booster_pack, collector_box, blister, tin, collection, build_battle, deck, case, other
 }
 export function fetchSealedDeals(q: { game?: string; minOff?: number; suspect?: boolean } = {}): Promise<{ deals: ShopDeal[]; count: number; last_refresh: string | null; min_off: number; method: string; categories?: { key: string; label: string }[] }> {
