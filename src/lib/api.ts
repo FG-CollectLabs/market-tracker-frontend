@@ -4038,7 +4038,7 @@ export interface SealedWatchRow {
 }
 export interface WatchReturns {
   sell_month: string; sell_why: string; months_held: number; sell_cents: number; sell_flat_market_cents: number;
-  net_cents: number; net_flat_market_cents: number; market_cents: number; offer_cents?: number; offer_where?: string; discount_pct?: number;
+  net_cents: number; net_flat_market_cents: number; flat_market_from?: string; market_cents: number; offer_cents?: number; offer_where?: string; discount_pct?: number;
   irr_at_market: number | null; irr_at_market_flat: number | null; irr_at_offer?: number | null; irr_at_offer_flat?: number | null;
   irr_gain_pts?: number | null; irr_gain_pts_flat?: number | null; confidence: string; note?: string;
   // the projected low between now and the sale (history path)
