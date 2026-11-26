@@ -1,6 +1,7 @@
 import type { ReactNode } from "react";
 import { Link } from "react-router-dom";
-import type { CopyTiming, GradeOdds, HitReview, HuntListing } from "../lib/api";
+import type { BandAxis, CardBands, CenteringBand, CopyTiming, GradeOdds, HitReview, HuntListing } from "../lib/api";
+import { useCenteringBands } from "../lib/centeringBands";
 import { GradedLinks, RawLinks } from "./PriceLinks";
 import PCGCell from "./PCGCell";
 import { MiniSpinner } from "./Spinner";
@@ -123,75 +124,92 @@ function NeedsReview({ l }: { l: HuntListing }) {
 //   back (each axis): green to 52.5/47.5, amber to 75/25 (a small dip, ~5-8
 //     points, then flat), red past 75/25 (PSA's limit).
 type Band = "green" | "amber" | "red";
-const BANDS = { front: { green: 52.5, amber: 55 }, back: { green: 52.5, amber: 75 } };
+type Side = "front" | "back";
+const AXES: [Side, "L/R" | "T/B", BandAxis][] = [["front", "L/R", "front_lr"], ["front", "T/B", "front_tb"], ["back", "L/R", "back_lr"], ["back", "T/B", "back_tb"]];
+// fixed bands (pooled): used when the pre-grader has none for the card
+const FIXED: Record<"psa_10" | "cgc_pristine", Record<BandAxis, [number, number]>> = {
+  psa_10: { front_lr: [52.5, 55], front_tb: [52.5, 55], back_lr: [52.5, 75], back_tb: [52.5, 75] },
+  // CGC Pristine is stricter, mostly on front L/R (~47k CGC copies pooled, 2026-11-25)
+  cgc_pristine: { front_lr: [51.5, 53.5], front_tb: [53, 55], back_lr: [52, 55], back_tb: [52, 55] },
+};
+interface AxisBand { ok: number; noticed: number; src?: CenteringBand }
+const LEVEL: Record<string, string> = { card: "this card", set_rarity: "set + rarity", set: "set", era: "era", all: "all cards" };
+function axisBand(cb: CardBands | undefined, t: "psa_10" | "cgc_pristine", ax: BandAxis): AxisBand {
+  const src = cb?.[t]?.[ax];
+  if (src) return { ok: src.ok_max, noticed: src.noticed_max, src };
+  const [ok, noticed] = FIXED[t][ax];
+  return { ok, noticed };
+}
+const srcText = (b: AxisBand) => b.src ? `${b.src.label || LEVEL[b.src.level] || b.src.level}: ${b.src.n.toLocaleString()} graded, ${b.src.n_top.toLocaleString()} at the top grade` : "all cards pooled (no per-card bands)";
 const BAND_CLS: Record<Band, string> = { green: "text-green-300", amber: "text-amber-300", red: "text-red-300 font-semibold" };
 const BAND_TIP: Record<Band, string> = {
   green: "not deducted: PSA 10 odds about the same as a centered copy",
   amber: "noticed: PSA 10 odds down, still gradable for a 10",
-  red: "past PSA's limit for a 10: reject when aiming for a 10",
+  red: "past where PSA 10s stop: reject when aiming for a 10",
 };
 const worse = (v?: number) => (v == null ? undefined : Math.max(v, 100 - v));
 const fmt = (w: number) => `${Math.round(w)}/${Math.round(100 - w)}`;
 const exact = (w: number) => `${w.toFixed(1)}/${(100 - w).toFixed(1)}`;
-function bandOf(side: "front" | "back", w: number): Band {
-  const b = BANDS[side];
-  return w <= b.green ? "green" : w <= b.amber ? "amber" : "red";
-}
-function Axis({ v, side, axis }: { v?: number; side: "front" | "back"; axis: string }) {
+const bandOf = (b: AxisBand, w: number): Band => (w <= b.ok ? "green" : w <= b.noticed ? "amber" : "red");
+const valsOf = (o?: GradeOdds) => [o?.front?.lr, o?.front?.tb, o?.back?.lr, o?.back?.tb].map(worse);
+
+function Axis({ v, b, side, axis }: { v?: number; b: AxisBand; side: Side; axis: string }) {
   const w = worse(v);
   if (w == null) return <span className="text-gray-600">–</span>;
-  const band = bandOf(side, w);
+  const band = bandOf(b, w);
   // near a band edge whole numbers would mislead (53.4 reads 53/47 but is amber)
-  const nearEdge = Object.values(BANDS[side]).some((e) => w !== e && Math.abs(w - e) < 0.5);
-  return <span className={BAND_CLS[band]} title={`${side} ${axis} ${exact(w)}: ${BAND_TIP[band]}`}>{nearEdge ? exact(w) : fmt(w)}</span>;
+  const nearEdge = [b.ok, b.noticed].some((e) => w !== e && Math.abs(w - e) < 0.5);
+  return <span className={BAND_CLS[band]} title={`${side} ${axis} ${exact(w)}: ${BAND_TIP[band]}\nPSA 10 bands: green to ${exact(b.ok)}, amber to ${exact(b.noticed)} — from ${srcText(b)}`}>{nearEdge ? exact(w) : fmt(w)}</span>;
 }
-// CGC Pristine is stricter, mostly on front L/R (Pristine share falls from
-// the first point off center: 32% at 50-51, 25% at 52-53, 9% past 55/45;
-// ~47k CGC copies pooled, 2026-11-25). Per axis: [green to, amber to].
-const PRISTINE: [number, number][] = [[51.5, 53.5], [53, 55], [52, 55], [52, 55]]; // front L/R, front T/B, back L/R, back T/B
-export function pristineBand(o?: GradeOdds): Band | undefined {
-  const vals = [o?.front?.lr, o?.front?.tb, o?.back?.lr, o?.back?.tb].map(worse);
+
+export function pristineBand(o?: GradeOdds, cb?: CardBands): Band | undefined {
+  const vals = valsOf(o);
   if (vals.every((w) => w == null)) return undefined;
   let band: Band = "green";
   vals.forEach((w, i) => {
     if (w == null) return;
-    const [g, a] = PRISTINE[i];
-    if (w > a) band = "red";
-    else if (w > g && band === "green") band = "amber";
+    const b = axisBand(cb, "cgc_pristine", AXES[i][2]);
+    if (w > b.noticed) band = "red";
+    else if (w > b.ok && band === "green") band = "amber";
   });
   return band;
 }
 
-// The copy's centering verdict for a 10: red if any axis is past PSA's
-// limit; amber "both front" when both front axes are noticed (they add up).
-export function centeringVerdict(o?: GradeOdds): { band: Band; label: string } | undefined {
+// The copy's centering verdict for a PSA 10 (the card's bands when the
+// pre-grader has them, else pooled): red if any axis is past where 10s
+// stop; amber "both front" when both front axes are noticed (they add up).
+export function centeringVerdict(o?: GradeOdds, cb?: CardBands): { band: Band; label: string } | undefined {
   if (!o?.front && !o?.back) return undefined;
-  const ax: [("front" | "back"), number | undefined][] = [["front", o.front?.lr], ["front", o.front?.tb], ["back", o.back?.lr], ["back", o.back?.tb]];
-  const bands = ax.map(([side, v]) => { const w = worse(v); return w == null ? undefined : bandOf(side, w); });
+  const bands = valsOf(o).map((w, i) => (w == null ? undefined : bandOf(axisBand(cb, "psa_10", AXES[i][2]), w)));
   if (bands.includes("red")) return { band: "red", label: "reject for 10" };
   if (bands[0] === "amber" && bands[1] === "amber") return { band: "amber", label: "both front noticed" };
   if (bands.includes("amber")) return { band: "amber", label: "noticed" };
   return { band: "green", label: "clean" };
 }
-export function CenteringCell({ o }: { o?: GradeOdds }) {
+export function CenteringCell({ o, dk }: { o?: GradeOdds; dk?: string }) {
+  const cb = useCenteringBands(o?.front || o?.back ? dk : undefined);
   if (!o?.front && !o?.back) {
     return <span className="text-gray-600" title={o ? "No centering measured" : "Not pre-graded yet"}>—</span>;
   }
-  const v = centeringVerdict(o);
-  const pr = pristineBand(o);
-  const tip = "Left/right · top/bottom, the worse side first, colored by where PSA starts deducting for a 10 (all cards pooled):\n"
-    + "Front: green to 52.5/47.5 (not deducted) · amber to 55/45 (noticed) · red past 55/45 (reject).\n"
-    + "Back: green to 52.5/47.5 · amber to 75/25 (small, flat dip) · red past 75/25 (reject).\n"
-    + "CGC Pristine is stricter: ✓ inside front L/R 51.5/48.5, front T/B 53/47, back 52/48; ~ to 53.5/46.5 front L/R and 55/45 otherwise."
+  const v = centeringVerdict(o, cb);
+  const pr = pristineBand(o, cb);
+  const psa = AXES.map(([, , ax]) => axisBand(cb, "psa_10", ax));
+  const pri = AXES.map(([, , ax]) => axisBand(cb, "cgc_pristine", ax));
+  const line = (bs: AxisBand[]) => AXES.map(([side, axis], i) => `${side} ${axis} ${exact(bs[i].ok)} / ${exact(bs[i].noticed)}`).join(" · ");
+  const perCard = psa.some((b) => b.src && b.src.level !== "all");
+  const tip = "Left/right · top/bottom, the worse side first: green not deducted · amber noticed · red reject for a 10.\n"
+    + `PSA 10 (green to / amber to): ${line(psa)}\n  from ${srcText(psa[0])}\n`
+    + `CGC Pristine: ${line(pri)}\n  from ${srcText(pri[0])}`
     + (o.centering_check?.status === "needs_manual_centering" ? "\nHeld for manual centering: the outline may be wrong." : "");
   return (
     <span className="inline-flex flex-col tabular-nums whitespace-nowrap text-[11px]" title={tip}>
-      <span><span className="text-gray-500">F </span><Axis v={o.front?.lr} side="front" axis="L/R" /><span className="text-gray-600"> · </span><Axis v={o.front?.tb} side="front" axis="T/B" /></span>
-      <span><span className="text-gray-500">B </span><Axis v={o.back?.lr} side="back" axis="L/R" /><span className="text-gray-600"> · </span><Axis v={o.back?.tb} side="back" axis="T/B" /></span>
+      <span><span className="text-gray-500">F </span><Axis v={o.front?.lr} b={psa[0]} side="front" axis="L/R" /><span className="text-gray-600"> · </span><Axis v={o.front?.tb} b={psa[1]} side="front" axis="T/B" /></span>
+      <span><span className="text-gray-500">B </span><Axis v={o.back?.lr} b={psa[2]} side="back" axis="L/R" /><span className="text-gray-600"> · </span><Axis v={o.back?.tb} b={psa[3]} side="back" axis="T/B" /></span>
       {v && v.band !== "green" && <span className={`text-[10px] ${v.band === "red" ? "text-red-300" : "text-amber-300/80"}`}>{v.label}</span>}
-      {pr === "green" && <span className="text-[10px] text-emerald-300" title="Centering inside CGC Pristine's bands (front L/R ≤51.5/48.5, front T/B ≤53/47, back ≤52/48): Pristine odds about as good as a centered copy">Pristine ✓</span>}
-      {pr === "amber" && <span className="text-[10px] text-amber-300/80" title="Pristine possible but noticed (front L/R to 53.5/46.5, front T/B and back to 55/45): Pristine odds down">Pristine ~</span>}
+      {pr === "green" && <span className="text-[10px] text-emerald-300" title="Inside CGC Pristine's bands: Pristine odds about as good as a centered copy">Pristine ✓</span>}
+      {pr === "amber" && <span className="text-[10px] text-amber-300/80" title="Pristine possible but noticed: Pristine odds down">Pristine ~</span>}
       {o.psa_centering_cap && <span className="text-[10px] text-amber-300/80">caps at {o.psa_centering_cap}</span>}
+      {perCard && <span className="text-[9px] text-gray-500">{LEVEL[psa[0].src!.level]} bands</span>}
     </span>
   );
 }
@@ -283,7 +301,7 @@ export const LISTING_COLS: ListingCol[] = [
     title: "What's waiting on a person: centering held for a manual check, an outline the AI couldn't fix, unmeasurable photos, a failed pre-grade, AI-found issues, or odds you flagged",
     td: (l) => <NeedsReview l={l} />,
   },
-  { id: "centering", label: "Centering", title: "Measured centering, front (F) and back (B): left/right · top/bottom, worse side first: green not deducted, amber noticed, red reject for a 10", td: (l) => <CenteringCell o={l.grade_odds} /> },
+  { id: "centering", label: "Centering", title: "Measured centering, front (F) and back (B): left/right · top/bottom, worse side first: green not deducted, amber noticed, red reject for a 10", td: (l) => <CenteringCell o={l.grade_odds} dk={l.display_key} /> },
   {
     id: "raw_links", label: "Raw links",
     title: "Check the raw price yourself: the card on TCGplayer and PriceCharting, eBay sold raw copies, and its PokeData set page (copies the card name to paste)",

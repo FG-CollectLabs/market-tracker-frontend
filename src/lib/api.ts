@@ -4503,3 +4503,12 @@ export function fetchForecastSkill(q: { grade?: string; group?: string; horizon?
   if (q.horizon) p.set("horizon", String(q.horizon));
   return get(`/v1/analysis/forecast-skill?${p}`);
 }
+
+// ---- per-card centering bands (the pre-grader's, via the tracker) ----
+export interface CenteringBand { ok_max: number; noticed_max: number; level: "card" | "set_rarity" | "set" | "era" | "all"; label?: string; n: number; n_top: number }
+export type BandAxis = "front_lr" | "front_tb" | "back_lr" | "back_tb";
+export type BandTarget = "psa_10" | "cgc_10_or_better" | "cgc_pristine";
+export type CardBands = Partial<Record<BandTarget, Partial<Record<BandAxis, CenteringBand>>>>;
+export function fetchCenteringBands(displayKeys: string[]): Promise<{ bands: Record<string, CardBands>; defaults?: CardBands | null; error?: string }> {
+  return postPublic(`/v1/centering/bands`, { display_keys: displayKeys });
+}
